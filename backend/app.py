@@ -237,6 +237,32 @@ async def patch_project(pid: str, edit: dict = Body(...)):
     return p.model_dump()
 
 
+def _compute_peaks(video: str, n: int):
+    import subprocess
+    import numpy as np
+    p = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(video), "-ac", "1", "-ar", "8000", "-f", "s16le", "-"],
+                       capture_output=True)
+    a = np.frombuffer(p.stdout, dtype=np.int16).astype(np.float32)
+    if not len(a):
+        return []
+    buckets = np.array_split(a, min(n, len(a)))
+    mx = max(1.0, float(np.abs(a).max()))
+    return [round(float(np.abs(b).max()) / mx, 3) if len(b) else 0.0 for b in buckets]
+
+
+@app.get("/projects/{pid}/waveform")
+async def waveform(pid: str, n: int = 600):
+    """Downsampled audio peaks for the bottom WaveformTimeline (cached per project)."""
+    proj = _load(pid)
+    cache = _proj_dir(pid) / "waveform.json"
+    if cache.exists():
+        return json.loads(cache.read_text(encoding="utf-8"))
+    peaks = await _loop.run_in_executor(None, _compute_peaks, proj.meta.video, n)   # CPU ffmpeg, off the GPU worker
+    out = {"peaks": peaks}
+    cache.write_text(json.dumps(out), encoding="utf-8")
+    return out
+
+
 @app.put("/projects/{pid}")
 async def put_project(pid: str, body: dict = Body(...)):
     """Replace the whole Project (undo/redo restores a snapshot)."""

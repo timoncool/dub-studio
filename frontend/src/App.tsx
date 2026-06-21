@@ -197,6 +197,31 @@ function ComparePane({ label, src }: { label: string; src: string }) {
   );
 }
 
+function WaveformTimeline({ pid, duration, scrub, segments, onSeek }: {
+  pid: string; duration: number; scrub: number; segments: Project["segments"]; onSeek: (t: number) => void;
+}) {
+  const [peaks, setPeaks] = useState<number[]>([]);
+  const wrap = useRef<HTMLDivElement>(null);
+  const [w, setW] = useState(800);
+  useEffect(() => { api.waveform(pid).then((r) => setPeaks(r.peaks)).catch(() => {}); }, [pid]);
+  useEffect(() => { const el = wrap.current; if (!el) return; const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
+  const h = 40, dur = duration || 1, bw = peaks.length ? w / peaks.length : 1;
+  return (
+    <div ref={wrap} className="relative w-full cursor-pointer select-none" style={{ height: h }}
+      onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur))); }}>
+      <svg width={w} height={h} className="block">
+        {peaks.map((pk, i) => {
+          const bh = Math.max(2, pk * (h - 6)), played = (i / peaks.length) * dur <= scrub;
+          return <rect key={i} x={(i / peaks.length) * w} y={(h - bh) / 2} width={Math.max(1, bw - 0.5)} height={bh}
+                       fill={played ? "var(--color-accent)" : "#3a414c"} opacity={played ? 0.9 : 0.55} />;
+        })}
+        {segments.map((s, i) => <rect key={"s" + i} x={(s.start / dur) * w} y={0} width={1} height={h} fill="var(--color-muted)" opacity={0.3} />)}
+      </svg>
+      <div className="absolute top-0 bottom-0 w-px bg-[var(--color-accent)] shadow-[0_0_6px_var(--color-accent)] pointer-events-none" style={{ left: `${(scrub / dur) * 100}%` }} />
+    </div>
+  );
+}
+
 function CommandPalette({ commands }: { commands: { label: string; run: () => void }[] }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
@@ -462,8 +487,10 @@ function Editor() {
             <Columns2 size={15} />
           </button>
           <span className="mono text-[11px] tabnum w-24 shrink-0"><span className="text-[var(--color-accent)] font-semibold">{fmtT(scrub)}</span><span className="text-[var(--color-muted)]"> / {fmtT(p.meta.duration || 0)}</span></span>
-          <input type="range" min={0} max={p.meta.duration || 1} step={0.1} value={scrub}
-            onChange={(e) => { setRendered(false); setScrub(parseFloat(e.target.value)); }} className="w-full accent-[var(--color-accent)]" />
+          <div className="flex-1">
+            <WaveformTimeline pid={pid} duration={p.meta.duration || 0} scrub={scrub} segments={p.segments}
+              onSeek={(t) => { setRendered(false); setScrub(t); }} />
+          </div>
         </div>
       </main>
 

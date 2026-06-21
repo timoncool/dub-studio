@@ -67,6 +67,7 @@ export const api = {
   render: (pid: string) => fetch(`${BASE}/projects/${pid}/render`, { method: "POST" }).then(j<{ job_id: string }>),
   previewUrl: (pid: string, t: number, rev = 0) => `${BASE}/projects/${pid}/preview?t=${t}&rev=${rev}`,
   originalUrl: (pid: string, t: number) => `${BASE}/projects/${pid}/original?t=${t}`,
+  waveform: (pid: string) => fetch(`${BASE}/projects/${pid}/waveform`).then(j<{ peaks: number[] }>),
   outputUrl: (pid: string) => `${BASE}/projects/${pid}/output`,
   // SSE job progress -> onEvent per message; resolves on done, rejects on error
   watchJob: (jobId: string, onEvent: (e: JobEvent) => void) =>
