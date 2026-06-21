@@ -9,6 +9,12 @@ import PreviewCanvas from "./components/PreviewCanvas";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
+// timecode m:ss.d — the navigation reference shown on every segment + the scrub readout
+function fmtT(s: number) {
+  const m = Math.floor(s / 60), sec = Math.floor(s % 60), d = Math.floor((s * 10) % 10);
+  return `${m}:${String(sec).padStart(2, "0")}.${d}`;
+}
+
 function LanguageSwitcher() {
   const { i18n } = useTranslation();
   return (
@@ -179,6 +185,9 @@ function Editor() {
   const rendering = useStore((s) => s.rendering);
   const setRendering = useStore((s) => s.setRendering);
   const [scrub, setScrub] = useState(1.0);
+  const [fonts, setFonts] = useState<Record<string, string>>({});
+  useEffect(() => { api.fonts().then((r) => setFonts(r.fonts)).catch(() => {}); }, []);   // bundled caption fonts
+  const [sizeDraft, setSizeDraft] = useState<number | null>(null);   // live size while dragging (commit on release)
   const ss = p.captions.sub_style;
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
@@ -221,10 +230,11 @@ function Editor() {
               <div key={seg.id} ref={on ? activeRef : undefined}
                 onClick={() => { setRendered(false); setScrub(seg.start); }}   // click a phrase -> seek the playhead to it
                 className={`rounded-xl p-2.5 border-l-2 transition-colors cursor-pointer ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
-                <div className="flex items-center gap-2 mono text-[10px] text-[var(--color-muted)]">
-                  <span>{seg.start.toFixed(1)}–{seg.end.toFixed(1)}s</span>
-                  {seg.speaker != null && <span className="px-1.5 py-px rounded bg-[var(--color-overlay)] text-[9px]">SPK {seg.speaker}</span>}
-                  {seg.dirty && <span className="ml-auto text-[var(--color-accent)]" title="edited">● ред.</span>}
+                <div className="flex items-center gap-2">
+                  <span className={`mono text-[11px] px-1.5 py-0.5 rounded tabnum ${on ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "bg-[var(--color-overlay)] text-[var(--color-muted)]"}`}>{fmtT(seg.start)}</span>
+                  <span className="mono text-[10px] text-[var(--color-muted)]/60 tabnum">→ {fmtT(seg.end)}</span>
+                  {seg.speaker != null && <span className="mono px-1.5 py-px rounded bg-[var(--color-overlay)] text-[9px] text-[var(--color-muted)]">SPK {seg.speaker}</span>}
+                  {seg.dirty && <span className="ml-auto text-[var(--color-accent)] text-[10px]" title="edited">●</span>}
                 </div>
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
                 <textarea value={seg.tgt_text} onChange={(e) => patchSeg(seg.id, e.target.value)}
@@ -259,7 +269,7 @@ function Editor() {
             onChanged={async () => setProject(await api.getProject(pid))} />
         </div>
         <div className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
-          <span className="mono text-[10px] text-[var(--color-muted)] tabnum w-20 shrink-0">{scrub.toFixed(1)} / {(p.meta.duration || 0).toFixed(1)}s</span>
+          <span className="mono text-[11px] tabnum w-24 shrink-0"><span className="text-[var(--color-accent)] font-semibold">{fmtT(scrub)}</span><span className="text-[var(--color-muted)]"> / {fmtT(p.meta.duration || 0)}</span></span>
           <input type="range" min={0} max={p.meta.duration || 1} step={0.1} value={scrub}
             onChange={(e) => { setRendered(false); setScrub(parseFloat(e.target.value)); }} className="w-full accent-[var(--color-accent)]" />
         </div>
@@ -269,7 +279,14 @@ function Editor() {
         <SectionLabel>{t("editor.style")}</SectionLabel>
         {ss && (
           <div className="space-y-3">
-            <Row label={t("style.font")}><span className="mono text-[12px] text-[var(--color-text)]">{ss.font || "—"}</span></Row>
+            <Row label={t("style.font")}>
+              <select value={ss.font || "Montserrat"} onChange={(e) => branch("caption", { font: e.target.value })}
+                className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-md px-2 py-1 text-[12px] max-w-[160px] focus:border-[var(--color-accent)] focus:outline-none transition-colors"
+                title={fonts[ss.font || "Montserrat"] || ""}>
+                {Object.keys(fonts).length ? Object.keys(fonts).map((f) => <option key={f} value={f}>{f}</option>)
+                                           : <option value={ss.font || "Montserrat"}>{ss.font || "Montserrat"}</option>}
+              </select>
+            </Row>
             <Toggle label={t("style.bold")} on={ss.bold} onClick={() => branch("caption", { bold: !ss.bold })} />
             <Toggle label={t("style.italic")} on={ss.italic} onClick={() => branch("caption", { italic: !ss.italic })} />
             <Toggle label={t("style.caps")} on={ss.uppercase} onClick={() => branch("caption", { uppercase: !ss.uppercase })} />
@@ -277,6 +294,17 @@ function Editor() {
               <input type="color" value={ss.color} onChange={(e) => branch("caption", { color: e.target.value })}
                 className="bg-transparent w-8 h-6 rounded cursor-pointer" />
             </Row>
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[var(--color-muted)]">{t("style.size")}</span>
+                <span className="mono text-[11px] text-[var(--color-text)]">{sizeDraft ?? ss.size_px ?? Math.round((p.meta.height || 1280) / 14)}px</span>
+              </div>
+              <input type="range" min={24} max={Math.round((p.meta.height || 1280) / 5)}
+                value={sizeDraft ?? ss.size_px ?? Math.round((p.meta.height || 1280) / 14)}
+                onChange={(e) => setSizeDraft(parseInt(e.target.value))}
+                onPointerUp={async () => { if (sizeDraft != null) { await branch("caption", { size_px: sizeDraft }); setSizeDraft(null); } }}
+                className="w-full mt-1.5 accent-[var(--color-accent)]" />
+            </div>
           </div>
         )}
         {mode !== "subtitles" && (

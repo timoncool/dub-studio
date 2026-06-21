@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dub-engi
 from dubengine import (EngineOpts, Project, add_blur, analyze, del_blur, edit_blur,  # noqa: E402
                        edit_caption, edit_segment, preview_frame, recast, render, rewrite,
                        set_mode, translate)
+from dubengine import captions as _captions  # noqa: E402  (font catalog for the editor)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -114,6 +115,12 @@ async def capabilities():
     return {"device": OPTS.device, "tts_quant": OPTS.tts_quant, "asr_model": OPTS.asr_model,
             "ffmpeg": bool(shutil.which("ffmpeg")), "languages": ["en", "ru", "zh", "es", "pt", "fr"],
             "voice_modes": ["clone", "autocast", "auto", "voice"]}
+
+
+@app.get("/fonts")
+async def fonts():
+    """Bundled caption fonts (family -> description) for the StyleInspector font picker."""
+    return {"fonts": dict(_captions.FONTS)}
 
 
 @app.post("/projects")
