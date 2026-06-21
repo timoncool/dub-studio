@@ -3,5 +3,4 @@ __pycache__/
 workspace/
 node_modules/
 dist/
-test_e2e_*.mp4
-test_e2e_*.png
+test_e2e_*

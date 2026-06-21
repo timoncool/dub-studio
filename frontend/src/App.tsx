@@ -582,13 +582,34 @@ function Editor() {
               <option value="autocast">{t("voice.autocast")}</option>
               <option value="voice">{t("voice.pack")}</option>
             </select>
-            {p.audio.voice.mode === "voice" && (
-              <select value={p.audio.voice.name || ""} onChange={(e) => branch("recast", { voice_mode: "voice", voice_name: e.target.value })}
-                className="w-full mt-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors">
-                <option value="">{voiceList.length ? "—" : "(пак не найден)"}</option>
-                {voiceList.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
-            )}
+            {p.audio.voice.mode === "voice" && (() => {
+              // per-speaker pack voices: engine maps a comma-list to sorted speakers (cycling), so each
+              // diarized speaker can get a DISTINCT/funny voice. 1 speaker -> a single picker.
+              const spks = [...new Set(p.segments.map((s) => s.speaker ?? "0"))].sort();   // lexical — matches engine sorted()
+              const names = (p.audio.voice.name || "").split(",").map((s) => s.trim());
+              const pick = (cur: string, on: (v: string) => void) => (
+                <select value={cur} onChange={(e) => on(e.target.value)}
+                  className="flex-1 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+                  <option value="">{voiceList.length ? "—" : "(пак не найден)"}</option>
+                  {voiceList.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              );
+              if (spks.length <= 1)
+                return <div className="mt-2 flex">{pick(names[0] || "", (v) => branch("recast", { voice_mode: "voice", voice_name: v }))}</div>;
+              return (
+                <div className="mt-2 space-y-1.5">
+                  {spks.map((spk, i) => (
+                    <div key={spk} className="flex items-center gap-2">
+                      <span className="mono text-[10px] text-[var(--color-muted)] w-12 shrink-0">SPK {spk}</span>
+                      {pick(names[i] || "", (v) => branch("recast", {
+                        voice_mode: "voice",
+                        voice_name: spks.map((_, j) => (j === i ? v : names[j] || "")).join(","),
+                      }))}
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </>
         )}
 
