@@ -8,7 +8,8 @@ neural‑nets). **One process**: FastAPI serves the prebuilt SPA same‑origin �
 ```
 DubStudio\
 ├─ run.bat               # launch: env isolation + uvicorn + open browser  (DONE)
-├─ install.bat           # one‑time setup: embed Python + torch + engine + build SPA  (skeleton below)
+├─ install.bat           # one‑time setup: embed Python + torch + engine + build SPA  (DONE, validated from scratch)
+├─ update.bat            # git pull studio + engine, reinstall -e, rebuild SPA  (DONE)
 ├─ requirements.txt      # THIN backend deps (no torch / no ML stack)       (DONE)
 ├─ backend\app.py        # single‑worker FastAPI over dub-engine            (DONE; serves frontend\dist)
 ├─ frontend\dist\        # prebuilt SPA (vite build, base:'./')              (DONE; FastAPI mounts it)

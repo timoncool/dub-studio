@@ -4,3 +4,16 @@ workspace/
 node_modules/
 dist/
 test_e2e_*
+
+# portable runtime — all created by install.bat / run.bat, never committed
+python/
+.venv-sortformer/
+node/
+ffmpeg/
+models/
+voices/
+downloads/
+temp/
+cache/
+output/
+cuda_version.txt
