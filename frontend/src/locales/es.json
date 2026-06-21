@@ -1,6 +1,15 @@
 {
   "app": { "name": "Dub Studio", "tagline": "Dobla y traduce cualquier video corto — en local." },
   "drop": { "title": "Suelta un video para doblar", "hint": "MP4 o MOV — todo se ejecuta en tu equipo", "browse": "Examinar", "recent": "Recientes", "demo": "Probar demo" },
+  "hero": {
+    "eyebrow": "LOCAL · SIN CONEXIÓN · 6 IDIOMAS",
+    "headline": "Dobla cualquier vídeo corto como si se hubiera grabado así.",
+    "sub": "El análisis automático hace la primera pasada; luego controlas todo: voces, texto, estilo de subtítulos, desenfoque, con vista previa en vivo en cada paso.",
+    "f1": "Texto en pantalla, localizado en su lugar",
+    "f2": "Clona, reparte voces o usa un pack",
+    "f3": "Reescribe el guion y vuelve a doblar",
+    "formats": "MP4 · MOV · hasta 4K · nada sale de tu equipo"
+  },
   "analyze": {
     "title": "Analizando tu video",
     "separating": "Separando audio", "recognizing": "Reconociendo voz", "diarizing": "Identificando hablantes",

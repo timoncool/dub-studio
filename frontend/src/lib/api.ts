@@ -47,7 +47,7 @@ export const api = {
   patch: (pid: string, edit: Record<string, unknown>) =>
     fetch(`${BASE}/projects/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) }).then(j<Project>),
   render: (pid: string) => fetch(`${BASE}/projects/${pid}/render`, { method: "POST" }).then(j<{ job_id: string }>),
-  previewUrl: (pid: string, t: number) => `${BASE}/projects/${pid}/preview?t=${t}`,
+  previewUrl: (pid: string, t: number, rev = 0) => `${BASE}/projects/${pid}/preview?t=${t}&rev=${rev}`,
   outputUrl: (pid: string) => `${BASE}/projects/${pid}/output`,
   // SSE job progress -> onEvent per message; resolves on done, rejects on error
   watchJob: (jobId: string, onEvent: (e: JobEvent) => void) =>

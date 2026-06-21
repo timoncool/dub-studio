@@ -1,34 +1,52 @@
 @import "tailwindcss";
 
-/* Dub Studio — premium dark theme tokens (the brand surface for repo-of-the-day polish) */
+/* Dub Studio — "dark studio console" aesthetic.
+   Near-black instrument panel · ONE acid-lime signal accent · depth via luminance steps + 1px hairlines (NOT
+   shadows) · Onest UI (Latin+Cyrillic) + JetBrains Mono for the console/timecode texture + Noto SC for CJK.
+   4 surface elevations on a near-black (never #000) base. Tokens drive both Tailwind utils and the Konva canvas. */
 @theme {
-  --color-bg: #0b0b0f;
-  --color-surface: #14141b;
-  --color-surface-2: #1c1c26;
-  --color-border: #2a2a36;
-  --color-text: #e7e7ee;
-  --color-muted: #9a9aab;
-  --color-accent: #7c5cff;
-  --color-accent-2: #00d4b8;
+  --color-bg: #0b0c0e;            /* canvas — near-black, never pure */
+  --color-surface: #121317;       /* panel  (elevation 1) */
+  --color-surface-2: #1a1c22;     /* raised / hover (elevation 2) */
+  --color-overlay: #23262e;       /* overlay (elevation 3) */
+  --color-border: #262a31;        /* hairline */
+  --color-hairline: #ffffff14;    /* inset top hairline for raised surfaces */
+  --color-text: #e8eaed;          /* soft off-white, never #fff */
+  --color-muted: #888e99;         /* cool gray */
+  --color-accent: #c6f24e;        /* THE signal accent — acid lime (one per screen) */
+  --color-on-accent: #0b0c0e;     /* near-black text on the lime accent */
+  --color-accent-2: #5be0c8;      /* teal — info / secondary highlight */
   --color-warn: #ffb020;
+  --font-ui: "Onest", "Noto Sans SC", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: var(--color-bg);
+  background:
+    radial-gradient(120% 80% at 50% -10%, #16181d 0%, var(--color-bg) 55%) fixed,
+    var(--color-bg);
   color: var(--color-text);
-  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  font-family: var(--font-ui);
+  font-feature-settings: "ss01", "cv01";
   -webkit-font-smoothing: antialiased;
 }
 * { box-sizing: border-box; }
-::selection { background: color-mix(in oklab, var(--color-accent) 40%, transparent); }
+::selection { background: color-mix(in oklab, var(--color-accent) 35%, transparent); color: var(--color-text); }
 
-/* subtle scrollbars */
-::-webkit-scrollbar { width: 10px; height: 10px; }
+/* faint grain overlay for studio texture (very subtle) */
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9999; opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* timecodes / numeric / labels → console mono */
+.mono, time, .tabnum { font-family: var(--font-mono); font-feature-settings: "tnum"; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: #333843; }
 ::-webkit-scrollbar-track { background: transparent; }
 
-@media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
+@media (prefers-reduced-motion: reduce) { * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }

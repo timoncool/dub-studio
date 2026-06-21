@@ -21,7 +21,7 @@ import torch  # noqa: F401,E402  before llama_cpp (engine loads it lazily)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dub-engine"))
 from dubengine import (EngineOpts, Project, analyze, edit_blur, edit_caption,  # noqa: E402
-                       preview_frame, recast, render, rewrite, translate)
+                       edit_segment, preview_frame, recast, render, rewrite, translate)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -152,6 +152,9 @@ async def patch_project(pid: str, edit: dict = Body(...)):
     op = edit.pop("op", "")
     if op == "caption":
         edit_caption(p, edit.pop("seg_id", None), **edit)
+    elif op == "segment":
+        edit_segment(p, edit.pop("id"), tgt_text=edit.get("tgt_text"),
+                     src_text=edit.get("src_text"), voice=edit.get("voice"))
     elif op == "blur":
         edit_blur(p, edit.pop("idx"), **edit)
     elif op == "subpos":

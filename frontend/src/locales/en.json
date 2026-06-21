@@ -1,6 +1,15 @@
 {
   "app": { "name": "Dub Studio", "tagline": "Dub & translate any short video — locally." },
   "drop": { "title": "Drop a video to dub", "hint": "MP4 or MOV — everything runs on your machine", "browse": "Browse", "recent": "Recent", "demo": "Try a demo" },
+  "hero": {
+    "eyebrow": "LOCAL · OFFLINE · 6 LANGUAGES",
+    "headline": "Dub any short video like it was made that way.",
+    "sub": "Auto-analysis runs the first pass — then you take over: voices, text, caption style, blur, with a live preview at every step.",
+    "f1": "On-screen text, localized in place",
+    "f2": "Clone, auto-cast or pack voices",
+    "f3": "Rewrite the script, then re-voice",
+    "formats": "MP4 · MOV · up to 4K · nothing leaves your machine"
+  },
   "analyze": {
     "title": "Analyzing your video",
     "separating": "Separating audio", "recognizing": "Recognizing speech", "diarizing": "Diarizing speakers",
