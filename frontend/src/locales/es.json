@@ -30,7 +30,7 @@
   "files": { "title": "Archivos", "download": "Descargar", "open": "Abrir" },
   "nav": { "new": "Nuevo", "newHint": "Empezar con un vídeo nuevo" },
   "play": { "dub": "Reproducir el doblaje (vídeo + voz)" },
-  "seg": { "regen": "Regenerar la voz de esta frase", "refresh": "Actualizar", "refreshHint": "Forzar el refresco de la vista previa / subtítulos" },
+  "seg": { "regen": "Regenerar la voz de esta frase", "play": "Reproducir la voz de esta frase", "refresh": "Actualizar", "refreshHint": "Forzar el refresco de la vista previa / subtítulos" },
   "settings": { "title": "Modelos", "asr": "Reconocimiento de voz", "llm": "Traducción", "vision": "Visión", "tts": "Síntesis de voz" },
   "common": { "undo": "Deshacer", "redo": "Rehacer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Listo", "error": "Error" }
 }

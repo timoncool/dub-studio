@@ -333,17 +333,20 @@ function Editor() {
   const [compare, setCompare] = useState(false);                      // before/after split preview (Topaz-style)
   const [play, setPlay] = useState(false);                            // dub playback: play TTS audio + advance preview frames + playhead
   const audioRef = useRef<HTMLAudioElement>(null);
+  const playEndRef = useRef<number>(Infinity);                        // stop time for single-phrase playback (Infinity = full)
   // Dub playback — drive the EDITOR preview from the dub audio track (no video element): the preview frame and the
   // waveform playhead follow audio.currentTime, so you hear the dub while the future result plays frame-by-frame.
   useEffect(() => {
     const a = audioRef.current; if (!a) return;
     if (!play) { a.pause(); return; }
-    a.currentTime = scrub; setRendered(false); a.play().catch(() => {});
-    const id = window.setInterval(() => setScrub(a.currentTime), 200);
+    setRendered(false); a.play().catch(() => {});
+    const id = window.setInterval(() => {
+      if (a.currentTime >= playEndRef.current) { a.pause(); setPlay(false); }   // single phrase -> stop at its end
+      else setScrub(a.currentTime);
+    }, 150);
     return () => window.clearInterval(id);
   }, [play]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [regenId, setRegenId] = useState<string | null>(null);        // segment whose TTS is being re-generated
-  const [refreshing, setRefreshing] = useState(false);                // force-refresh in flight
   const [remixText, setRemixText] = useState("");                     // funny-remix theme/instruction for Gemma
   const [remixing, setRemixing] = useState(false);
   const ss = p.captions.sub_style;
@@ -376,10 +379,19 @@ function Editor() {
     } catch (e) { console.error("regen TTS failed", e); }
     finally { setRegenId(null); }
   }
-  async function forceRefresh() {                                     // force the preview/subtitles to re-render (if stuck/laggy)
-    setRefreshing(true);
-    try { setRendered(false); setProject(await api.getProject(pid)); bump(); }
-    finally { setRefreshing(false); }
+  async function forceSeg(seg: Project["segments"][number]) {        // force-refresh ONE phrase: re-seek + re-fetch + re-render (if stuck)
+    setScrub(seg.start); setRendered(false);
+    setProject(await api.getProject(pid)); bump();
+  }
+  function playFull() {                                               // bottom-bar Play: play the whole dub from the playhead
+    const a = audioRef.current;
+    if (play) { setPlay(false); return; }
+    playEndRef.current = Infinity; if (a) a.currentTime = scrub; setPlay(true);
+  }
+  function playSeg(seg: Project["segments"][number]) {               // play JUST this phrase's TTS [start, end]
+    const a = audioRef.current; if (!a) return;
+    playEndRef.current = seg.end; a.currentTime = seg.start; setScrub(seg.start); setRendered(false);
+    if (play) a.play().catch(() => {}); else setPlay(true);
   }
   async function doUndo() { const prev = undo(); if (prev) { setRendered(false); await api.putProject(pid, prev); bump(); } }
   async function doRedo() { const next = redo(); if (next) { setRendered(false); await api.putProject(pid, next); bump(); } }
@@ -453,13 +465,6 @@ function Editor() {
         </div>
         {lane === "subs" && (
         <div className="space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{t("editor.transcript")}</span>
-            <button onClick={forceRefresh} disabled={refreshing} title={t("seg.refreshHint")}
-              className="inline-flex items-center gap-1 text-[11px] text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors">
-              {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {t("seg.refresh")}
-            </button>
-          </div>
           {p.segments.map((seg) => {
             const on = isActive(seg);
             return (
@@ -470,12 +475,16 @@ function Editor() {
                   <span className={`mono text-[11px] px-1.5 py-0.5 rounded tabnum ${on ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "bg-[var(--color-overlay)] text-[var(--color-muted)]"}`}>{fmtT(seg.start)}</span>
                   <span className="mono text-[10px] text-[var(--color-muted)]/60 tabnum">→ {fmtT(seg.end)}</span>
                   {seg.speaker != null && <span className="mono px-1.5 py-px rounded bg-[var(--color-overlay)] text-[9px] text-[var(--color-muted)]">SPK {seg.speaker}</span>}
-                  <span className="ml-auto flex items-center gap-1.5">
-                    {seg.dirty && <span className="text-[var(--color-accent)] text-[10px]" title="edited">●</span>}
+                  <span className="ml-auto flex items-center gap-1">
+                    {seg.dirty && <span className="text-[var(--color-accent)] text-[10px] mr-0.5" title="edited">●</span>}
+                    <button onClick={(e) => { e.stopPropagation(); playSeg(seg); }} title={t("seg.play")}
+                      className="text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"><Play size={12} /></button>
                     <button onClick={(e) => { e.stopPropagation(); doRegen(seg.id); }} disabled={regenId !== null} title={t("seg.regen")}
                       className="text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors">
                       {regenId === seg.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
                     </button>
+                    <button onClick={(e) => { e.stopPropagation(); forceSeg(seg); }} title={t("seg.refreshHint")}
+                      className="text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"><RefreshCw size={12} /></button>
                   </span>
                 </div>
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
@@ -601,7 +610,7 @@ function Editor() {
           )}
         </div>
         <div className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
-          <button onClick={() => setPlay((v) => !v)} title={t("play.dub")}
+          <button onClick={playFull} title={t("play.dub")}
             className={`shrink-0 p-1.5 rounded-md transition-colors ${play ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
             {play ? <Pause size={15} /> : <Play size={15} />}
           </button>
