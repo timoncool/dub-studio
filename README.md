@@ -43,9 +43,16 @@ editor, the only one that also **detects, blurs and re‑captions on‑screen te
 
 Russian original (left) → dubbed into English by Dub Studio (right) — voice **and** on‑screen text:
 
-| Original — RU | Dubbed to English |
-|:--:|:--:|
-| https://github.com/user-attachments/assets/f1e1046f-7f65-445e-ae15-cd6cc6cf2db2 | https://github.com/user-attachments/assets/a7a72493-0e25-4d37-acc1-e28998355cfe |
+<table>
+<tr>
+<td align="center"><b>Original — RU</b></td>
+<td align="center"><b>Dubbed to English</b></td>
+</tr>
+<tr>
+<td><video src="https://github.com/user-attachments/assets/f1e1046f-7f65-445e-ae15-cd6cc6cf2db2" controls></video></td>
+<td><video src="https://github.com/user-attachments/assets/a7a72493-0e25-4d37-acc1-e28998355cfe" controls></video></td>
+</tr>
+</table>
 
 
 

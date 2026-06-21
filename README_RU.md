@@ -44,9 +44,16 @@ Gradio — без перетаскиваемого холста и живого 
 
 Русский оригинал (слева) → дубляж на английский нашим приложением (справа) — голос **и** текст на экране:
 
-| Оригинал — RU | Дубляж на английский |
-|:--:|:--:|
-| https://github.com/timoncool/dub-studio/raw/master/docs/example_original.mp4 | https://github.com/timoncool/dub-studio/raw/master/docs/example_dub.mp4 |
+<table>
+<tr>
+<td align="center"><b>Оригинал — RU</b></td>
+<td align="center"><b>Дубляж на английский</b></td>
+</tr>
+<tr>
+<td><video src="https://github.com/user-attachments/assets/f1e1046f-7f65-445e-ae15-cd6cc6cf2db2" controls></video></td>
+<td><video src="https://github.com/user-attachments/assets/a7a72493-0e25-4d37-acc1-e28998355cfe" controls></video></td>
+</tr>
+</table>
 
 ## Возможности
 
