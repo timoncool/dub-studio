@@ -63,7 +63,7 @@ function TopBar() {
     <header className="flex items-center justify-between px-5 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="flex items-center gap-3">
         <span className="flex items-center gap-2 font-bold tracking-tight">
-          <span className="w-2.5 h-2.5 rounded-[3px] bg-[var(--color-accent)] shadow-[0_0_10px_var(--color-accent)]" />
+          <img src="/favicon.svg" alt="" width={20} height={20} className="rounded-[5px] shadow-[0_0_10px_rgba(198,242,78,0.25)]" />
           {t("app.name")}
         </span>
         <span className="text-sm text-[var(--color-muted)] hidden sm:inline">{t("app.tagline")}</span>
@@ -241,9 +241,9 @@ function WaveformTimeline({ pid, duration, scrub, segments, onSeek }: {
   useEffect(() => { const el = wrap.current; if (!el) return; const ro = new ResizeObserver(() => setW(el.clientWidth)); ro.observe(el); return () => ro.disconnect(); }, []);
   const h = 40, dur = duration || 1, bw = peaks.length ? w / peaks.length : 1;
   return (
-    <div ref={wrap} className="relative w-full cursor-pointer select-none" style={{ height: h }}
+    <div ref={wrap} className="relative w-full overflow-hidden cursor-pointer select-none" style={{ height: h }}
       onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); onSeek(Math.max(0, Math.min(dur, (e.clientX - r.left) / r.width * dur))); }}>
-      <svg width={w} height={h} className="block">
+      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" className="block">
         {peaks.map((pk, i) => {
           const bh = Math.max(2, pk * (h - 6)), played = (i / peaks.length) * dur <= scrub;
           return <rect key={i} x={(i / peaks.length) * w} y={(h - bh) / 2} width={Math.max(1, bw - 0.5)} height={bh}
@@ -483,7 +483,7 @@ function Editor() {
         )}
       </aside>
 
-      <main className="flex flex-col min-w-0 min-h-0">
+      <main className="flex flex-col min-w-0 min-h-0 overflow-hidden">
         <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
           <div className="inline-flex rounded-lg bg-[var(--color-surface-2)] p-0.5 border border-[var(--color-border)] shrink-0">
             {MODES.map(([k, Ic]) => (
@@ -521,7 +521,7 @@ function Editor() {
             <Columns2 size={15} />
           </button>
           <span className="mono text-[11px] tabnum w-24 shrink-0"><span className="text-[var(--color-accent)] font-semibold">{fmtT(scrub)}</span><span className="text-[var(--color-muted)]"> / {fmtT(p.meta.duration || 0)}</span></span>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <WaveformTimeline pid={pid} duration={p.meta.duration || 0} scrub={scrub} segments={p.segments}
               onSeek={(t) => { setRendered(false); setScrub(t); }} />
           </div>
