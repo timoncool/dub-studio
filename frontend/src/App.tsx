@@ -196,7 +196,9 @@ function Editor() {
   const setRendering = useStore((s) => s.setRendering);
   const [scrub, setScrub] = useState(1.0);
   const [fonts, setFonts] = useState<Record<string, string>>({});
+  const [voiceList, setVoiceList] = useState<string[]>([]);
   useEffect(() => { api.fonts().then((r) => setFonts(r.fonts)).catch(() => {}); }, []);   // bundled caption fonts
+  useEffect(() => { api.voices().then((r) => setVoiceList(r.voices)).catch(() => {}); }, []);   // pack voices
   const [sizeDraft, setSizeDraft] = useState<number | null>(null);   // live size while dragging (commit on release)
   const [lane, setLane] = useState<"subs" | "blur" | "titles">("subs"); // left lane: which object type to edit
   const [blurAll, setBlurAll] = useState(false);                      // blur: only active-on-frame vs all zones
@@ -410,6 +412,13 @@ function Editor() {
               <option value="autocast">{t("voice.autocast")}</option>
               <option value="voice">{t("voice.pack")}</option>
             </select>
+            {p.audio.voice.mode === "voice" && (
+              <select value={p.audio.voice.name || ""} onChange={(e) => branch("recast", { voice_mode: "voice", voice_name: e.target.value })}
+                className="w-full mt-2 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+                <option value="">{voiceList.length ? "—" : "(пак не найден)"}</option>
+                {voiceList.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            )}
           </>
         )}
 

@@ -48,6 +48,7 @@ let _patchChain: Promise<unknown> = Promise.resolve();
 export const api = {
   capabilities: () => fetch(`${BASE}/engine/capabilities`).then(j<Capabilities>),
   fonts: () => fetch(`${BASE}/fonts`).then(j<{ fonts: Record<string, string> }>),
+  voices: () => fetch(`${BASE}/voices`).then(j<{ voices: string[] }>),
   createProject: (file: File) => {
     const fd = new FormData(); fd.append("file", file);
     return fetch(`${BASE}/projects`, { method: "POST", body: fd }).then(j<{ project_id: string }>);
