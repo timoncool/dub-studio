@@ -117,6 +117,7 @@ REM ============================================================
 echo [8/8] FFmpeg + frontend build...
 if not exist "ffmpeg\ffmpeg.exe" (
     powershell -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; Invoke-WebRequest 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip' -OutFile 'downloads\ffmpeg.zip'"
+    if not exist "ffmpeg" mkdir ffmpeg
     if exist "downloads\ffmpeg.zip" (
         powershell -Command "Expand-Archive -Path 'downloads\ffmpeg.zip' -DestinationPath 'downloads\ff' -Force"
         powershell -Command "Get-ChildItem 'downloads\ff\ffmpeg-*\bin\ffmpeg.exe' | Copy-Item -Destination 'ffmpeg\ffmpeg.exe' -Force"
