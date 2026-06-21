@@ -25,5 +25,6 @@
   "blur": { "title": "Blur", "on": "Cover original text", "add": "Add box", "frame": "On this frame", "all": "All zones" },
   "compare": { "toggle": "Compare", "original": "Original", "result": "Dubbed" },
   "titles": { "tab": "Titles", "add": "Custom title" },
+  "preset": { "title": "Preset", "original": "Match original" },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }

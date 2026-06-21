@@ -133,6 +133,12 @@ async def voices():
         return {"voices": []}
 
 
+@app.get("/presets")
+async def presets():
+    """Ready caption look presets (TEMPLATES) for the style gallery: name -> reveal/plate/font/palette."""
+    return {"presets": {k: dict(v) for k, v in _captions.TEMPLATES.items()}, "reveals": list(_captions.REVEALS)}
+
+
 @app.post("/projects")
 async def create_project(file: UploadFile):
     pid = uuid.uuid4().hex[:12]
@@ -196,6 +202,8 @@ async def patch_project(pid: str, edit: dict = Body(...)):
             raise HTTPException(404, str(e))
     elif op == "blur_enable":
         p.render.blur = bool(edit.get("on", True))             # global blur on/off
+    elif op == "preset":
+        p.captions.preset.name = edit.get("name") or None      # TEMPLATE name (None/"match" = match original); re-burn only
     elif op == "title":
         try:
             edit_title(p, int(edit.pop("idx")), **{k: v for k, v in edit.items() if k != "idx"})

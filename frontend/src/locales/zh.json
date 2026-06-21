@@ -25,5 +25,6 @@
   "blur": { "title": "模糊", "on": "遮盖原文字", "add": "添加区域", "frame": "本帧", "all": "全部" },
   "compare": { "toggle": "对比", "original": "原版", "result": "配音" },
   "titles": { "tab": "标题", "add": "自定义标题" },
+  "preset": { "title": "预设", "original": "匹配原版" },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }

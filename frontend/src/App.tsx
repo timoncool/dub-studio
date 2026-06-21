@@ -197,8 +197,10 @@ function Editor() {
   const [scrub, setScrub] = useState(1.0);
   const [fonts, setFonts] = useState<Record<string, string>>({});
   const [voiceList, setVoiceList] = useState<string[]>([]);
+  const [presets, setPresets] = useState<Record<string, Record<string, unknown>>>({});
   useEffect(() => { api.fonts().then((r) => setFonts(r.fonts)).catch(() => {}); }, []);   // bundled caption fonts
   useEffect(() => { api.voices().then((r) => setVoiceList(r.voices)).catch(() => {}); }, []);   // pack voices
+  useEffect(() => { api.presets().then((r) => setPresets(r.presets)).catch(() => {}); }, []);   // caption look presets
   const [sizeDraft, setSizeDraft] = useState<number | null>(null);   // live size while dragging (commit on release)
   const [lane, setLane] = useState<"subs" | "blur" | "titles">("subs"); // left lane: which object type to edit
   const [blurAll, setBlurAll] = useState(false);                      // blur: only active-on-frame vs all zones
@@ -376,6 +378,19 @@ function Editor() {
       </main>
 
       <aside className="border-l border-[var(--color-border)] overflow-y-auto p-4 bg-[var(--color-surface)] text-sm">
+        <SectionLabel>{t("preset.title")}</SectionLabel>
+        <div className="grid grid-cols-2 gap-1.5 mb-5 max-h-52 overflow-y-auto pr-1">
+          <button onClick={() => branch("preset", { name: "" })}
+            className={`text-[11px] px-2 py-1.5 rounded-lg border transition-colors ${!p.captions.preset?.name ? "border-[var(--color-accent)] text-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+            {t("preset.original")}
+          </button>
+          {Object.keys(presets).map((name) => (
+            <button key={name} onClick={() => branch("preset", { name })}
+              className={`text-[11px] px-2 py-1.5 rounded-lg border truncate transition-colors ${p.captions.preset?.name === name ? "border-[var(--color-accent)] text-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+              {name}
+            </button>
+          ))}
+        </div>
         <SectionLabel>{t("editor.style")}</SectionLabel>
         {ss && (
           <div className="space-y-3">

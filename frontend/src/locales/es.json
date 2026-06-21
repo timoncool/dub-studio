@@ -25,5 +25,6 @@
   "blur": { "title": "Desenfoque", "on": "Cubrir texto original", "add": "Añadir zona", "frame": "En este fotograma", "all": "Todas" },
   "compare": { "toggle": "Comparar", "original": "Original", "result": "Doblado" },
   "titles": { "tab": "Títulos", "add": "Título propio" },
+  "preset": { "title": "Preajuste", "original": "Como el original" },
   "common": { "undo": "Deshacer", "redo": "Rehacer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Listo", "error": "Error" }
 }
