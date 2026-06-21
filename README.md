@@ -41,11 +41,11 @@ editor, the only one that also **detects, blurs and re‑captions on‑screen te
 
 ## Examples
 
-Original (left) → dubbed into Russian with the on‑screen text **localized in place** (right):
+Russian original (left) → dubbed into English by Dub Studio (right) — voice **and** on‑screen text:
 
-<img src="docs/example.png" width="640" alt="Original English vs Russian dub — on-screen captions localized in place"/>
-
-▶ Watch the clips (with audio): **[Original](docs/example_original.mp4)** · **[Dubbed — RU](docs/example_dub.mp4)**
+| Original — RU | Dubbed to English |
+|:--:|:--:|
+| https://github.com/timoncool/dub-studio/raw/master/docs/example_original.mp4 | https://github.com/timoncool/dub-studio/raw/master/docs/example_dub.mp4 |
 
 ## Features
 
