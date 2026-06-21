@@ -9,6 +9,7 @@
 [![Stars](https://img.shields.io/github/stars/timoncool/dub-studio?style=social)](https://github.com/timoncool/dub-studio/stargazers)
 [![License](https://img.shields.io/github/license/timoncool/dub-studio)](LICENSE)
 [![Release](https://img.shields.io/github/v/release/timoncool/dub-studio?include_prereleases)](https://github.com/timoncool/dub-studio/releases)
+![Status: beta · help wanted](https://img.shields.io/badge/status-beta%20%C2%B7%20help%20wanted-f59e0b?labelColor=0b0c0e)
 ![Windows portable](https://img.shields.io/badge/Windows-portable-0b0c0e?logo=windows)
 ![100% local](https://img.shields.io/badge/100%25-local%20%C2%B7%20no%20upload-c6f24e?labelColor=0b0c0e)
 
@@ -21,6 +22,13 @@ Smart auto‑defaults do the first pass; then you override **every caption, voic
 </div>
 
 ---
+
+> [!IMPORTANT]
+> **Dub Studio is beta — and it's 100% not perfect yet.** Many features still need polish, and you can
+> help shape where it goes. The big one on the roadmap: making **every module swappable — ASR, LLM,
+> vision, TTS** — so you can plug in any model and tune the whole pipeline however you like. It's a large
+> effort and I'd love your help: issues, PRs, testing on real clips, and model recipes all move it forward.
+> If it's useful, ⭐ the repo and jump in.
 
 ## Why
 
@@ -80,7 +88,17 @@ TDT (ASR) · Sortformer (diarization) · Gemma‑4‑12B GGUF (translate + visio
 
 ## Contributing
 
-Issues and PRs welcome — good‑first‑issues are labeled, and I aim to respond within 24 h.
+**Dub Studio is beta and built in the open — your help is genuinely wanted.** Issues, PRs, testing on real
+clips, and model recipes are all welcome; good‑first‑issues are labeled, and I aim to respond within 24 h.
+
+**On the roadmap — great places to jump in:**
+
+- **Swappable modules** — make ASR / LLM / vision / TTS fully pluggable, so anyone can wire in their own
+  model and configure the whole pipeline end‑to‑end. This is the big one.
+- Smarter on‑screen‑text localization — colour / contrast matching on tricky backgrounds.
+- More voice packs, caption presets, and target languages.
+
+If any of this is your thing, open an issue to claim it — I'm happy to help you get set up.
 
 ## License
 
