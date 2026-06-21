@@ -1,23 +1,26 @@
 <div align="center">
 
-<img src="frontend/public/favicon.svg" width="76" alt="Dub Studio"/>
+<img src="frontend/public/favicon.svg" width="72" alt="Dub Studio"/>
 
 # Dub Studio
 
-**The open-source CapCut for AI dubbing.**
-Dub any short video into 6 languages — **locally, free**, with a live editor.
+**The open-source CapCut for AI dubbing** — dub any short video into 6 languages, **locally & free**, with a live editor.
 
-Smart auto‑defaults do the first pass; then you override **every caption, voice, blur box, font and title** with instant preview. Runs on your own GPU. No subscription, no uploads.
+[![Stars](https://img.shields.io/github/stars/timoncool/dub-studio?style=social)](https://github.com/timoncool/dub-studio/stargazers)
+[![License](https://img.shields.io/github/license/timoncool/dub-studio)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/timoncool/dub-studio?include_prereleases)](https://github.com/timoncool/dub-studio/releases)
+![Windows portable](https://img.shields.io/badge/Windows-portable-0b0c0e?logo=windows)
+![100% local](https://img.shields.io/badge/100%25-local%20%C2%B7%20no%20upload-c6f24e?labelColor=0b0c0e)
 
-<sub>· 100% local · offline · EN / RU / ZH / ES / PT / FR ·</sub>
+Smart auto‑defaults do the first pass; then you override **every caption, voice, blur box, font & title** with instant preview. Runs on your own GPU. No subscription, no uploads.
+
+<sub>**[Releases](https://github.com/timoncool/dub-studio/releases)** · **[Engine](https://github.com/timoncool/dub-engine)** · **[Packaging](PACKAGING.md)** · EN / RU / ZH / ES / PT / FR</sub>
+
+<img src="docs/before_after.png" width="640" alt="Before / after — English original vs Dub Studio Russian dub + localized captions"/>
 
 </div>
 
 ---
-
-> ⚠️ Early access — the editor and engine are production‑grade and tested; the portable installer
-> (`install.bat`) targets CUDA 12.8 (RTX 20xx–50xx) and is pending a clean‑machine validation pass.
-> See [PACKAGING.md](PACKAGING.md).
 
 ## Why
 
@@ -28,16 +31,16 @@ editor, the only one that also **detects, blurs and re‑captions on‑screen te
 
 ## Features
 
-| | | |
-|---|---|---|
-| 🎙️ **Faithful dub** | clone the original timbre, auto‑cast per speaker by gender, or pick a pack voice | |
-| 🌍 **6 languages** | translate speech *and* on‑screen text; auto‑detects the source | |
-| 🅰️ **On‑screen text** | OCR → blur the original → re‑caption localized, in the matched style | |
-| 🎬 **Live editor** | edit transcript, voices, caption style, blur boxes, titles — frame‑accurate preview | |
-| 🎛️ **Caption presets** | 26 built‑in looks (karaoke / word‑by‑word / hormozi / neon / …) on *your* frame | |
-| 😂 **Funny remix** | let the model rewrite the script, then re‑dub | |
-| 🔁 **Before / after** | side‑by‑side original ↔ dubbed, the trust check | |
-| 🧩 **Swappable models** | ASR / LLM / vision / TTS slots — bring your own | |
+| | |
+|---|---|
+| 🎙️ **Faithful dub** | clone the original timbre, auto‑cast per speaker by gender, or pick a pack voice — different voice per speaker |
+| 🌍 **6 languages** | translate speech *and* on‑screen text; auto‑detects the source language |
+| 🅰️ **On‑screen text** | OCR → blur the original → re‑caption localized, in the matched style (the wedge no other tool owns) |
+| 🎬 **Live editor** | edit transcript, voices, caption style, blur boxes, titles — frame‑accurate preview at every step |
+| 🎛️ **Caption presets** | 26 built‑in looks (karaoke / word‑by‑word / hormozi / neon / …) rendered on *your* frame |
+| 😂 **Funny remix** | give a theme ("pirate", "as a news report") → the model rewrites the whole script → re‑dub |
+| 🔁 **Before / after** | side‑by‑side original ↔ dubbed — the trust check |
+| 🧩 **Swappable models** | ASR / LLM / vision / TTS slots — bring your own |
 
 ## Dub Studio vs the alternatives
 
@@ -51,24 +54,25 @@ editor, the only one that also **detects, blurs and re‑captions on‑screen te
 
 ## Quickstart (portable, Windows)
 
-1. Download the latest `DubStudio_*.zip` from [Releases](../../releases) and unzip.
-2. Run **`install.bat`** once (embeddable Python + CUDA wheels + builds the UI).
+1. Download the latest `DubStudio_*.zip` from [Releases](https://github.com/timoncool/dub-studio/releases) and unzip.
+2. Run **`install.bat`** once — embeddable Python + per‑GPU CUDA wheels + builds the UI.
 3. Run **`run.bat`** → the editor opens in your browser. Drop a video. Models download on first run.
 
-Run from source:
+Targets NVIDIA RTX 20xx–50xx (CUDA 12.8). Run from source:
 
 ```bash
-# backend (serves the built UI single-process)
 cd dub-studio && pip install -e ../dub-engine -r requirements.txt -r requirements-engine.txt
-KMP_DUPLICATE_LIB_OK=TRUE python -m uvicorn backend.app:app --port 8765
-# UI: build once -> cd frontend && npm i && npm run build  (or `npm run dev` for HMR)
+# build the UI once (served single-process by the backend):
+cd frontend && npm i && npm run build && cd ..
+set KMP_DUPLICATE_LIB_OK=TRUE
+python -m uvicorn backend.app:app --port 8765   # open http://127.0.0.1:8765
 ```
 
 ## How it works
 
 `analyze()` is the fixed first stage: separate → ASR (word timings) → diarize → context‑translate +
 vision (caption style / titles / brands) → OCR (layout / blur boxes). It returns an editable
-**Project** document. Every edit is a patch on that Project with a ~0.14s CPU preview; export re‑runs
+**Project** document. Every edit is a patch on that Project with a ~0.14 s CPU preview; export re‑runs
 only the dirtied stages. The engine is a separate reusable package — **[dub-engine](https://github.com/timoncool/dub-engine)**.
 
 **Stack:** React 19 + Vite + Tailwind + react‑konva over JASSUB · single‑worker FastAPI · Parakeet
@@ -76,7 +80,7 @@ TDT (ASR) · Sortformer (diarization) · Gemma‑4‑12B GGUF (translate + visio
 
 ## Contributing
 
-Issues and PRs welcome — good‑first‑issues are labeled, and I aim to respond within 24h.
+Issues and PRs welcome — good‑first‑issues are labeled, and I aim to respond within 24 h.
 
 ## License
 
@@ -84,6 +88,33 @@ The app is open‑source; bundled models keep their own licenses (audited before
 
 ---
 
-<div align="center">
-<sub>Built by <a href="https://github.com/timoncool">timoncool</a> · powered by <a href="https://github.com/timoncool/dub-engine">dub-engine</a></sub>
-</div>
+## More portable neural nets by the author
+
+| Project | What it does |
+|---|---|
+| [Foundation Music Lab](https://github.com/timoncool/Foundation-Music-Lab) | Music generation + timeline editor |
+| [VibeVoice ASR](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Speech recognition (ASR) |
+| [LavaSR](https://github.com/timoncool/LavaSR_portable_ru) | Audio super‑resolution |
+| [Qwen3‑TTS](https://github.com/timoncool/Qwen3-TTS_portable_rus) | Text‑to‑speech (Qwen) |
+| [SuperCaption Qwen3‑VL](https://github.com/timoncool/SuperCaption_Qwen3-VL) | Image captioning |
+| [VideoSOS](https://github.com/timoncool/videosos) | In‑browser AI video production |
+| [RC Stable Audio Tools](https://github.com/timoncool/RC-stable-audio-tools-portable) | Music & audio generation |
+
+## Author
+
+- **Nerual Dreming** ([t.me/nerual_dreming](https://t.me/nerual_dreming)) — [neuro-cartel.com](https://neuro-cartel.com) · founder of [ArtGeneration.me](https://artgeneration.me)
+- **Neuro‑Soft** ([t.me/neuroport](https://t.me/neuroport)) — portable repacks of neural nets
+
+---
+
+> **If this is useful, drop a ⭐ — it helps others find the project and keeps it moving.**
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=timoncool%2Fdub-studio&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=timoncool/dub-studio&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=timoncool/dub-studio&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=timoncool/dub-studio&type=date&legend=top-left" />
+ </picture>
+</a>
