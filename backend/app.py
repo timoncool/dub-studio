@@ -407,6 +407,19 @@ async def output(pid: str, dl: int = 0):
     return FileResponse(str(f), media_type="video/mp4")    # Starlette serves Range for <video> seek / Open
 
 
+@app.get("/projects/{pid}/dub")
+async def dub(pid: str):
+    """Playable dubbed video (frames + generated dub audio) for the in-editor Play button:
+    the exported output.mp4 if it exists, else the analyze-time analyzed.mp4 (always present after analyze)."""
+    d = _proj_dir(pid)
+    f = d / "output.mp4"
+    if not f.exists():
+        f = d / "analyzed.mp4"
+    if not f.exists():
+        raise HTTPException(404, "no dubbed video yet")
+    return FileResponse(str(f), media_type="video/mp4")    # Range-enabled -> <video> can seek/play
+
+
 @app.get("/jobs/{job_id}/events")
 async def job_events(job_id: str):
     if job_id not in JOBS:

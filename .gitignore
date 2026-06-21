@@ -17,3 +17,4 @@ temp/
 cache/
 output/
 cuda_version.txt
+run-dev.bat

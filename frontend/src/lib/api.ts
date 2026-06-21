@@ -80,6 +80,7 @@ export const api = {
   originalUrl: (pid: string, t: number) => `${BASE}/projects/${pid}/original?t=${t}`,
   waveform: (pid: string) => fetch(`${BASE}/projects/${pid}/waveform`).then(j<{ peaks: number[] }>),
   outputUrl: (pid: string) => `${BASE}/projects/${pid}/output`,
+  dubUrl: (pid: string, rev = 0) => `${BASE}/projects/${pid}/dub?rev=${rev}`,   // playable dubbed video (frames + dub audio)
   // SSE job progress -> onEvent per message; resolves on done, rejects on error
   watchJob: (jobId: string, onEvent: (e: JobEvent) => void) =>
     new Promise<unknown>((resolve, reject) => {
