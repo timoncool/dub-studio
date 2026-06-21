@@ -1,5 +1,7 @@
 // Dub Studio API client — talks to the single-worker FastAPI backend over the dub-engine.
-const BASE = (import.meta.env.VITE_API as string) || "http://127.0.0.1:8765";
+// dev: Vite (5173) -> backend (8765). portable build: FastAPI serves the SPA itself, so calls are
+// same-origin ("") and follow whatever 127.0.0.1:<port> the launcher picked. VITE_API overrides both.
+const BASE = (import.meta.env.VITE_API as string | undefined) ?? (import.meta.env.DEV ? "http://127.0.0.1:8765" : "");
 
 export type SubStyle = {
   color: string; outline: string; italic: boolean; bold: boolean; uppercase: boolean;

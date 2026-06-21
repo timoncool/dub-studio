@@ -367,3 +367,21 @@ async def job_events(job_id: str):
         finally:
             JOBS.pop(job_id, None)                         # job terminal + delivered -> reclaim (no unbounded growth)
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# ── Prebuilt SPA (production / portable: one process, no Node/Vite) ──────────────────────────
+# Mounted LAST so it never shadows an API route. In dev (no build) this is skipped and Vite serves
+# the UI; in the portable build `frontend/dist` exists and FastAPI serves it directly.
+_WEB = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if (_WEB / "index.html").is_file():
+    from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+    if (_WEB / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_WEB / "assets")), name="assets")
+
+    @app.get("/{spa_path:path}")
+    async def spa(spa_path: str):
+        f = _WEB / spa_path
+        if spa_path and f.is_file():
+            return FileResponse(str(f))            # real static asset (favicon, vite.svg, …)
+        return FileResponse(str(_WEB / "index.html"))   # deep-link / refresh -> SPA entry (no 404)
