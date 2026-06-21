@@ -14,7 +14,7 @@ export type BlurBox = { x: number; y: number; w: number; h: number; t0: number; 
 export type Title = {
   text: string; tgt: string; bbox?: number[] | null; color?: string | null; bg?: string | null;
   font?: string | null; italic: boolean; align: string; start: number; end: number;
-  lh?: number | null; solid: boolean; bold: boolean;
+  lh?: number | null; solid: boolean; bold: boolean; size_px?: number | null; outline?: string | null;
 };
 export type Project = {
   meta: { video: string; duration: number; width: number; height: number; fps: number; src_codec: string };
