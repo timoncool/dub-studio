@@ -1,0 +1,54 @@
+name: release
+
+# Builds the SPA and packages the portable SOURCE bundle (run.bat + install.bat assemble the
+# embeddable-Python env + download models on the user's machine — see PACKAGING.md). Fires on a
+# version tag; attaches DubStudio_<tag>.zip to a GitHub Release.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write   # gh release create
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # dub-engine is a separate PRIVATE repo — pull it into the bundle (needs a PAT secret
+      # DUB_ENGINE_TOKEN with read access; remove this step if you vendor the engine instead).
+      - name: Fetch dub-engine
+        if: ${{ secrets.DUB_ENGINE_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: timoncool/dub-engine
+          token: ${{ secrets.DUB_ENGINE_TOKEN }}
+          path: dub-engine
+
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+
+      - name: Build SPA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Assemble bundle
+        run: |
+          NAME="DubStudio_${GITHUB_REF_NAME:-dev}"
+          mkdir -p "dist-bundle/$NAME"
+          cp -r backend run.bat install.bat requirements.txt requirements-engine.txt PACKAGING.md "dist-bundle/$NAME/"
+          mkdir -p "dist-bundle/$NAME/frontend"
+          cp -r frontend/dist "dist-bundle/$NAME/frontend/dist"
+          [ -d dub-engine ] && cp -r dub-engine "dist-bundle/$NAME/dub-engine" || echo "::warning::dub-engine not bundled (set DUB_ENGINE_TOKEN)"
+          [ -f README.md ] && cp README.md "dist-bundle/$NAME/" || true
+          cd dist-bundle && zip -rq "$NAME.zip" "$NAME"
+          echo "ASSET=dist-bundle/$NAME.zip" >> "$GITHUB_ENV"
+
+      - name: Create / update release
+        if: startsWith(github.ref, 'refs/tags/')
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: gh release create "${GITHUB_REF_NAME}" "${ASSET}" --title "${GITHUB_REF_NAME}" --notes "Portable build. Download, unzip, run install.bat then run.bat. See PACKAGING.md." || gh release upload "${GITHUB_REF_NAME}" "${ASSET}" --clobber
