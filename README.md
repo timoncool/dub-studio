@@ -14,7 +14,7 @@
 
 Smart auto‑defaults do the first pass; then you override **every caption, voice, blur box, font & title** with instant preview. Runs on your own GPU. No subscription, no uploads.
 
-<sub>**[Releases](https://github.com/timoncool/dub-studio/releases)** · **[Engine](https://github.com/timoncool/dub-engine)** · **[Packaging](PACKAGING.md)** · EN / RU / ZH / ES / PT / FR</sub>
+<sub>**[Releases](https://github.com/timoncool/dub-studio/releases)** · **[Packaging](PACKAGING.md)** · EN / RU / ZH / ES / PT / FR</sub>
 
 <img src="docs/before_after.png" width="640" alt="Before / after — English original vs Dub Studio Russian dub + localized captions"/>
 
@@ -73,7 +73,7 @@ python -m uvicorn backend.app:app --port 8765   # open http://127.0.0.1:8765
 `analyze()` is the fixed first stage: separate → ASR (word timings) → diarize → context‑translate +
 vision (caption style / titles / brands) → OCR (layout / blur boxes). It returns an editable
 **Project** document. Every edit is a patch on that Project with a ~0.14 s CPU preview; export re‑runs
-only the dirtied stages. The engine is a separate reusable package — **[dub-engine](https://github.com/timoncool/dub-engine)**.
+only the dirtied stages. The engine is a separate reusable package (**dub-engine**) bundled with the portable build.
 
 **Stack:** React 19 + Vite + Tailwind + react‑konva over JASSUB · single‑worker FastAPI · Parakeet
 TDT (ASR) · Sortformer (diarization) · Gemma‑4‑12B GGUF (translate + vision) · Qwen3‑TTS · ffmpeg/NVENC.
