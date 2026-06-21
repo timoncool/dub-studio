@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2 } from "lucide-react";
 import { api, type Project } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -173,9 +173,19 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
   );
 }
 
+function ComparePane({ label, src }: { label: string; src: string }) {
+  return (
+    <div className="relative h-full min-h-0 grid place-items-center bg-black/40 rounded-xl overflow-hidden">
+      <img src={src} alt={label} className="max-h-full max-w-full object-contain" />
+      <span className="absolute top-2 left-2 mono text-[10px] px-2 py-0.5 rounded bg-black/60 text-[var(--color-text)] border border-[var(--color-border)]">{label}</span>
+    </div>
+  );
+}
+
 function Editor() {
   const { t } = useTranslation();
-  const p = useStore((s) => s.project) as Project;        // subscribe ONLY to what we render -> no re-render on
+  const p = useStore((s) => s.project) as Project;
+  const rev = useStore((s) => s.rev);   // for the compare 'result' pane refetch (PreviewCanvas reads rev itself)        // subscribe ONLY to what we render -> no re-render on
   const pid = useStore((s) => s.pid) as string;           // rev bumps or progress SSE ticks (those go to PreviewCanvas)
   const rendered = useStore((s) => s.rendered);
   const setProject = useStore((s) => s.setProject);
@@ -188,12 +198,16 @@ function Editor() {
   const [fonts, setFonts] = useState<Record<string, string>>({});
   useEffect(() => { api.fonts().then((r) => setFonts(r.fonts)).catch(() => {}); }, []);   // bundled caption fonts
   const [sizeDraft, setSizeDraft] = useState<number | null>(null);   // live size while dragging (commit on release)
-  const [lane, setLane] = useState<"subs" | "blur">("subs");          // left lane: which object type to edit
+  const [lane, setLane] = useState<"subs" | "blur" | "titles">("subs"); // left lane: which object type to edit
   const [blurAll, setBlurAll] = useState(false);                      // blur: only active-on-frame vs all zones
+  const [compare, setCompare] = useState(false);                      // before/after split preview (Topaz-style)
   const ss = p.captions.sub_style;
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
     setProject({ ...p, segments: p.segments.map((x) => x.id === id ? { ...x, tgt_text: tgt, dirty: true } : x) });
+  }
+  function titleText(i: number, text: string) {                      // instant local echo for a title's text
+    setProject({ ...p, captions: { ...p.captions, titles: p.captions.titles.map((x, j) => j === i ? { ...x, text } : x) } });
   }
   async function persistSeg(id: string, tgt: string) {               // on blur -> persist to backend + refresh frame
     setRendered(false);
@@ -225,10 +239,11 @@ function Editor() {
     <div className="flex-1 grid grid-cols-[330px_1fr_300px] min-h-0">
       <aside className="border-r border-[var(--color-border)] overflow-y-auto p-4 bg-[var(--color-surface)]">
         <div className="inline-flex rounded-lg bg-[var(--color-surface-2)] p-0.5 border border-[var(--color-border)] mb-3 text-[12px]">
-          {([["subs", t("mode.subtitles")], ["blur", t("blur.title")]] as const).map(([k, lbl]) => (
-            <button key={k} onClick={() => setLane(k)}
-              className={`px-3 py-1 rounded-md transition-colors ${lane === k ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
-              {lbl}{k === "blur" ? ` ${(p.captions.blur_boxes || []).length}` : ""}
+          {([["subs", t("mode.subtitles")], ["blur", `${t("blur.title")} ${(p.captions.blur_boxes || []).length}`],
+            ["titles", `${t("titles.tab")} ${(p.captions.titles || []).length}`]] as const).map(([k, lbl]) => (
+            <button key={k} onClick={() => setLane(k as typeof lane)}
+              className={`px-2.5 py-1 rounded-md transition-colors ${lane === k ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+              {lbl}
             </button>
           ))}
         </div>
@@ -285,6 +300,34 @@ function Editor() {
             </div>
           </div>
         )}
+        {lane === "titles" && (
+          <div className="space-y-2">
+            {!(p.captions.titles || []).length && <div className="text-[11px] text-[var(--color-muted)]/50 py-3 text-center">—</div>}
+            {(p.captions.titles || []).map((ti, i) => (
+              <div key={i} className="rounded-xl p-2.5 bg-[var(--color-surface-2)]/50">
+                <div className="flex items-center gap-2 mono text-[10px] text-[var(--color-muted)] mb-1.5">
+                  <span className="tabnum">{fmtT(ti.start)} → {fmtT(ti.end)}</span>
+                  <button onClick={() => branch("title_del", { idx: i })} className="ml-auto hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
+                </div>
+                <input value={ti.text} onChange={(e) => titleText(i, e.target.value)} onBlur={(e) => branch("title", { idx: i, text: e.target.value })}
+                  className="w-full bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded p-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors" />
+                <div className="flex items-center gap-2 mt-1.5">
+                  <button onClick={() => branch("title", { idx: i, italic: !ti.italic })}
+                    className={`text-[11px] italic px-2 py-0.5 rounded border transition-colors ${ti.italic ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-muted)]"}`}>{t("style.italic")}</button>
+                  <select value={ti.font || ""} onChange={(e) => branch("title", { idx: i, font: e.target.value })}
+                    className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none">
+                    <option value="">—</option>
+                    {Object.keys(fonts).map((f) => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+              </div>
+            ))}
+            <button onClick={() => branch("title_add", { text: "Title", x: Math.round((p.meta.width || 0) * 0.15), y: Math.round((p.meta.height || 0) * 0.4), w: Math.round((p.meta.width || 0) * 0.7), h: Math.round((p.meta.height || 0) * 0.1), t0: Math.max(0, scrub - 0.5), t1: scrub + 3 })}
+              className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded-lg border border-dashed border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors">
+              <Plus size={13} /> {t("titles.add")}
+            </button>
+          </div>
+        )}
       </aside>
 
       <main className="flex flex-col min-w-0 min-h-0">
@@ -305,10 +348,21 @@ function Editor() {
           </button>
         </div>
         <div className="flex-1 min-h-0 p-3 overflow-hidden">
-          <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={rendered}
-            onChanged={async () => setProject(await api.getProject(pid))} />
+          {compare ? (
+            <div className="w-full h-full grid grid-cols-2 gap-2 min-h-0">
+              <ComparePane label={t("compare.original")} src={api.originalUrl(pid, scrub)} />
+              <ComparePane label={t("compare.result")} src={api.previewUrl(pid, scrub, rev)} />
+            </div>
+          ) : (
+            <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={rendered}
+              onChanged={async () => setProject(await api.getProject(pid))} />
+          )}
         </div>
         <div className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
+          <button onClick={() => setCompare((c) => !c)} title={t("compare.toggle")}
+            className={`shrink-0 p-1.5 rounded-md transition-colors ${compare ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+            <Columns2 size={15} />
+          </button>
           <span className="mono text-[11px] tabnum w-24 shrink-0"><span className="text-[var(--color-accent)] font-semibold">{fmtT(scrub)}</span><span className="text-[var(--color-muted)]"> / {fmtT(p.meta.duration || 0)}</span></span>
           <input type="range" min={0} max={p.meta.duration || 1} step={0.1} value={scrub}
             onChange={(e) => { setRendered(false); setScrub(parseFloat(e.target.value)); }} className="w-full accent-[var(--color-accent)]" />

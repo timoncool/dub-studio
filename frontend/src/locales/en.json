@@ -23,5 +23,7 @@
   "voice": { "clone": "Clone original", "autocast": "Auto-cast by speaker", "pack": "Pack voice", "funny": "Funny voice", "fixed": "Fixed duration", "dynamic": "Natural length" },
   "export": { "title": "Export", "summary": "{{segments}} segments · {{speakers}} speakers · {{lang}} captions", "proceed": "Export", "tweak": "Keep editing", "beforeAfter": "Original ↔ Dubbed" },
   "blur": { "title": "Blur", "on": "Cover original text", "add": "Add box", "frame": "On this frame", "all": "All zones" },
+  "compare": { "toggle": "Compare", "original": "Original", "result": "Dubbed" },
+  "titles": { "tab": "Titles", "add": "Custom title" },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }

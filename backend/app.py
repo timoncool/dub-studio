@@ -20,10 +20,11 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import torch  # noqa: F401,E402  before llama_cpp (engine loads it lazily)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dub-engine"))
-from dubengine import (EngineOpts, Project, add_blur, analyze, del_blur, edit_blur,  # noqa: E402
-                       edit_caption, edit_segment, preview_frame, recast, render, rewrite,
-                       set_mode, translate)
+from dubengine import (EngineOpts, Project, add_blur, add_title, analyze, del_blur, del_title,  # noqa: E402
+                       edit_blur, edit_caption, edit_segment, edit_title, preview_frame, recast, render,
+                       rewrite, set_mode, source_frame, translate)
 from dubengine import captions as _captions  # noqa: E402  (font catalog for the editor)
+from dubengine import voices as _voices  # noqa: E402  (voice-pack catalog for the editor)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -123,6 +124,15 @@ async def fonts():
     return {"fonts": dict(_captions.FONTS)}
 
 
+@app.get("/voices")
+async def voices():
+    """Available pack voice names for the VoicePanel picker (empty if no pack installed)."""
+    try:
+        return {"voices": _voices.list_voices(OPTS.voice_pack) if OPTS.voice_pack else []}
+    except Exception:
+        return {"voices": []}
+
+
 @app.post("/projects")
 async def create_project(file: UploadFile):
     pid = uuid.uuid4().hex[:12]
@@ -186,6 +196,20 @@ async def patch_project(pid: str, edit: dict = Body(...)):
             raise HTTPException(404, str(e))
     elif op == "blur_enable":
         p.render.blur = bool(edit.get("on", True))             # global blur on/off
+    elif op == "title":
+        try:
+            edit_title(p, int(edit.pop("idx")), **{k: v for k, v in edit.items() if k != "idx"})
+        except (IndexError, KeyError) as e:
+            raise HTTPException(404, f"bad title idx: {e}")
+    elif op == "title_del":
+        try:
+            del_title(p, int(edit["idx"]))
+        except (IndexError, KeyError) as e:
+            raise HTTPException(404, str(e))
+    elif op == "title_add":
+        add_title(p, edit.get("text", ""), int(edit["x"]), int(edit["y"]), int(edit["w"]), int(edit["h"]),
+                  float(edit.get("t0", 0.0)), edit.get("t1"), bool(edit.get("italic", False)),
+                  edit.get("font"), edit.get("color", "#FFFFFF"))
     elif op == "subpos":
         p.captions.sub_y = int(edit["sub_y"])              # drag the subtitle band vertically
     elif op == "mode":
@@ -218,6 +242,22 @@ async def preview(pid: str, t: float = 0.0, rev: int = 0):  # rev = client cache
         raise HTTPException(504, "preview render timed out")
     finally:
         JOBS.pop(job_id, None)                             # one-shot job: never SSE-watched -> reclaim here
+    return Response(content=png, media_type="image/png")
+
+
+@app.get("/projects/{pid}/original")
+async def original(pid: str, t: float = 0.0):
+    p = _load(pid)
+
+    def job(progress):
+        return source_frame(p, t, OPTS, progress)
+    job_id = _enqueue(job)
+    try:
+        png = await asyncio.wait_for(JOBS[job_id]["future"], timeout=60)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "original frame timed out")
+    finally:
+        JOBS.pop(job_id, None)
     return Response(content=png, media_type="image/png")
 
 

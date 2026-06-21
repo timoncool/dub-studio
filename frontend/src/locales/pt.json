@@ -23,5 +23,7 @@
   "voice": { "clone": "Clonar original", "autocast": "Elenco automático por falante", "pack": "Voz do pacote", "funny": "Voz engraçada", "fixed": "Duração fixa", "dynamic": "Duração natural" },
   "export": { "title": "Exportar", "summary": "{{segments}} segmentos · {{speakers}} falantes · legendas {{lang}}", "proceed": "Exportar", "tweak": "Continuar editando", "beforeAfter": "Original ↔ Dublado" },
   "blur": { "title": "Desfoque", "on": "Cobrir texto original", "add": "Adicionar área", "frame": "Neste quadro", "all": "Todas" },
+  "compare": { "toggle": "Comparar", "original": "Original", "result": "Dublado" },
+  "titles": { "tab": "Títulos", "add": "Título próprio" },
   "common": { "undo": "Desfazer", "redo": "Refazer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Concluído", "error": "Erro" }
 }

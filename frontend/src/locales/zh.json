@@ -23,5 +23,7 @@
   "voice": { "clone": "克隆原声", "autocast": "按说话人自动分配", "pack": "声音包", "funny": "搞笑声音", "fixed": "固定时长", "dynamic": "自然时长" },
   "export": { "title": "导出", "summary": "{{segments}} 段 · {{speakers}} 位说话人 · {{lang}} 字幕", "proceed": "导出", "tweak": "继续编辑", "beforeAfter": "原版 ↔ 配音" },
   "blur": { "title": "模糊", "on": "遮盖原文字", "add": "添加区域", "frame": "本帧", "all": "全部" },
+  "compare": { "toggle": "对比", "original": "原版", "result": "配音" },
+  "titles": { "tab": "标题", "add": "自定义标题" },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }
