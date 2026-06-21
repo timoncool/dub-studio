@@ -21,5 +21,6 @@
   "style": { "font": "Police", "size": "Taille", "color": "Couleur", "outline": "Contour", "bold": "Gras", "italic": "Italique", "caps": "MAJUSCULES", "plate": "Plaque", "resetAuto": "Réinit. auto", "resetGlobal": "Réinit. global" },
   "voice": { "clone": "Cloner l'original", "autocast": "Distribution auto par locuteur", "pack": "Voix du pack", "funny": "Voix amusante", "fixed": "Durée fixe", "dynamic": "Durée naturelle" },
   "export": { "title": "Exporter", "summary": "{{segments}} segments · {{speakers}} locuteurs · sous-titres {{lang}}", "proceed": "Exporter", "tweak": "Continuer l'édition", "beforeAfter": "Original ↔ Doublé" },
+  "blur": { "title": "Flou", "on": "Couvrir le texte d'origine", "add": "Ajouter une zone" },
   "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
 }

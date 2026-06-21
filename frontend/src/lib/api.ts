@@ -21,7 +21,7 @@ export type Project = {
     sub_style?: SubStyle | null; sub_y?: number | null; overrides: unknown[];
     titles: unknown[]; brands: unknown[]; blur_boxes: BlurBox[]; preset: Record<string, unknown>;
   };
-  render: { burn_cq: number; blur_sigma: number; codec: string };
+  render: { burn_cq: number; blur_sigma: number; blur: boolean; codec: string };
   work_dir?: string | null;
 };
 export type Capabilities = {
@@ -35,6 +35,11 @@ async function j<T>(r: Response): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+// serialize mutating PATCHes: each returns the full Project, so overlapping requests would race to setProject
+// (last response wins) and could clobber an un-persisted edit. Chaining keeps them ordered; PATCH itself is a
+// cheap JSON write (the heavy re-render rides the preview <img>, which the GPU worker serializes separately).
+let _patchChain: Promise<unknown> = Promise.resolve();
+
 export const api = {
   capabilities: () => fetch(`${BASE}/engine/capabilities`).then(j<Capabilities>),
   createProject: (file: File) => {
@@ -44,8 +49,11 @@ export const api = {
   analyze: (pid: string, tgt_lang: string, mode = "auto") =>
     fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}`, { method: "POST" }).then(j<{ job_id: string }>),
   getProject: (pid: string) => fetch(`${BASE}/projects/${pid}`).then(j<Project>),
-  patch: (pid: string, edit: Record<string, unknown>) =>
-    fetch(`${BASE}/projects/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) }).then(j<Project>),
+  patch: (pid: string, edit: Record<string, unknown>) => {
+    const run = () => fetch(`${BASE}/projects/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) }).then(j<Project>);
+    _patchChain = _patchChain.then(run, run);   // run after the previous patch settles (ok or failed)
+    return _patchChain as Promise<Project>;
+  },
   render: (pid: string) => fetch(`${BASE}/projects/${pid}/render`, { method: "POST" }).then(j<{ job_id: string }>),
   previewUrl: (pid: string, t: number, rev = 0) => `${BASE}/projects/${pid}/preview?t=${t}&rev=${rev}`,
   outputUrl: (pid: string) => `${BASE}/projects/${pid}/output`,

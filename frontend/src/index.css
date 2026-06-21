@@ -44,6 +44,11 @@ body::after {
 /* timecodes / numeric / labels → console mono */
 .mono, time, .tabnum { font-family: var(--font-mono); font-feature-settings: "tnum"; }
 
+/* indeterminate export progress bar (no real % from the engine yet — honest "working" motion) */
+@keyframes indet { 0% { transform: translateX(-130%); } 100% { transform: translateX(430%); } }
+.anim-indeterminate { animation: indet 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+@media (prefers-reduced-motion: reduce) { .anim-indeterminate { animation: none; width: 100% !important; opacity: 0.5; } }
+
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: #333843; }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2 } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus } from "lucide-react";
 import { api, type Project } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -178,33 +178,38 @@ function BranchBtn({ icon: Icon, label, onClick }: { icon: typeof Languages; lab
 
 function Editor() {
   const { t } = useTranslation();
-  const s = useStore();
-  const p = s.project as Project;
-  const pid = s.pid as string;
+  const p = useStore((s) => s.project) as Project;        // subscribe ONLY to what we render -> no re-render on
+  const pid = useStore((s) => s.pid) as string;           // rev bumps or progress SSE ticks (those go to PreviewCanvas)
+  const rendered = useStore((s) => s.rendered);
+  const setProject = useStore((s) => s.setProject);
+  const setRendered = useStore((s) => s.setRendered);
+  const setProgress = useStore((s) => s.setProgress);
+  const bump = useStore((s) => s.bump);
+  const rendering = useStore((s) => s.rendering);
+  const setRendering = useStore((s) => s.setRendering);
   const [scrub, setScrub] = useState(1.0);
-  const [rendering, setRendering] = useState(false);
   const ss = p.captions.sub_style;
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
-    s.setProject({ ...p, segments: p.segments.map((x) => x.id === id ? { ...x, tgt_text: tgt, dirty: true } : x) });
+    setProject({ ...p, segments: p.segments.map((x) => x.id === id ? { ...x, tgt_text: tgt, dirty: true } : x) });
   }
   async function persistSeg(id: string, tgt: string) {               // on blur -> persist to backend + refresh frame
-    s.setRendered(false);
-    s.setProject(await api.patch(pid, { op: "segment", id, tgt_text: tgt }));
-    s.bump();
+    setRendered(false);
+    setProject(await api.patch(pid, { op: "segment", id, tgt_text: tgt }));
+    bump();
   }
   async function branch(op: string, extra: Record<string, unknown> = {}) {
-    s.setRendered(false);
-    s.setProject(await api.patch(pid, { op, ...extra }));
-    s.bump();                                                        // style/voice/text change -> re-fetch the frame
+    setRendered(false);
+    setProject(await api.patch(pid, { op, ...extra }));
+    bump();                                                          // style/voice/text change -> re-fetch the frame
   }
   async function doExport() {
     setRendering(true);
     try {
       const { job_id } = await api.render(pid);
-      s.setProgress("render", t("common.rendering"));
-      await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || ""); });
-      s.setRendered(true);
+      setProgress("render", t("common.rendering"));
+      await api.watchJob(job_id, (e) => { if (e.type === "progress") setProgress(e.stage || "", e.msg || ""); });
+      setRendered(true);
     } finally { setRendering(false); }
   }
 
@@ -221,7 +226,8 @@ function Editor() {
             const on = isActive(seg);
             return (
               <div key={seg.id} ref={on ? activeRef : undefined}
-                className={`rounded-xl p-2.5 border-l-2 transition-colors ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
+                onClick={() => { setRendered(false); setScrub(seg.start); }}   // click a phrase -> seek the playhead to it
+                className={`rounded-xl p-2.5 border-l-2 transition-colors cursor-pointer ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
                 <div className="flex items-center gap-2 mono text-[10px] text-[var(--color-muted)]">
                   <span>{seg.start.toFixed(1)}–{seg.end.toFixed(1)}s</span>
                   {seg.speaker != null && <span className="px-1.5 py-px rounded bg-[var(--color-overlay)] text-[9px]">SPK {seg.speaker}</span>}
@@ -229,6 +235,7 @@ function Editor() {
                 </div>
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
                 <textarea value={seg.tgt_text} onChange={(e) => patchSeg(seg.id, e.target.value)}
+                  onClick={(e) => e.stopPropagation()}                       // editing text must not re-seek on every click
                   onBlur={(e) => persistSeg(seg.id, e.target.value)}
                   className="w-full mt-1.5 bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded-lg p-1.5 text-[13px] leading-snug resize-none focus:border-[var(--color-accent)] focus:outline-none transition-colors" rows={2} />
               </div>
@@ -249,13 +256,13 @@ function Editor() {
           </button>
         </div>
         <div className="flex-1 min-h-0 p-3 overflow-hidden">
-          <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={s.rendered}
-            onChanged={async () => s.setProject(await api.getProject(pid))} />
+          <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={rendered}
+            onChanged={async () => setProject(await api.getProject(pid))} />
         </div>
         <div className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
           <span className="mono text-[10px] text-[var(--color-muted)] tabnum w-20 shrink-0">{scrub.toFixed(1)} / {(p.meta.duration || 0).toFixed(1)}s</span>
           <input type="range" min={0} max={p.meta.duration || 1} step={0.1} value={scrub}
-            onChange={(e) => { s.setRendered(false); setScrub(parseFloat(e.target.value)); }} className="w-full accent-[var(--color-accent)]" />
+            onChange={(e) => { setRendered(false); setScrub(parseFloat(e.target.value)); }} className="w-full accent-[var(--color-accent)]" />
         </div>
       </main>
 
@@ -280,20 +287,63 @@ function Editor() {
           <option value="autocast">{t("voice.autocast")}</option>
           <option value="voice">{t("voice.pack")}</option>
         </select>
+
+        <div className="mt-6 flex items-center justify-between">
+          <SectionLabel>{t("blur.title")}</SectionLabel>
+          <span className="mono text-[10px] text-[var(--color-muted)]">{(p.captions.blur_boxes || []).length} зон</span>
+        </div>
+        <Toggle label={t("blur.on")} on={p.render.blur} onClick={() => branch("blur_enable", { on: !p.render.blur })} />
+        <div className={`mt-2.5 space-y-1 ${p.render.blur ? "" : "opacity-40 pointer-events-none"}`}>
+          <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+            {(p.captions.blur_boxes || []).map((b, i) => (
+              <div key={i} className="flex items-center justify-between mono text-[10px] text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 rounded px-2 py-0.5">
+                <span>#{i + 1} · {b.w}×{b.h}</span>
+                <button onClick={() => branch("blur_del", { idx: i })} className="hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
+              </div>
+            ))}
+          </div>
+          <button onClick={() => branch("blur_add", { x: Math.round((p.meta.width || 0) * 0.25), y: Math.round((p.meta.height || 0) * 0.45), w: Math.round((p.meta.width || 0) * 0.5), h: Math.round((p.meta.height || 0) * 0.08) })}
+            className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded-lg border border-dashed border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors">
+            <Plus size={13} /> {t("blur.add")}
+          </button>
+        </div>
       </aside>
     </div>
   );
 }
 
+function ExportOverlay() {
+  const { t } = useTranslation();
+  const rendering = useStore((s) => s.rendering);   // dedicated subscriber: progress ticks repaint ONLY this overlay
+  const msg = useStore((s) => s.progress.msg);
+  if (!rendering) return null;
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 backdrop-blur-sm">
+      <div className="w-[min(92vw,440px)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-overlay)]/95 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center gap-2.5">
+          <Loader2 size={18} className="animate-spin text-[var(--color-accent)]" />
+          <span className="font-semibold">{t("export.title")}</span>
+        </div>
+        <div className="mt-4 h-1.5 w-full rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+          <div className="h-full w-1/3 rounded-full bg-[var(--color-accent)] anim-indeterminate" />
+        </div>
+        <div className="mt-3 mono text-[11px] text-[var(--color-muted)] min-h-4 truncate">{msg || t("common.rendering")}</div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const stage = useStore((s) => s.stage);
-  const s = useStore();
+  const stage = useStore((s) => s.stage);                 // only re-route on stage change (not on every store write)
+  const setPid = useStore((s) => s.setPid);
+  const setProject = useStore((s) => s.setProject);
+  const setStage = useStore((s) => s.setStage);
   const [cap, setCap] = useState("");
   useEffect(() => { api.capabilities().then((c) => setCap(`${c.device} · ${c.asr_model}`)).catch(() => setCap("backend offline")); }, []);
   // open an existing project directly via ?pid=... (resume / dev)
   useEffect(() => {
     const pid = new URLSearchParams(location.search).get("pid");
-    if (pid) api.getProject(pid).then((p) => { s.setPid(pid); s.setProject(p); s.setStage("editor"); }).catch(() => {});
+    if (pid) api.getProject(pid).then((p) => { setPid(pid); setProject(p); setStage("editor"); }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="h-full flex flex-col">
@@ -304,6 +354,7 @@ export default function App() {
       <footer className="mono h-6 px-4 flex items-center gap-2 text-[10px] text-[var(--color-muted)] border-t border-[var(--color-border)] bg-[var(--color-surface)]">
         <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />{cap}
       </footer>
+      <ExportOverlay />
     </div>
   );
 }

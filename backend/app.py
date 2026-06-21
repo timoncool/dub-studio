@@ -20,8 +20,8 @@ os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import torch  # noqa: F401,E402  before llama_cpp (engine loads it lazily)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dub-engine"))
-from dubengine import (EngineOpts, Project, analyze, edit_blur, edit_caption,  # noqa: E402
-                       edit_segment, preview_frame, recast, render, rewrite, translate)
+from dubengine import (EngineOpts, Project, add_blur, analyze, del_blur, edit_blur,  # noqa: E402
+                       edit_caption, edit_segment, preview_frame, recast, render, rewrite, translate)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -153,10 +153,31 @@ async def patch_project(pid: str, edit: dict = Body(...)):
     if op == "caption":
         edit_caption(p, edit.pop("seg_id", None), **edit)
     elif op == "segment":
-        edit_segment(p, edit.pop("id"), tgt_text=edit.get("tgt_text"),
-                     src_text=edit.get("src_text"), voice=edit.get("voice"))
+        sid = edit.get("id")
+        if not sid:
+            raise HTTPException(400, "missing segment id")
+        try:
+            edit_segment(p, sid, tgt_text=edit.get("tgt_text"),
+                         src_text=edit.get("src_text"), voice=edit.get("voice"))
+        except KeyError as e:
+            raise HTTPException(404, str(e))               # stale/unknown seg id -> clean 404, not 500
     elif op == "blur":
-        edit_blur(p, edit.pop("idx"), **edit)
+        if "idx" not in edit:
+            raise HTTPException(400, "missing blur idx")
+        try:
+            edit_blur(p, edit.pop("idx"), **edit)
+        except (IndexError, KeyError) as e:
+            raise HTTPException(404, f"bad blur idx: {e}")
+    elif op == "blur_add":
+        add_blur(p, int(edit["x"]), int(edit["y"]), int(edit["w"]), int(edit["h"]),
+                 float(edit.get("t0", 0.0)), edit.get("t1"))
+    elif op == "blur_del":
+        try:
+            del_blur(p, int(edit["idx"]))
+        except IndexError as e:
+            raise HTTPException(404, str(e))
+    elif op == "blur_enable":
+        p.render.blur = bool(edit.get("on", True))             # global blur on/off
     elif op == "subpos":
         p.captions.sub_y = int(edit["sub_y"])              # drag the subtitle band vertically
     elif op == "translate":
@@ -172,13 +193,18 @@ async def patch_project(pid: str, edit: dict = Body(...)):
 
 
 @app.get("/projects/{pid}/preview")
-async def preview(pid: str, t: float = 0.0):
+async def preview(pid: str, t: float = 0.0, rev: int = 0):  # rev = client cache-buster (unused server-side)
     p = _load(pid)                                          # raises 409 if not analyzed yet
 
     def job(progress):
         return preview_frame(p, t, OPTS, progress)
     job_id = _enqueue(job)                                  # serialized through the GPU worker
-    png = await JOBS[job_id]["future"]
+    try:
+        png = await asyncio.wait_for(JOBS[job_id]["future"], timeout=300)
+    except asyncio.TimeoutError:
+        raise HTTPException(504, "preview render timed out")
+    finally:
+        JOBS.pop(job_id, None)                             # one-shot job: never SSE-watched -> reclaim here
     return Response(content=png, media_type="image/png")
 
 
@@ -208,9 +234,12 @@ async def job_events(job_id: str):
     q: asyncio.Queue = JOBS[job_id]["q"]
 
     async def stream():
-        while True:
-            ev = await q.get()
-            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-            if ev.get("type") in ("done", "error"):
-                break
+        try:
+            while True:
+                ev = await q.get()
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+                if ev.get("type") in ("done", "error"):
+                    break
+        finally:
+            JOBS.pop(job_id, None)                         # job terminal + delivered -> reclaim (no unbounded growth)
     return StreamingResponse(stream(), media_type="text/event-stream")
