@@ -188,6 +188,8 @@ function Editor() {
   const [fonts, setFonts] = useState<Record<string, string>>({});
   useEffect(() => { api.fonts().then((r) => setFonts(r.fonts)).catch(() => {}); }, []);   // bundled caption fonts
   const [sizeDraft, setSizeDraft] = useState<number | null>(null);   // live size while dragging (commit on release)
+  const [lane, setLane] = useState<"subs" | "blur">("subs");          // left lane: which object type to edit
+  const [blurAll, setBlurAll] = useState(false);                      // blur: only active-on-frame vs all zones
   const ss = p.captions.sub_style;
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
@@ -222,7 +224,15 @@ function Editor() {
   return (
     <div className="flex-1 grid grid-cols-[330px_1fr_300px] min-h-0">
       <aside className="border-r border-[var(--color-border)] overflow-y-auto p-4 bg-[var(--color-surface)]">
-        <SectionLabel>{t("editor.transcript")}</SectionLabel>
+        <div className="inline-flex rounded-lg bg-[var(--color-surface-2)] p-0.5 border border-[var(--color-border)] mb-3 text-[12px]">
+          {([["subs", t("mode.subtitles")], ["blur", t("blur.title")]] as const).map(([k, lbl]) => (
+            <button key={k} onClick={() => setLane(k)}
+              className={`px-3 py-1 rounded-md transition-colors ${lane === k ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+              {lbl}{k === "blur" ? ` ${(p.captions.blur_boxes || []).length}` : ""}
+            </button>
+          ))}
+        </div>
+        {lane === "subs" && (
         <div className="space-y-2">
           {p.segments.map((seg) => {
             const on = isActive(seg);
@@ -245,6 +255,36 @@ function Editor() {
             );
           })}
         </div>
+        )}
+        {lane === "blur" && (
+          <div className="space-y-2">
+            <Toggle label={t("blur.on")} on={p.render.blur} onClick={() => branch("blur_enable", { on: !p.render.blur })} />
+            <div className={p.render.blur ? "" : "opacity-40 pointer-events-none"}>
+              <div className="flex items-center justify-between mt-2 mb-1.5">
+                <span className="mono text-[10px] text-[var(--color-muted)]">{blurAll ? `${t("blur.all")} · ${(p.captions.blur_boxes || []).length}` : t("blur.frame")}</span>
+                <button onClick={() => setBlurAll(!blurAll)} className="mono text-[10px] text-[var(--color-accent)] hover:underline">
+                  {blurAll ? t("blur.frame") : `${t("blur.all")} (${(p.captions.blur_boxes || []).length})`}
+                </button>
+              </div>
+              <div className="space-y-1 max-h-[46vh] overflow-y-auto pr-1">
+                {(p.captions.blur_boxes || []).map((b, i) => ({ b, i }))
+                  .filter(({ b }) => blurAll || (scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4))
+                  .map(({ b, i }) => (
+                    <div key={i} className="flex items-center justify-between mono text-[10px] text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 rounded px-2 py-1">
+                      <span>#{i + 1} · {b.w}×{b.h} · {fmtT(b.t0)}</span>
+                      <button onClick={() => branch("blur_del", { idx: i })} className="hover:text-[var(--color-warn)] transition-colors"><Trash2 size={12} /></button>
+                    </div>
+                  ))}
+                {!(p.captions.blur_boxes || []).some((b) => blurAll || (scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4)) &&
+                  <div className="text-[11px] text-[var(--color-muted)]/50 py-3 text-center">—</div>}
+              </div>
+              <button onClick={() => branch("blur_add", { x: Math.round((p.meta.width || 0) * 0.25), y: Math.round((p.meta.height || 0) * 0.45), w: Math.round((p.meta.width || 0) * 0.5), h: Math.round((p.meta.height || 0) * 0.08), t0: Math.max(0, scrub - 1), t1: scrub + 2 })}
+                className="w-full mt-1.5 inline-flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded-lg border border-dashed border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors">
+                <Plus size={13} /> {t("blur.add")}
+              </button>
+            </div>
+          </div>
+        )}
       </aside>
 
       <main className="flex flex-col min-w-0 min-h-0">
@@ -319,25 +359,6 @@ function Editor() {
           </>
         )}
 
-        <div className="mt-6 flex items-center justify-between">
-          <SectionLabel>{t("blur.title")}</SectionLabel>
-          <span className="mono text-[10px] text-[var(--color-muted)]">{(p.captions.blur_boxes || []).length} зон</span>
-        </div>
-        <Toggle label={t("blur.on")} on={p.render.blur} onClick={() => branch("blur_enable", { on: !p.render.blur })} />
-        <div className={`mt-2.5 space-y-1 ${p.render.blur ? "" : "opacity-40 pointer-events-none"}`}>
-          <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-            {(p.captions.blur_boxes || []).map((b, i) => (
-              <div key={i} className="flex items-center justify-between mono text-[10px] text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 rounded px-2 py-0.5">
-                <span>#{i + 1} · {b.w}×{b.h}</span>
-                <button onClick={() => branch("blur_del", { idx: i })} className="hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
-              </div>
-            ))}
-          </div>
-          <button onClick={() => branch("blur_add", { x: Math.round((p.meta.width || 0) * 0.25), y: Math.round((p.meta.height || 0) * 0.45), w: Math.round((p.meta.width || 0) * 0.5), h: Math.round((p.meta.height || 0) * 0.08) })}
-            className="w-full inline-flex items-center justify-center gap-1.5 text-[12px] py-1.5 rounded-lg border border-dashed border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors">
-            <Plus size={13} /> {t("blur.add")}
-          </button>
-        </div>
       </aside>
     </div>
   );
