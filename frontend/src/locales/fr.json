@@ -1,0 +1,16 @@
+{
+  "app": { "name": "Dub Studio", "tagline": "Doublez et traduisez n'importe quelle vidéo courte — en local." },
+  "drop": { "title": "Déposez une vidéo à doubler", "hint": "MP4 ou MOV — tout tourne sur votre machine", "browse": "Parcourir", "recent": "Récents", "demo": "Essayer la démo" },
+  "analyze": {
+    "title": "Analyse de votre vidéo",
+    "separating": "Séparation de l'audio", "recognizing": "Reconnaissance vocale", "diarizing": "Identification des locuteurs",
+    "translating": "Traduction", "style": "Détection du style des sous-titres", "locating": "Localisation du texte à l'écran",
+    "cancel": "Annuler"
+  },
+  "editor": { "transcript": "Transcription", "style": "Style", "voice": "Voix", "preview": "Aperçu", "timeline": "Chronologie" },
+  "actions": { "translate": "Traduire", "dub": "Doublage complet", "funny": "Remix amusant", "dubFile": "Doubler un fichier" },
+  "style": { "font": "Police", "size": "Taille", "color": "Couleur", "outline": "Contour", "bold": "Gras", "italic": "Italique", "caps": "MAJUSCULES", "plate": "Plaque", "resetAuto": "Réinit. auto", "resetGlobal": "Réinit. global" },
+  "voice": { "clone": "Cloner l'original", "autocast": "Distribution auto par locuteur", "pack": "Voix du pack", "funny": "Voix amusante", "fixed": "Durée fixe", "dynamic": "Durée naturelle" },
+  "export": { "title": "Exporter", "summary": "{{segments}} segments · {{speakers}} locuteurs · sous-titres {{lang}}", "proceed": "Exporter", "tweak": "Continuer l'édition", "beforeAfter": "Original ↔ Doublé" },
+  "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
+}

@@ -1,0 +1,34 @@
+@import "tailwindcss";
+
+/* Dub Studio — premium dark theme tokens (the brand surface for repo-of-the-day polish) */
+@theme {
+  --color-bg: #0b0b0f;
+  --color-surface: #14141b;
+  --color-surface-2: #1c1c26;
+  --color-border: #2a2a36;
+  --color-text: #e7e7ee;
+  --color-muted: #9a9aab;
+  --color-accent: #7c5cff;
+  --color-accent-2: #00d4b8;
+  --color-warn: #ffb020;
+}
+
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+* { box-sizing: border-box; }
+::selection { background: color-mix(in oklab, var(--color-accent) 40%, transparent); }
+
+/* subtle scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}

@@ -1,0 +1,16 @@
+{
+  "app": { "name": "Dub Studio", "tagline": "在本地为任何短视频配音和翻译。" },
+  "drop": { "title": "拖入视频开始配音", "hint": "MP4 或 MOV — 全部在本机运行", "browse": "浏览", "recent": "最近", "demo": "试用示例" },
+  "analyze": {
+    "title": "正在分析视频",
+    "separating": "分离音频", "recognizing": "识别语音", "diarizing": "区分说话人",
+    "translating": "翻译中", "style": "检测字幕样式", "locating": "定位画面文字",
+    "cancel": "取消"
+  },
+  "editor": { "transcript": "字幕文本", "style": "样式", "voice": "声音", "preview": "预览", "timeline": "时间轴" },
+  "actions": { "translate": "翻译", "dub": "完整配音", "funny": "搞笑改编", "dubFile": "为文件配音" },
+  "style": { "font": "字体", "size": "字号", "color": "颜色", "outline": "描边", "bold": "粗体", "italic": "斜体", "caps": "全部大写", "plate": "底板", "resetAuto": "重置为自动", "resetGlobal": "重置为全局" },
+  "voice": { "clone": "克隆原声", "autocast": "按说话人自动分配", "pack": "声音包", "funny": "搞笑声音", "fixed": "固定时长", "dynamic": "自然时长" },
+  "export": { "title": "导出", "summary": "{{segments}} 段 · {{speakers}} 位说话人 · {{lang}} 字幕", "proceed": "导出", "tweak": "继续编辑", "beforeAfter": "原版 ↔ 配音" },
+  "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
+}

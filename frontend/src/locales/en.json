@@ -1,0 +1,16 @@
+{
+  "app": { "name": "Dub Studio", "tagline": "Dub & translate any short video — locally." },
+  "drop": { "title": "Drop a video to dub", "hint": "MP4 or MOV — everything runs on your machine", "browse": "Browse", "recent": "Recent", "demo": "Try a demo" },
+  "analyze": {
+    "title": "Analyzing your video",
+    "separating": "Separating audio", "recognizing": "Recognizing speech", "diarizing": "Diarizing speakers",
+    "translating": "Translating", "style": "Detecting caption style", "locating": "Locating on-screen text",
+    "cancel": "Cancel"
+  },
+  "editor": { "transcript": "Transcript", "style": "Style", "voice": "Voice", "preview": "Preview", "timeline": "Timeline" },
+  "actions": { "translate": "Translate", "dub": "Full dub", "funny": "Funny remix", "dubFile": "Dub any file" },
+  "style": { "font": "Font", "size": "Size", "color": "Color", "outline": "Outline", "bold": "Bold", "italic": "Italic", "caps": "UPPERCASE", "plate": "Plate", "resetAuto": "Reset to auto", "resetGlobal": "Reset to global" },
+  "voice": { "clone": "Clone original", "autocast": "Auto-cast by speaker", "pack": "Pack voice", "funny": "Funny voice", "fixed": "Fixed duration", "dynamic": "Natural length" },
+  "export": { "title": "Export", "summary": "{{segments}} segments · {{speakers}} speakers · {{lang}} captions", "proceed": "Export", "tweak": "Keep editing", "beforeAfter": "Original ↔ Dubbed" },
+  "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
+}

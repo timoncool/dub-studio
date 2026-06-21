@@ -1,0 +1,16 @@
+{
+  "app": { "name": "Dub Studio", "tagline": "Dobla y traduce cualquier video corto — en local." },
+  "drop": { "title": "Suelta un video para doblar", "hint": "MP4 o MOV — todo se ejecuta en tu equipo", "browse": "Examinar", "recent": "Recientes", "demo": "Probar demo" },
+  "analyze": {
+    "title": "Analizando tu video",
+    "separating": "Separando audio", "recognizing": "Reconociendo voz", "diarizing": "Identificando hablantes",
+    "translating": "Traduciendo", "style": "Detectando estilo de subtítulos", "locating": "Localizando texto en pantalla",
+    "cancel": "Cancelar"
+  },
+  "editor": { "transcript": "Transcripción", "style": "Estilo", "voice": "Voz", "preview": "Vista previa", "timeline": "Línea de tiempo" },
+  "actions": { "translate": "Traducir", "dub": "Doblaje completo", "funny": "Remix divertido", "dubFile": "Doblar archivo" },
+  "style": { "font": "Fuente", "size": "Tamaño", "color": "Color", "outline": "Contorno", "bold": "Negrita", "italic": "Cursiva", "caps": "MAYÚSCULAS", "plate": "Placa", "resetAuto": "Restablecer a auto", "resetGlobal": "Restablecer a global" },
+  "voice": { "clone": "Clonar original", "autocast": "Auto-reparto por hablante", "pack": "Voz del paquete", "funny": "Voz divertida", "fixed": "Duración fija", "dynamic": "Duración natural" },
+  "export": { "title": "Exportar", "summary": "{{segments}} segmentos · {{speakers}} hablantes · subtítulos {{lang}}", "proceed": "Exportar", "tweak": "Seguir editando", "beforeAfter": "Original ↔ Doblado" },
+  "common": { "undo": "Deshacer", "redo": "Rehacer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Listo", "error": "Error" }
+}
