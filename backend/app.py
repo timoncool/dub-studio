@@ -25,6 +25,7 @@ from dubengine import (EngineOpts, Project, add_blur, add_title, analyze, del_bl
                        rewrite, set_mode, source_frame, translate)
 from dubengine import captions as _captions  # noqa: E402  (font catalog for the editor)
 from dubengine import voices as _voices  # noqa: E402  (voice-pack catalog for the editor)
+from dubengine import translate as _translate  # noqa: E402  (creative rewrite/remix on a theme)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -45,7 +46,10 @@ async def _worker():
     assert _jobq is not None
     while True:
         job_id, fn = await _jobq.get()
-        job = JOBS[job_id]
+        job = JOBS.get(job_id)                              # caller may have given up (preview/SSE timeout popped it)
+        if job is None:                                     # -> skip instead of KeyError-ing out of the worker loop
+            _jobq.task_done()
+            continue
         job["status"] = "running"
 
         def progress(ev):                                  # called FROM the executor thread -> hop to the loop
@@ -63,6 +67,7 @@ async def _worker():
                 job["future"].set_exception(e)
         finally:
             _jobq.task_done()
+            _loop.call_later(300, JOBS.pop, job_id, None)   # reap terminal job even if no client ever opens its SSE
 
 
 def _jsonable(x) -> bool:
@@ -184,6 +189,38 @@ async def analyze_project(pid: str, tgt_lang: str = "en", mode: str = "auto", sr
     return {"job_id": _enqueue(job)}
 
 
+@app.post("/projects/{pid}/remix")
+async def remix_project(pid: str, instruction: str = ""):
+    """Creative remix: Gemma rewrites the WHOLE transcript on a theme/instruction (e.g. 'на тему пиратов',
+    'sarcastic news report'), one line per source line ~same length so it still fits the dub timing.
+    Updates each segment's target text + marks all dirty, so the next export re-dubs the rewritten script."""
+    if not instruction.strip():
+        raise HTTPException(400, "empty remix instruction")
+    wd = _proj_dir(pid)
+    tj = wd / "transcript.json"
+
+    def job(progress):
+        p = _load(pid)
+        segs = json.loads(tj.read_text(encoding="utf-8")) if tj.exists() else []
+        if not segs:                                       # artifact absent -> rebuild segs from the Project itself
+            segs = [{"start": s.start, "end": s.end, "speaker": s.speaker,
+                     "text": s.src_text, "tgt": s.tgt_text} for s in p.segments]
+        if not segs:
+            raise RuntimeError("no transcript to remix — analyze first")
+        progress({"msg": f"Gemma remixing {len(segs)} lines → {instruction[:60]}"})
+        n_gpu = -1 if OPTS.device == "cuda" else 0
+        _translate.rewrite(segs, instruction, "auto", p.tgt_lang, OPTS.mt_model_path, n_gpu_layers=n_gpu)
+        tj.write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
+        for i, s in enumerate(p.segments):                 # map rewritten tgt back (same order); mark dirty
+            if i < len(segs) and (segs[i].get("tgt") or "").strip():
+                s.tgt_text = segs[i]["tgt"]
+            s.dirty = True
+        p.audio.rewrite = instruction
+        p.save(wd / "project.json")
+        return p.model_dump()
+    return {"job_id": _enqueue(job)}
+
+
 @app.get("/projects/{pid}")
 async def get_project(pid: str):
     return _load(pid).model_dump()
@@ -279,7 +316,8 @@ async def waveform(pid: str, n: int = 600):
         return json.loads(cache.read_text(encoding="utf-8"))
     peaks = await _loop.run_in_executor(None, _compute_peaks, proj.meta.video, n)   # CPU ffmpeg, off the GPU worker
     out = {"peaks": peaks}
-    cache.write_text(json.dumps(out), encoding="utf-8")
+    if peaks:                                  # don't poison the cache with [] from a transient ffmpeg failure
+        cache.write_text(json.dumps(out), encoding="utf-8")
     return out
 
 
@@ -333,10 +371,13 @@ async def render_project(pid: str):
         proj = Project.load(wd / "project.json")
         regen = any(getattr(s, "dirty", False) for s in proj.segments)   # voice/text/rewrite edited -> re-synth dub
         render(proj, out, OPTS, progress=progress, regen_dub=regen)
-        if regen:                                                        # edits now baked into the dub -> clear dirty
-            for s in proj.segments:
-                s.dirty = False
-            proj.save(wd / "project.json")
+        if regen:                                                        # edits baked into the dub -> clear dirty,
+            baked = {s.id: s.tgt_text for s in proj.segments}            # but re-load so edits made DURING the long
+            cur = Project.load(wd / "project.json")                      # render aren't clobbered by this stale save
+            for s in cur.segments:
+                if baked.get(s.id) == s.tgt_text:                        # unchanged since render started -> safe to clear
+                    s.dirty = False
+            cur.save(wd / "project.json")
         return {"output": out}
     return {"job_id": _enqueue(job)}
 
@@ -379,9 +420,12 @@ if (_WEB / "index.html").is_file():
     if (_WEB / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=str(_WEB / "assets")), name="assets")
 
+    _WEB_R = _WEB.resolve()
+
     @app.get("/{spa_path:path}")
     async def spa(spa_path: str):
-        f = _WEB / spa_path
-        if spa_path and f.is_file():
+        f = (_WEB / spa_path).resolve()
+        # contain to the web root — `..%2f` dot-segments must NOT escape and serve arbitrary files
+        if spa_path and f.is_file() and (f == _WEB_R or _WEB_R in f.parents):
             return FileResponse(str(f))            # real static asset (favicon, vite.svg, …)
         return FileResponse(str(_WEB / "index.html"))   # deep-link / refresh -> SPA entry (no 404)

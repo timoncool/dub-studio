@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-setlocal enabledelayedexpansion
+setlocal
 
 echo ========================================
 echo   Dub Studio
@@ -31,7 +31,7 @@ if not exist "%TEMP%" mkdir "%TEMP%"
 
 set "HF_HOME=%SCRIPT_DIR%models"
 set "HUGGINGFACE_HUB_CACHE=%SCRIPT_DIR%models"
-set "HF_HUB_ENABLE_HF_TRANSFER=1"
+if exist "%SCRIPT_DIR%python\Lib\site-packages\hf_transfer" set "HF_HUB_ENABLE_HF_TRANSFER=1"
 set "TORCH_HOME=%SCRIPT_DIR%models\torch"
 set "XDG_CACHE_HOME=%SCRIPT_DIR%cache"
 if not exist "%HF_HOME%" mkdir "%HF_HOME%"
@@ -60,7 +60,7 @@ echo   Close this window to stop.
 echo.
 
 REM === Open the browser once the server is up (delayed; uvicorn blocks below) ===
-start "" cmd /c "timeout /t 5 >nul & start """" http://127.0.0.1:%DUB_PORT%"
+start "" powershell -NoProfile -Command "for($i=0;$i -lt 120;$i++){try{(New-Object Net.Sockets.TcpClient).Connect('127.0.0.1',%DUB_PORT%);Start-Process 'http://127.0.0.1:%DUB_PORT%/';break}catch{Start-Sleep 1}}"
 
 REM === Launch the single-worker FastAPI backend (serves the SPA same-origin) ===
 "%PYTHON%" -m uvicorn backend.app:app --host 127.0.0.1 --port %DUB_PORT%

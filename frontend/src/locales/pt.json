@@ -21,6 +21,7 @@
   "actions": { "translate": "Traduzir", "dub": "Dublagem completa", "funny": "Remix engraçado", "dubFile": "Dublar arquivo" },
   "style": { "font": "Fonte", "size": "Tamanho", "color": "Cor", "outline": "Contorno", "bold": "Negrito", "italic": "Itálico", "caps": "MAIÚSCULAS", "plate": "Placa", "resetAuto": "Redefinir para auto", "resetGlobal": "Redefinir para global" },
   "voice": { "clone": "Clonar original", "autocast": "Elenco automático por falante", "pack": "Voz do pacote", "funny": "Voz engraçada", "fixed": "Duração fixa", "dynamic": "Duração natural" },
+  "remix": { "title": "Remix", "placeholder": "Tema \u2014 ex.: \u00abtema pirata\u00bb, \u00abcomo not\u00edcia\u00bb, \u00absarc\u00e1stico\u00bb", "apply": "Aplicar remix", "hint": "Gemma reescreve todo o roteiro no seu tema, mantendo o tempo. A exporta\u00e7\u00e3o redubla." },
   "export": { "title": "Exportar", "summary": "{{segments}} segmentos · {{speakers}} falantes · legendas {{lang}}", "proceed": "Exportar", "tweak": "Continuar editando", "beforeAfter": "Original ↔ Dublado" },
   "blur": { "title": "Desfoque", "on": "Cobrir texto original", "add": "Adicionar área", "frame": "Neste quadro", "all": "Todas" },
   "compare": { "toggle": "Comparar", "original": "Original", "result": "Dublado" },

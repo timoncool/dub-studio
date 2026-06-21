@@ -314,6 +314,8 @@ function Editor() {
   const [lane, setLane] = useState<"subs" | "blur" | "titles">("subs"); // left lane: which object type to edit
   const [blurAll, setBlurAll] = useState(false);                      // blur: only active-on-frame vs all zones
   const [compare, setCompare] = useState(false);                      // before/after split preview (Topaz-style)
+  const [remixText, setRemixText] = useState("");                     // funny-remix theme/instruction for Gemma
+  const [remixing, setRemixing] = useState(false);
   const ss = p.captions.sub_style;
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
@@ -355,11 +357,24 @@ function Editor() {
     try {
       const { job_id } = await api.render(pid);
       await api.watchJob(job_id, (e) => { if (e.type === "progress") updateExport(exId, { msg: e.msg || "" }); });
-      updateExport(exId, { status: "done", msg: "", url: api.outputUrl(pid) });
+      updateExport(exId, { status: "done", msg: "", url: `${api.outputUrl(pid)}?rev=${Date.now()}` });   // bust cache on re-export
       setRendered(true);
     } catch (err) {
       updateExport(exId, { status: "error", msg: String(err) });
     } finally { setRendering(false); }
+  }
+  async function doRemix() {                                            // Gemma rewrites the WHOLE script on a theme
+    if (!remixText.trim() || remixing) return;
+    setRemixing(true);
+    try {
+      pushHistory(p);
+      const { job_id } = await api.remix(pid, remixText.trim());
+      await api.watchJob(job_id, () => {});
+      setRendered(false);
+      setProject(await api.getProject(pid));                            // rewritten transcript -> shows in the lane
+      bump();
+    } catch (err) { console.error("remix failed", err); }
+    finally { setRemixing(false); }
   }
 
   const isActive = (seg: Project["segments"][number]) => scrub >= seg.start && scrub < seg.end;
@@ -448,12 +463,14 @@ function Editor() {
           <div className="space-y-2">
             {!(p.captions.titles || []).length && <div className="text-[11px] text-[var(--color-muted)]/50 py-3 text-center">—</div>}
             {(p.captions.titles || []).map((ti, i) => (
-              <div key={i} className="rounded-xl p-2.5 bg-[var(--color-surface-2)]/50">
+              <div key={`${ti.start}_${ti.end}_${i}`} className="rounded-xl p-2.5 bg-[var(--color-surface-2)]/50">
                 <div className="flex items-center gap-2 mono text-[10px] text-[var(--color-muted)] mb-1.5">
                   <span className="tabnum">{fmtT(ti.start)} → {fmtT(ti.end)}</span>
                   <button onClick={() => branch("title_del", { idx: i })} className="ml-auto hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
                 </div>
-                <input value={ti.text} onChange={(e) => titleText(i, e.target.value)} onBlur={(e) => branch("title", { idx: i, text: e.target.value })}
+                <input value={ti.text} onChange={(e) => titleText(i, e.target.value)}
+                  onFocus={() => pushHistory(p)}                              // snapshot pre-edit (local echo already mutates p)
+                  onBlur={async (e) => { setRendered(false); setProject(await api.patch(pid, { op: "title", idx: i, text: e.target.value })); bump(); }}
                   className="w-full bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded p-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors" />
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   <button onClick={() => branch("title", { idx: i, bold: !ti.bold })}
@@ -464,7 +481,7 @@ function Editor() {
                     title={t("style.color")} className="w-7 h-6 rounded bg-transparent cursor-pointer border border-[var(--color-border)]" />
                   <input type="color" value={ti.outline || "#000000"} onChange={(e) => branch("title", { idx: i, outline: e.target.value })}
                     title={t("style.outline")} className="w-7 h-6 rounded bg-transparent cursor-pointer border border-dashed border-[var(--color-border)]" />
-                  <input type="number" min={12} max={300} defaultValue={ti.size_px ?? undefined} placeholder="px" title={t("style.size")}
+                  <input key={`sz${i}-${ti.size_px ?? "a"}`} type="number" min={12} max={300} defaultValue={ti.size_px ?? undefined} placeholder="px" title={t("style.size")}
                     onBlur={(e) => branch("title", { idx: i, size_px: e.target.value ? parseInt(e.target.value) : null })}
                     className="w-12 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none" />
                   <select value={ti.font || ""} onChange={(e) => branch("title", { idx: i, font: e.target.value })}
@@ -571,6 +588,19 @@ function Editor() {
                 onPointerUp={async () => { if (sizeDraft != null) { await branch("caption", { size_px: sizeDraft }); setSizeDraft(null); } }}
                 className="w-full mt-1.5 accent-[var(--color-accent)]" />
             </div>
+          </div>
+        )}
+        {mode === "funny" && (
+          <div className="mt-6">
+            <SectionLabel>{t("remix.title")}</SectionLabel>
+            <textarea value={remixText} onChange={(e) => setRemixText(e.target.value)} rows={2}
+              placeholder={t("remix.placeholder")}
+              className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 text-[13px] resize-none focus:border-[var(--color-accent)] focus:outline-none transition-colors" />
+            <button onClick={doRemix} disabled={remixing || !remixText.trim()}
+              className="mt-2 w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-50 hover:brightness-105 transition">
+              {remixing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}{t("remix.apply")}
+            </button>
+            <div className="mt-1.5 text-[11px] text-[var(--color-muted)] leading-snug">{t("remix.hint")}</div>
           </div>
         )}
         {mode !== "subtitles" && (

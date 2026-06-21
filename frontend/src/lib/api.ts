@@ -62,14 +62,19 @@ export const api = {
   analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto") =>
     fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}`, { method: "POST" }).then(j<{ job_id: string }>),
   getProject: (pid: string) => fetch(`${BASE}/projects/${pid}`).then(j<Project>),
-  putProject: (pid: string, project: Project) =>
-    fetch(`${BASE}/projects/${pid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(project) }).then(j<Project>),
+  putProject: (pid: string, project: Project) => {   // undo/redo: serialize through the SAME chain as patch() (no race)
+    const run = () => fetch(`${BASE}/projects/${pid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(project) }).then(j<Project>);
+    _patchChain = _patchChain.then(run, run);
+    return _patchChain as Promise<Project>;
+  },
   patch: (pid: string, edit: Record<string, unknown>) => {
     const run = () => fetch(`${BASE}/projects/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) }).then(j<Project>);
     _patchChain = _patchChain.then(run, run);   // run after the previous patch settles (ok or failed)
     return _patchChain as Promise<Project>;
   },
   render: (pid: string) => fetch(`${BASE}/projects/${pid}/render`, { method: "POST" }).then(j<{ job_id: string }>),
+  remix: (pid: string, instruction: string) =>
+    fetch(`${BASE}/projects/${pid}/remix?instruction=${encodeURIComponent(instruction)}`, { method: "POST" }).then(j<{ job_id: string }>),
   previewUrl: (pid: string, t: number, rev = 0) => `${BASE}/projects/${pid}/preview?t=${t}&rev=${rev}`,
   originalUrl: (pid: string, t: number) => `${BASE}/projects/${pid}/original?t=${t}`,
   waveform: (pid: string) => fetch(`${BASE}/projects/${pid}/waveform`).then(j<{ peaks: number[] }>),
@@ -79,11 +84,14 @@ export const api = {
     new Promise<unknown>((resolve, reject) => {
       const es = new EventSource(`${BASE}/jobs/${jobId}/events`);
       es.onmessage = (m) => {
-        const e: JobEvent = JSON.parse(m.data);
-        onEvent(e);
-        if (e.type === "done") { es.close(); resolve(e.result); }
-        if (e.type === "error") { es.close(); reject(new Error(e.error)); }
+        try {
+          const e: JobEvent = JSON.parse(m.data);
+          onEvent(e);                                  // a consumer throw must not leak the stream open either
+          if (e.type === "done") { es.close(); resolve(e.result); }
+          else if (e.type === "error") { es.close(); reject(new Error(e.error)); }
+        } catch (err) { es.close(); reject(err instanceof Error ? err : new Error(String(err))); }
       };
-      es.onerror = () => { es.close(); reject(new Error("SSE connection lost")); };
+      // EventSource fires onerror on transient drops too (it auto-reconnects) — only give up once truly CLOSED
+      es.onerror = () => { if (es.readyState === EventSource.CLOSED) reject(new Error("SSE connection lost")); };
     }),
 };

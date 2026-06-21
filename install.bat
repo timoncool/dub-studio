@@ -103,7 +103,7 @@ if not exist ".venv-sortformer\Scripts\python.exe" (
     python\python.exe -m virtualenv ".venv-sortformer" 2>nul
     if exist ".venv-sortformer\Scripts\python.exe" (
         .venv-sortformer\Scripts\python.exe -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-        .venv-sortformer\Scripts\python.exe -m pip install "nemo_toolkit[asr]" cuda-python>=12.3
+        .venv-sortformer\Scripts\python.exe -m pip install "nemo_toolkit[asr]" "cuda-python>=12.3"
         echo [OK] Sortformer sub-venv ready
     ) else (
         echo   SKIP: could not create sub-venv; multi-speaker diarization disabled (single-speaker fallback).

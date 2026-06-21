@@ -21,6 +21,7 @@
   "actions": { "translate": "Traduire", "dub": "Doublage complet", "funny": "Remix amusant", "dubFile": "Doubler un fichier" },
   "style": { "font": "Police", "size": "Taille", "color": "Couleur", "outline": "Contour", "bold": "Gras", "italic": "Italique", "caps": "MAJUSCULES", "plate": "Plaque", "resetAuto": "Réinit. auto", "resetGlobal": "Réinit. global" },
   "voice": { "clone": "Cloner l'original", "autocast": "Distribution auto par locuteur", "pack": "Voix du pack", "funny": "Voix amusante", "fixed": "Durée fixe", "dynamic": "Durée naturelle" },
+  "remix": { "title": "Remix", "placeholder": "Th\u00e8me \u2014 p. ex. \u00ab th\u00e8me pirate \u00bb, \u00ab comme un JT \u00bb, \u00ab sarcastique \u00bb", "apply": "Appliquer le remix", "hint": "Gemma r\u00e9\u00e9crit tout le script selon votre th\u00e8me en gardant le timing. L\u2019export le redouble." },
   "export": { "title": "Exporter", "summary": "{{segments}} segments · {{speakers}} locuteurs · sous-titres {{lang}}", "proceed": "Exporter", "tweak": "Continuer l'édition", "beforeAfter": "Original ↔ Doublé" },
   "blur": { "title": "Flou", "on": "Couvrir le texte d'origine", "add": "Ajouter une zone", "frame": "Sur cette image", "all": "Toutes" },
   "compare": { "toggle": "Comparer", "original": "Original", "result": "Doublé" },
