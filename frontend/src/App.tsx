@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { api, type Project } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
+import PreviewCanvas from "./components/PreviewCanvas";
 
 function LanguageSwitcher() {
   const { i18n } = useTranslation();
@@ -38,12 +39,17 @@ function DropZone() {
 
   async function start(file: File) {
     s.setStage("analyzing");
-    const { project_id } = await api.createProject(file);
-    s.setPid(project_id);
-    const { job_id } = await api.analyze(project_id, "ru", "auto");
-    await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || ""); });
-    s.setProject(await api.getProject(project_id));
-    s.setStage("editor");
+    try {
+      const { project_id } = await api.createProject(file);
+      s.setPid(project_id);
+      const { job_id } = await api.analyze(project_id, "ru", "auto");
+      await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || ""); });
+      s.setProject(await api.getProject(project_id));
+      s.setStage("editor");
+    } catch (err) {
+      s.setProgress("error", String(err));  // surface backend failure instead of hanging on "analyzing"
+      s.setStage("empty");
+    }
   }
 
   return (
@@ -141,10 +147,9 @@ function Editor() {
           <div className="flex-1" />
           <button onClick={doExport} className="px-4 py-1.5 rounded-md bg-[var(--color-accent)] text-white text-sm font-medium">{t("export.proceed")}</button>
         </div>
-        <div className="flex-1 grid place-items-center bg-black/40 p-4">
-          {s.rendered
-            ? <video src={api.outputUrl(pid)} controls className="max-h-full max-w-full rounded-lg" />
-            : <img src={api.previewUrl(pid, scrub)} alt="preview" className="max-h-full max-w-full rounded-lg" />}
+        <div className="flex-1 min-h-0 p-2">
+          <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={s.rendered}
+            onChanged={async () => s.setProject(await api.getProject(pid))} />
         </div>
         <div className="px-4 py-2 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
           <input type="range" min={0} max={p.meta.duration || 1} step={0.1} value={scrub}

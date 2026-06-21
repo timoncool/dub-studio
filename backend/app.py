@@ -154,6 +154,8 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         edit_caption(p, edit.pop("seg_id", None), **edit)
     elif op == "blur":
         edit_blur(p, edit.pop("idx"), **edit)
+    elif op == "subpos":
+        p.captions.sub_y = int(edit["sub_y"])              # drag the subtitle band vertically
     elif op == "translate":
         translate(p, edit.get("lang", p.tgt_lang), edit.get("mode", "plain"))
     elif op == "rewrite":
