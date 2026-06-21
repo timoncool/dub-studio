@@ -7,16 +7,18 @@ import type Konva from "konva";
 import { api, type Project } from "../lib/api";
 import { useStore } from "../store";
 
-type Props = { pid: string; project: Project; scrub: number; rendered: boolean; onChanged: () => void };
+type Props = { pid: string; project: Project; scrub: number; rendered: boolean; onChanged: () => void;
+               lane?: "subs" | "blur" | "titles" };
 
-export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged }: Props) {
+export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged, lane }: Props) {
   const rev = useStore((s) => s.rev);
   const bump = useStore((s) => s.bump);
+  const sel = useStore((s) => s.selBlur);        // SHARED with the left blur list (click list <-> click canvas)
+  const setSel = useStore((s) => s.setSelBlur);
   const wrap = useRef<HTMLDivElement>(null);
   const trRef = useRef<Konva.Transformer>(null);
   const boxRefs = useRef<Record<number, Konva.Rect>>({});
   const [disp, setDisp] = useState({ w: 0, h: 0 });
-  const [sel, setSel] = useState<number | null>(null);
   const [guide, setGuide] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,10 +38,12 @@ export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged
   }, [vw, vh]);
 
   useEffect(() => {
-    if (sel != null && trRef.current && boxRefs.current[sel]) {
-      trRef.current.nodes([boxRefs.current[sel]]); trRef.current.getLayer()?.batchDraw();
+    const node = sel != null ? boxRefs.current[sel] : null;
+    const hidden = sel != null && (project.captions.blur_boxes || [])[sel]?.hidden;   // no resize handles on a disabled zone
+    if (node && !hidden && trRef.current) {
+      trRef.current.nodes([node]); trRef.current.getLayer()?.batchDraw();
     } else trRef.current?.nodes([]);
-  }, [sel, disp]);
+  }, [sel, disp, project]);
 
   async function patch(edit: Record<string, unknown>) {
     setBusy(true);
@@ -64,22 +68,29 @@ export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged
                     stroke="#c6f24e" dash={[6, 4]} draggable
                     dragBoundFunc={(p) => ({ x: 0, y: p.y })}
                     onDragEnd={(e) => patch({ op: "subpos", sub_y: Math.round((e.target.y() + 14) / sy) })} />
-              {/* blur boxes — drag + resize; drop -> PATCH edit_blur */}
-              {blurs.map((b, i) => (
-                <Rect key={i} ref={(n) => { if (n) boxRefs.current[i] = n; }}
-                      x={b.x * sx} y={b.y * sy} width={b.w * sx} height={b.h * sy}
-                      fill={sel === i ? "rgba(91,224,200,0.15)" : "rgba(255,255,255,0.05)"}
-                      stroke={sel === i ? "#5be0c8" : "#ffffff66"} strokeWidth={1} draggable
-                      onClick={() => setSel(i)} onTap={() => setSel(i)}
-                      onDragMove={(e) => setGuide(Math.abs(e.target.x() + (b.w * sx) / 2 - disp.w / 2) < 8 ? disp.w / 2 : null)}
-                      onDragEnd={(e) => { setGuide(null); patch({ op: "blur", idx: i, x: Math.round(e.target.x() / sx), y: Math.round(e.target.y() / sy) }); }}
-                      onTransformEnd={(e) => {
-                        const n = e.target; const w = Math.round((n.width() * n.scaleX()) / sx);
-                        const h = Math.round((n.height() * n.scaleY()) / sy);
-                        n.scaleX(1); n.scaleY(1);
-                        patch({ op: "blur", idx: i, x: Math.round(n.x() / sx), y: Math.round(n.y() / sy), w, h });
-                      }} />
-              ))}
+              {/* blur zones — ONLY in the BLUR lane; show those active on THIS frame; red = on, cyan = selected,
+                  dashed/dim = hidden (blur off). Click selects (synced with the left list via the store). */}
+              {lane === "blur" && blurs.map((b, i) => ({ b, i }))
+                .filter(({ b }) => scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4)
+                .map(({ b, i }) => {
+                  const on = sel === i, hid = !!b.hidden;
+                  return (
+                    <Rect key={i} ref={(n) => { if (n) boxRefs.current[i] = n; }}
+                          x={b.x * sx} y={b.y * sy} width={b.w * sx} height={b.h * sy}
+                          fill={hid ? "rgba(255,255,255,0.001)" : on ? "rgba(91,224,200,0.18)" : "rgba(255,86,86,0.16)"}
+                          stroke={on ? "#5be0c8" : hid ? "#ffffff66" : "#ff5656"} strokeWidth={on ? 2.5 : 2}
+                          dash={hid ? [6, 4] : undefined} draggable={!hid}
+                          onClick={() => setSel(i)} onTap={() => setSel(i)}
+                          onDragMove={(e) => setGuide(Math.abs(e.target.x() + (b.w * sx) / 2 - disp.w / 2) < 8 ? disp.w / 2 : null)}
+                          onDragEnd={(e) => { setGuide(null); patch({ op: "blur", idx: i, x: Math.round(e.target.x() / sx), y: Math.round(e.target.y() / sy) }); }}
+                          onTransformEnd={(e) => {
+                            const n = e.target; const w = Math.round((n.width() * n.scaleX()) / sx);
+                            const h = Math.round((n.height() * n.scaleY()) / sy);
+                            n.scaleX(1); n.scaleY(1);
+                            patch({ op: "blur", idx: i, x: Math.round(n.x() / sx), y: Math.round(n.y() / sy), w, h });
+                          }} />
+                  );
+                })}
               {guide != null && <Line points={[guide, 0, guide, disp.h]} stroke="#5be0c8" dash={[4, 4]} />}
               <Transformer ref={trRef} rotateEnabled={false} ignoreStroke
                            boundBoxFunc={(_, b) => ({ ...b, width: Math.max(20, b.width), height: Math.max(12, b.height) })} />

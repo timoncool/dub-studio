@@ -26,5 +26,11 @@ i18n.use(initReactI18next).init({
   interpolation: { escapeValue: false },
 });
 
+// Keep <html lang> in sync with the ACTIVE language. The static index.html ships lang="en", which made
+// Chrome treat the page as English (offering to "translate from English") even when the UI is Russian.
+const _applyHtmlLang = (l: string) => { try { document.documentElement.lang = l; } catch { /* SSR/no-DOM */ } };
+_applyHtmlLang(i18n.language);
+i18n.on("languageChanged", _applyHtmlLang);
+
 export const setLang = (l: Lang) => { localStorage.setItem("lang", l); i18n.changeLanguage(l); };
 export default i18n;

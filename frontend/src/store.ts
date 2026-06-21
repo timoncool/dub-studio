@@ -15,6 +15,7 @@ type State = {
   past: Project[];                  // undo/redo history of Project snapshots
   future: Project[];
   rev: number;                       // preview cache-buster: bumped on every backend-confirmed frame change
+  selBlur: number | null;            // selected blur-box index — SHARED between the left list and the canvas overlay
   setStage: (s: Stage) => void;
   setPid: (p: string | null) => void;
   setProject: (p: Project | null) => void;
@@ -27,6 +28,7 @@ type State = {
   undo: () => Project | null;        // returns the project to restore (PUT it) or null
   redo: () => Project | null;
   bump: () => void;                  // invalidate the rendered preview frame -> <img> refetches
+  setSelBlur: (i: number | null) => void;
 };
 
 export const useStore = create<State>((set, get) => ({
@@ -40,6 +42,7 @@ export const useStore = create<State>((set, get) => ({
   past: [],
   future: [],
   rev: 0,
+  selBlur: null,
   setStage: (stage) => set({ stage }),
   setPid: (pid) => set({ pid }),
   setProject: (project) => set({ project }),
@@ -62,4 +65,5 @@ export const useStore = create<State>((set, get) => ({
     return next;
   },
   bump: () => set((s) => ({ rev: s.rev + 1 })),
+  setSelBlur: (selBlur) => set({ selBlur }),
 }));

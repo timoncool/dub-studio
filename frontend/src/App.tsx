@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -294,6 +294,8 @@ function Editor() {
   const setProject = useStore((s) => s.setProject);
   const setRendered = useStore((s) => s.setRendered);
   const bump = useStore((s) => s.bump);
+  const selBlur = useStore((s) => s.selBlur);             // selected blur zone (shared with the canvas overlay)
+  const setSelBlur = useStore((s) => s.setSelBlur);
   const rendering = useStore((s) => s.rendering);
   const setRendering = useStore((s) => s.setRendering);
   const addExport = useStore((s) => s.addExport);
@@ -444,9 +446,13 @@ function Editor() {
                 {(p.captions.blur_boxes || []).map((b, i) => ({ b, i }))
                   .filter(({ b }) => blurAll || (scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4))
                   .map(({ b, i }) => (
-                    <div key={i} className="flex items-center justify-between mono text-[10px] text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 rounded px-2 py-1">
-                      <span>#{i + 1} · {b.w}×{b.h} · {fmtT(b.t0)}</span>
-                      <button onClick={() => branch("blur_del", { idx: i })} className="hover:text-[var(--color-warn)] transition-colors"><Trash2 size={12} /></button>
+                    <div key={i} onClick={() => setSelBlur(i)}
+                      className={`flex items-center gap-2 mono text-[10px] rounded px-2 py-1 cursor-pointer transition-colors ${selBlur === i ? "bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-[var(--color-text)] ring-1 ring-[var(--color-accent)]" : "text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 hover:text-[var(--color-text)]"} ${b.hidden ? "opacity-50" : ""}`}>
+                      <button onClick={(e) => { e.stopPropagation(); branch("blur", { idx: i, hidden: !b.hidden }); }}
+                        title={b.hidden ? t("blur.show") : t("blur.hide")}
+                        className="shrink-0 hover:text-[var(--color-accent)] transition-colors">{b.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
+                      <span className="flex-1 truncate">#{i + 1} · {b.w}×{b.h} · {fmtT(b.t0)}{b.hidden ? ` · ${t("blur.off")}` : ""}</span>
+                      <button onClick={(e) => { e.stopPropagation(); branch("blur_del", { idx: i }); }} className="shrink-0 hover:text-[var(--color-warn)] transition-colors"><Trash2 size={12} /></button>
                     </div>
                   ))}
                 {!(p.captions.blur_boxes || []).some((b) => blurAll || (scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4)) &&
@@ -477,10 +483,15 @@ function Editor() {
                     className={`text-[11px] font-bold px-2 py-0.5 rounded border transition-colors ${ti.bold ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-muted)]"}`}>{t("style.bold")}</button>
                   <button onClick={() => branch("title", { idx: i, italic: !ti.italic })}
                     className={`text-[11px] italic px-2 py-0.5 rounded border transition-colors ${ti.italic ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-muted)]"}`}>{t("style.italic")}</button>
+                  <button onClick={() => branch("title", { idx: i, uppercase: !ti.uppercase })} title={t("style.caps")}
+                    className={`text-[11px] font-semibold px-2 py-0.5 rounded border transition-colors ${ti.uppercase ? "border-[var(--color-accent)] text-[var(--color-accent)]" : "border-[var(--color-border)] text-[var(--color-muted)]"}`}>AA</button>
                   <input type="color" value={ti.color || "#FFFFFF"} onChange={(e) => branch("title", { idx: i, color: e.target.value })}
                     title={t("style.color")} className="w-7 h-6 rounded bg-transparent cursor-pointer border border-[var(--color-border)]" />
                   <input type="color" value={ti.outline || "#000000"} onChange={(e) => branch("title", { idx: i, outline: e.target.value })}
                     title={t("style.outline")} className="w-7 h-6 rounded bg-transparent cursor-pointer border border-dashed border-[var(--color-border)]" />
+                  <input key={`ow${i}-${ti.outline_w ?? "a"}`} type="number" min={0} max={20} defaultValue={ti.outline_w ?? undefined} placeholder={t("style.outlineW")} title={t("style.outlineWFull")}
+                    onBlur={(e) => branch("title", { idx: i, outline_w: e.target.value === "" ? null : parseInt(e.target.value) })}
+                    className="w-12 bg-[var(--color-surface-2)] border border-dashed border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none" />
                   <input key={`sz${i}-${ti.size_px ?? "a"}`} type="number" min={12} max={300} defaultValue={ti.size_px ?? undefined} placeholder="px" title={t("style.size")}
                     onBlur={(e) => branch("title", { idx: i, size_px: e.target.value ? parseInt(e.target.value) : null })}
                     className="w-12 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none" />
@@ -528,7 +539,7 @@ function Editor() {
               <ComparePane label={t("compare.result")} src={api.previewUrl(pid, scrub, rev)} />
             </div>
           ) : (
-            <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={rendered}
+            <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={rendered} lane={lane}
               onChanged={async () => setProject(await api.getProject(pid))} />
           )}
         </div>
@@ -576,6 +587,16 @@ function Editor() {
             <Row label={t("style.color")}>
               <input type="color" value={ss.color} onChange={(e) => branch("caption", { color: e.target.value })}
                 className="bg-transparent w-8 h-6 rounded cursor-pointer" />
+            </Row>
+            <Row label={t("style.outline")}>
+              <div className="flex items-center gap-1.5">
+                <input type="color" value={ss.outline || "#000000"} onChange={(e) => branch("caption", { outline: e.target.value })}
+                  title={t("style.outline")} className="bg-transparent w-8 h-6 rounded cursor-pointer" />
+                <input key={`sow-${ss.outline_w ?? "a"}`} type="number" min={0} max={20} defaultValue={ss.outline_w ?? undefined}
+                  placeholder={t("style.outlineW")} title={t("style.outlineWFull")}
+                  onBlur={(e) => branch("caption", { outline_w: e.target.value === "" ? null : parseInt(e.target.value) })}
+                  className="w-12 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none" />
+              </div>
             </Row>
             <div>
               <div className="flex items-center justify-between">
