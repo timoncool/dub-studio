@@ -59,6 +59,15 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
 function TopBar() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState(false);
+  const stage = useStore((s) => s.stage);
+  const setStage = useStore((s) => s.setStage);
+  const setPid = useStore((s) => s.setPid);
+  const setProject = useStore((s) => s.setProject);
+  // start over with a new video — the current project stays on disk (reachable via Recent), so no confirm needed
+  const newProject = () => {
+    setProject(null); setPid(null); setStage("empty");
+    try { history.replaceState(null, "", location.pathname); } catch { /* no-op */ }
+  };
   return (
     <header className="flex items-center justify-between px-5 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="flex items-center gap-3">
@@ -69,6 +78,12 @@ function TopBar() {
         <span className="text-sm text-[var(--color-muted)] hidden sm:inline">{t("app.tagline")}</span>
       </div>
       <div className="flex items-center gap-2">
+        {stage !== "empty" && (
+          <button onClick={newProject} title={t("nav.newHint")}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[13px] font-medium text-[var(--color-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors">
+            <Plus size={16} /><span className="hidden sm:inline">{t("nav.new")}</span>
+          </button>
+        )}
         <button onClick={() => setSettings(true)} title={t("settings.title")}
           className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"><Settings size={18} /></button>
         <LanguageSwitcher />

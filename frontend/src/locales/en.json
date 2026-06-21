@@ -28,6 +28,7 @@
   "titles": { "tab": "Titles", "add": "Custom title" },
   "preset": { "title": "Preset", "original": "Match original" },
   "files": { "title": "Files", "download": "Download", "open": "Open" },
+  "nav": { "new": "New", "newHint": "Start with a new video" },
   "settings": { "title": "Models", "asr": "Speech recognition", "llm": "Translation", "vision": "Vision", "tts": "Voice synthesis" },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }

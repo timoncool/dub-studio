@@ -28,6 +28,7 @@
   "titles": { "tab": "Títulos", "add": "Título propio" },
   "preset": { "title": "Preajuste", "original": "Como el original" },
   "files": { "title": "Archivos", "download": "Descargar", "open": "Abrir" },
+  "nav": { "new": "Nuevo", "newHint": "Empezar con un vídeo nuevo" },
   "settings": { "title": "Modelos", "asr": "Reconocimiento de voz", "llm": "Traducción", "vision": "Visión", "tts": "Síntesis de voz" },
   "common": { "undo": "Deshacer", "redo": "Rehacer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Listo", "error": "Error" }
 }
