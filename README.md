@@ -16,7 +16,7 @@ Smart auto‑defaults do the first pass; then you override **every caption, voic
 
 <sub>**[Releases](https://github.com/timoncool/dub-studio/releases)** · **[Packaging](PACKAGING.md)** · EN / RU / ZH / ES / PT / FR</sub>
 
-<img src="docs/before_after.png" width="640" alt="Before / after — English original vs Dub Studio Russian dub + localized captions"/>
+<img src="docs/screenshot.png" width="900" alt="Dub Studio live editor — side-by-side original ↔ dubbed compare, transcript lane, and the title/subtitle style panel"/>
 
 </div>
 
