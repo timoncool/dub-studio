@@ -29,9 +29,10 @@ export type Project = {
   render: { burn_cq: number; blur_sigma: number; blur: boolean; codec: string };
   work_dir?: string | null;
 };
+export type ModelStack = { asr: string; llm: string; vision: string; tts: string };
 export type Capabilities = {
   device: string; tts_quant: string; asr_model: string; ffmpeg: boolean;
-  languages: string[]; voice_modes: string[];
+  languages: string[]; voice_modes: string[]; models?: ModelStack;
 };
 export type JobEvent = { type: "progress" | "done" | "error"; stage?: string; pct?: number; msg?: string; result?: unknown; error?: string };
 
@@ -48,6 +49,8 @@ let _patchChain: Promise<unknown> = Promise.resolve();
 export const api = {
   capabilities: () => fetch(`${BASE}/engine/capabilities`).then(j<Capabilities>),
   fonts: () => fetch(`${BASE}/fonts`).then(j<{ fonts: Record<string, string> }>),
+  setOpts: (edit: Partial<ModelStack>) =>
+    fetch(`${BASE}/engine/opts`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) }).then(j<{ models: ModelStack }>),
   voices: () => fetch(`${BASE}/voices`).then(j<{ voices: string[] }>),
   presets: () => fetch(`${BASE}/presets`).then(j<{ presets: Record<string, Record<string, unknown>>; reveals: string[] }>),
   createProject: (file: File) => {

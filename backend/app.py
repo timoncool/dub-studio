@@ -110,12 +110,32 @@ def _enqueue(fn: Callable) -> str:
 
 
 # ---- endpoints ----
+def _model_stack():
+    return {"asr": str(OPTS.asr_model), "llm": str(OPTS.mt_model_path), "vision": str(OPTS.mmproj_path),
+            "tts": str(OPTS.tts_model)}
+
+
 @app.get("/engine/capabilities")
 async def capabilities():
     import shutil
     return {"device": OPTS.device, "tts_quant": OPTS.tts_quant, "asr_model": OPTS.asr_model,
+            "models": _model_stack(),                          # swappable model slots (ASR/LLM/vision/TTS)
             "ffmpeg": bool(shutil.which("ffmpeg")), "languages": ["en", "ru", "zh", "es", "pt", "fr"],
             "voice_modes": ["clone", "autocast", "auto", "voice"]}
+
+
+@app.patch("/engine/opts")
+async def set_opts(edit: dict = Body(...)):
+    """Swap a model slot at runtime (ASR/LLM/vision/TTS) — next analyze/export uses it (modularity groundwork)."""
+    if edit.get("asr"):
+        OPTS.asr_model = edit["asr"]
+    if edit.get("tts"):
+        OPTS.tts_model = edit["tts"]
+    if edit.get("llm"):
+        OPTS.mt_model_path = Path(edit["llm"])
+    if edit.get("vision"):
+        OPTS.mmproj_path = Path(edit["vision"])
+    return {"models": _model_stack()}
 
 
 @app.get("/fonts")

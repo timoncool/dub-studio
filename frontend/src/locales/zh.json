@@ -27,5 +27,6 @@
   "titles": { "tab": "标题", "add": "自定义标题" },
   "preset": { "title": "预设", "original": "匹配原版" },
   "files": { "title": "文件", "download": "下载", "open": "打开" },
+  "settings": { "title": "模型", "asr": "语音识别", "llm": "翻译", "vision": "视觉", "tts": "语音合成" },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }

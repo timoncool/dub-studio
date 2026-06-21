@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2 } from "lucide-react";
-import { api, type Project } from "./lib/api";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings } from "lucide-react";
+import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
 import PreviewCanvas from "./components/PreviewCanvas";
@@ -28,8 +28,37 @@ function LanguageSwitcher() {
   );
 }
 
+function SettingsModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const [cap, setCap] = useState<Capabilities | null>(null);
+  const [m, setM] = useState<ModelStack>({ asr: "", llm: "", vision: "", tts: "" });
+  useEffect(() => { api.capabilities().then((c) => { setCap(c); if (c.models) setM(c.models); }).catch(() => {}); }, []);
+  const SLOTS: [keyof ModelStack, string][] = [["asr", "ASR"], ["llm", "LLM"], ["vision", "Vision"], ["tts", "TTS"]];
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45" onClick={onClose}>
+      <div className="w-[min(92vw,580px)] rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.5)]" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <span className="font-semibold">{t("settings.title")}</span>
+          <button onClick={onClose} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={16} /></button>
+        </div>
+        <div className="mono text-[11px] text-[var(--color-muted)] mb-4">{cap ? `${cap.device} · ${cap.tts_quant}` : "…"}</div>
+        {SLOTS.map(([k, lbl]) => (
+          <div key={k} className="mb-2.5">
+            <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)] mb-1">{lbl} · {t(`settings.${k}`)}</div>
+            <input value={m[k]} onChange={(e) => setM({ ...m, [k]: e.target.value })}
+              className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-1.5 text-[12px] mono focus:border-[var(--color-accent)] focus:outline-none" />
+          </div>
+        ))}
+        <button onClick={async () => { await api.setOpts(m).catch(() => {}); onClose(); }}
+          className="mt-3 px-4 py-2 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold hover:brightness-105">{t("common.done")}</button>
+      </div>
+    </div>
+  );
+}
+
 function TopBar() {
   const { t } = useTranslation();
+  const [settings, setSettings] = useState(false);
   return (
     <header className="flex items-center justify-between px-5 h-14 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
       <div className="flex items-center gap-3">
@@ -39,7 +68,12 @@ function TopBar() {
         </span>
         <span className="text-sm text-[var(--color-muted)] hidden sm:inline">{t("app.tagline")}</span>
       </div>
-      <LanguageSwitcher />
+      <div className="flex items-center gap-2">
+        <button onClick={() => setSettings(true)} title={t("settings.title")}
+          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"><Settings size={18} /></button>
+        <LanguageSwitcher />
+      </div>
+      {settings && <SettingsModal onClose={() => setSettings(false)} />}
     </header>
   );
 }

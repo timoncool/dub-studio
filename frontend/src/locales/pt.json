@@ -27,5 +27,6 @@
   "titles": { "tab": "Títulos", "add": "Título próprio" },
   "preset": { "title": "Predefinição", "original": "Como o original" },
   "files": { "title": "Arquivos", "download": "Baixar", "open": "Abrir" },
+  "settings": { "title": "Modelos", "asr": "Reconhecimento de fala", "llm": "Tradução", "vision": "Visão", "tts": "Síntese de voz" },
   "common": { "undo": "Desfazer", "redo": "Refazer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Concluído", "error": "Erro" }
 }

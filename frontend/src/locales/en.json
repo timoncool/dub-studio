@@ -27,5 +27,6 @@
   "titles": { "tab": "Titles", "add": "Custom title" },
   "preset": { "title": "Preset", "original": "Match original" },
   "files": { "title": "Files", "download": "Download", "open": "Open" },
+  "settings": { "title": "Models", "asr": "Speech recognition", "llm": "Translation", "vision": "Vision", "tts": "Voice synthesis" },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }
