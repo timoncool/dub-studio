@@ -49,6 +49,23 @@ body::after {
 .anim-indeterminate { animation: indet 1.15s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
 @media (prefers-reduced-motion: reduce) { .anim-indeterminate { animation: none; width: 100% !important; opacity: 0.5; } }
 
+/* motion curves (blueprint named set: out=responses, in=exits, snap=toggles) */
+:root { --ease-out: cubic-bezier(0,0,0.2,1); --ease-in: cubic-bezier(0.4,0,1,1); --ease-snap: cubic-bezier(0.12,0,0.08,1); }
+
+/* floating chrome = GLASS (blueprint: only on floating UI — Cmd-K / modals / menus — NEVER over the playing preview).
+   solid tint scrim + one capped backdrop-filter layer; depth via hairline + drop, not heavy shadow stacks. */
+.glass-scrim { background: rgba(7, 8, 10, 0.55); backdrop-filter: blur(3px); }
+.glass-panel {
+  background: color-mix(in oklab, var(--color-overlay) 80%, transparent);
+  backdrop-filter: blur(22px) saturate(1.35);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 24px 70px rgba(0,0,0,0.55), inset 0 1px 0 var(--color-hairline);
+}
+@keyframes pop-in { from { opacity: 0; transform: translateY(6px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.anim-pop { animation: pop-in 0.2s var(--ease-out) both; }
+.anim-fade { animation: fade-in 0.16s var(--ease-out) both; }
+
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 6px; }
 ::-webkit-scrollbar-thumb:hover { background: #333843; }

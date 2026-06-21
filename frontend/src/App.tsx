@@ -35,8 +35,8 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   useEffect(() => { api.capabilities().then((c) => { setCap(c); if (c.models) setM(c.models); }).catch(() => {}); }, []);
   const SLOTS: [keyof ModelStack, string][] = [["asr", "ASR"], ["llm", "LLM"], ["vision", "Vision"], ["tts", "TTS"]];
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45" onClick={onClose}>
-      <div className="w-[min(92vw,580px)] rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] p-5 shadow-[0_20px_60px_rgba(0,0,0,0.5)]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 grid place-items-center glass-scrim anim-fade" onClick={onClose}>
+      <div className="w-[min(92vw,580px)] rounded-xl glass-panel anim-pop p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-1">
           <span className="font-semibold">{t("settings.title")}</span>
           <button onClick={onClose} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={16} /></button>
@@ -269,8 +269,8 @@ function CommandPalette({ commands }: { commands: { label: string; run: () => vo
   if (!open) return null;
   const filtered = commands.filter((c) => c.label.toLowerCase().includes(q.toLowerCase()));
   return (
-    <div className="fixed inset-0 z-50 grid place-items-start justify-center pt-[14vh] bg-black/40" onClick={() => setOpen(false)}>
-      <div className="w-[min(92vw,520px)] rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 grid place-items-start justify-center pt-[14vh] glass-scrim anim-fade" onClick={() => setOpen(false)}>
+      <div className="w-[min(92vw,520px)] rounded-xl glass-panel anim-pop overflow-hidden" onClick={(e) => e.stopPropagation()}>
         <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="⌘K  —  команды…"
           className="w-full bg-transparent px-4 py-3 text-[15px] border-b border-[var(--color-border)] focus:outline-none" />
         <div className="max-h-[50vh] overflow-y-auto p-1.5">
@@ -609,7 +609,7 @@ function FilesPanel() {
   return (
     <div className="fixed bottom-4 right-4 z-40 w-[min(90vw,340px)] flex flex-col items-end">
       {open && (
-        <div className="mb-2 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)]/95 shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden">
+        <div className="mb-2 w-full rounded-xl glass-panel anim-pop overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
             <span className="mono text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{t("files.title")}</span>
             <button onClick={() => setOpen(false)} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={14} /></button>
