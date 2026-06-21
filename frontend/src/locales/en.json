@@ -26,5 +26,6 @@
   "compare": { "toggle": "Compare", "original": "Original", "result": "Dubbed" },
   "titles": { "tab": "Titles", "add": "Custom title" },
   "preset": { "title": "Preset", "original": "Match original" },
+  "files": { "title": "Files", "download": "Download", "open": "Open" },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }

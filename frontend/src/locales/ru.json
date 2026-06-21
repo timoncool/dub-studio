@@ -26,5 +26,6 @@
   "compare": { "toggle": "Сравнить", "original": "Оригинал", "result": "Дубляж" },
   "titles": { "tab": "Тайтлы", "add": "Свой тайтл" },
   "preset": { "title": "Пресет", "original": "Как оригинал" },
+  "files": { "title": "Файлы", "download": "Скачать", "open": "Открыть" },
   "common": { "undo": "Отменить", "redo": "Повторить", "cancel": "Отмена", "language": "Язык", "theme": "Тема", "rendering": "Рендер", "done": "Готово", "error": "Ошибка" }
 }

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2 } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X } from "lucide-react";
 import { api, type Project } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -205,10 +205,11 @@ function Editor() {
   const rendered = useStore((s) => s.rendered);
   const setProject = useStore((s) => s.setProject);
   const setRendered = useStore((s) => s.setRendered);
-  const setProgress = useStore((s) => s.setProgress);
   const bump = useStore((s) => s.bump);
   const rendering = useStore((s) => s.rendering);
   const setRendering = useStore((s) => s.setRendering);
+  const addExport = useStore((s) => s.addExport);
+  const updateExport = useStore((s) => s.updateExport);
   const [scrub, setScrub] = useState(1.0);
   const [fonts, setFonts] = useState<Record<string, string>>({});
   const [voiceList, setVoiceList] = useState<string[]>([]);
@@ -239,12 +240,17 @@ function Editor() {
     bump();                                                          // style/voice/text change -> re-fetch the frame
   }
   async function doExport() {
+    const exId = `${pid}-${Date.now()}`;
+    const name = (p.meta.video || pid).split(/[\\/]/).pop() || pid;
+    addExport({ id: exId, name, status: "rendering", msg: t("common.rendering") });   // queue entry -> Files panel (no screen block)
     setRendering(true);
     try {
       const { job_id } = await api.render(pid);
-      setProgress("render", t("common.rendering"));
-      await api.watchJob(job_id, (e) => { if (e.type === "progress") setProgress(e.stage || "", e.msg || ""); });
+      await api.watchJob(job_id, (e) => { if (e.type === "progress") updateExport(exId, { msg: e.msg || "" }); });
+      updateExport(exId, { status: "done", msg: "", url: api.outputUrl(pid) });
       setRendered(true);
+    } catch (err) {
+      updateExport(exId, { status: "error", msg: String(err) });
     } finally { setRendering(false); }
   }
 
@@ -461,23 +467,54 @@ function Editor() {
   );
 }
 
-function ExportOverlay() {
+// Non-blocking export queue: a floating Files panel (bottom-right). You keep editing while renders run; each
+// finished file gets Download + Open. Subscribes only to `exports`, so it repaints independently of the editor.
+function FilesPanel() {
   const { t } = useTranslation();
-  const rendering = useStore((s) => s.rendering);   // dedicated subscriber: progress ticks repaint ONLY this overlay
-  const msg = useStore((s) => s.progress.msg);
-  if (!rendering) return null;
+  const exports = useStore((s) => s.exports);
+  const [open, setOpen] = useState(true);
+  if (!exports.length) return null;
+  const active = exports.filter((e) => e.status === "rendering").length;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/55 backdrop-blur-sm">
-      <div className="w-[min(92vw,440px)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-overlay)]/95 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.5)]">
-        <div className="flex items-center gap-2.5">
-          <Loader2 size={18} className="animate-spin text-[var(--color-accent)]" />
-          <span className="font-semibold">{t("export.title")}</span>
+    <div className="fixed bottom-4 right-4 z-40 w-[min(90vw,340px)] flex flex-col items-end">
+      {open && (
+        <div className="mb-2 w-full rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)]/95 shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)]">
+            <span className="mono text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{t("files.title")}</span>
+            <button onClick={() => setOpen(false)} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={14} /></button>
+          </div>
+          <div className="max-h-[52vh] overflow-y-auto p-2 space-y-1.5">
+            {exports.map((e) => (
+              <div key={e.id} className="rounded-lg bg-[var(--color-surface-2)]/60 p-2.5">
+                <div className="flex items-center gap-2">
+                  {e.status === "rendering" ? <Loader2 size={14} className="animate-spin text-[var(--color-accent)] shrink-0" />
+                    : e.status === "error" ? <span className="text-[var(--color-warn)] shrink-0 font-bold">!</span>
+                    : <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)] shrink-0" />}
+                  <span className="text-[13px] truncate flex-1">{e.name}</span>
+                </div>
+                {e.status === "rendering" && (
+                  <>
+                    <div className="mt-1.5 h-1 w-full rounded-full bg-[var(--color-surface-2)] overflow-hidden"><div className="h-full w-1/3 rounded-full bg-[var(--color-accent)] anim-indeterminate" /></div>
+                    <div className="mt-1 mono text-[10px] text-[var(--color-muted)] truncate">{e.msg}</div>
+                  </>
+                )}
+                {e.status === "done" && e.url && (
+                  <div className="mt-2 flex gap-1.5">
+                    <a href={`${e.url}?dl=1`} className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] py-1 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold"><Download size={13} /> {t("files.download")}</a>
+                    <a href={e.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"><ExternalLink size={13} /> {t("files.open")}</a>
+                  </div>
+                )}
+                {e.status === "error" && <div className="mt-1 mono text-[10px] text-[var(--color-warn)] truncate">{e.msg}</div>}
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="mt-4 h-1.5 w-full rounded-full bg-[var(--color-surface-2)] overflow-hidden">
-          <div className="h-full w-1/3 rounded-full bg-[var(--color-accent)] anim-indeterminate" />
-        </div>
-        <div className="mt-3 mono text-[11px] text-[var(--color-muted)] min-h-4 truncate">{msg || t("common.rendering")}</div>
-      </div>
+      )}
+      <button onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[var(--color-overlay)] border border-[var(--color-border)] shadow-lg text-[13px] hover:border-[#3a414c] transition-colors">
+        {active ? <Loader2 size={15} className="animate-spin text-[var(--color-accent)]" /> : <FolderDown size={15} className="text-[var(--color-accent)]" />}
+        {t("files.title")} <span className="mono text-[11px] text-[var(--color-muted)]">{exports.length}</span>
+      </button>
     </div>
   );
 }
@@ -503,7 +540,7 @@ export default function App() {
       <footer className="mono h-6 px-4 flex items-center gap-2 text-[10px] text-[var(--color-muted)] border-t border-[var(--color-border)] bg-[var(--color-surface)]">
         <span className="w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />{cap}
       </footer>
-      <ExportOverlay />
+      <FilesPanel />
     </div>
   );
 }

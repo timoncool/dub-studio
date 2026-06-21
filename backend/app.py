@@ -287,11 +287,13 @@ async def render_project(pid: str):
 
 
 @app.get("/projects/{pid}/output")
-async def output(pid: str):
+async def output(pid: str, dl: int = 0):
     f = _proj_dir(pid) / "output.mp4"
     if not f.exists():
         raise HTTPException(404, "not rendered")
-    return FileResponse(str(f), media_type="video/mp4")    # Starlette serves Range for <video> seek
+    if dl:                                                  # Download button -> Content-Disposition attachment
+        return FileResponse(str(f), media_type="video/mp4", filename=f"{pid}_dub.mp4")
+    return FileResponse(str(f), media_type="video/mp4")    # Starlette serves Range for <video> seek / Open
 
 
 @app.get("/jobs/{job_id}/events")

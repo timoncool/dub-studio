@@ -26,5 +26,6 @@
   "compare": { "toggle": "Comparer", "original": "Original", "result": "Doublé" },
   "titles": { "tab": "Titres", "add": "Titre perso" },
   "preset": { "title": "Préréglage", "original": "Comme l'original" },
+  "files": { "title": "Fichiers", "download": "Télécharger", "open": "Ouvrir" },
   "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
 }
