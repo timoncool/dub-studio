@@ -98,17 +98,18 @@ REM     The core pipeline runs WITHOUT it (falls back to single-speaker).
 REM     NeMo on Windows is finicky; if this step fails, Dub Studio still works.
 REM ============================================================
 echo [7/8] Sortformer sub-venv (optional, multi-speaker diarization)...
-if not exist ".venv-sortformer\Scripts\python.exe" (
-    python\python.exe -m pip install virtualenv --no-warn-script-location
-    python\python.exe -m virtualenv ".venv-sortformer" 2>nul
-    if exist ".venv-sortformer\Scripts\python.exe" (
-        .venv-sortformer\Scripts\python.exe -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
-        .venv-sortformer\Scripts\python.exe -m pip install "nemo_toolkit[asr]" "cuda-python>=12.3"
-        echo [OK] Sortformer sub-venv ready
-    ) else (
-        echo   SKIP: could not create sub-venv; multi-speaker diarization disabled (single-speaker fallback).
-    )
-) else ( echo [OK] Sortformer sub-venv present )
+set "SF_PY=%SCRIPT_DIR%.venv-sortformer\Scripts\python.exe"
+if exist "%SF_PY%" goto :sf_done
+python\python.exe -m pip install virtualenv --no-warn-script-location
+python\python.exe -m virtualenv ".venv-sortformer"
+if not exist "%SF_PY%" goto :sf_skip
+"%SF_PY%" -m pip install torch==2.8.0 torchaudio==2.8.0 --index-url https://download.pytorch.org/whl/cu128
+"%SF_PY%" -m pip install "nemo_toolkit[asr]" "cuda-python>=12.3"
+echo [OK] Sortformer sub-venv ready
+goto :sf_done
+:sf_skip
+echo   SKIP: sub-venv not created; multi-speaker diarization off ^(single-speaker fallback^).
+:sf_done
 
 REM ============================================================
 REM  8) ffmpeg (NVENC) + Node + build the SPA
