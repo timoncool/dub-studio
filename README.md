@@ -15,7 +15,9 @@
 
 Smart auto‑defaults do the first pass; then you override **every caption, voice, blur box, font & title** with instant preview. Runs on your own GPU. No subscription, no uploads.
 
-<sub>**[Releases](https://github.com/timoncool/dub-studio/releases)** · **[Packaging](PACKAGING.md)** · EN / RU / ZH / ES / PT / FR</sub>
+<sub>**[Releases](https://github.com/timoncool/dub-studio/releases)** · **[Packaging](PACKAGING.md)** · dubs into EN / RU / ZH / ES / PT / FR</sub>
+
+**English** · **[Русский](README_RU.md)**
 
 <img src="docs/screenshot.png" width="900" alt="Dub Studio live editor — side-by-side original ↔ dubbed compare, transcript lane, and the title/subtitle style panel"/>
 
@@ -126,6 +128,16 @@ The app is open‑source; bundled models keep their own licenses (audited before
 ---
 
 > **If this is useful, drop a ⭐ — it helps others find the project and keeps it moving.**
+
+## Support the Author
+
+I build open-source software and do AI research. Most of what I create is free and available to everyone. Your donations help me keep creating without worrying about where the next meal comes from =)
+
+**[All donation methods](DONATE.md)** | **[dalink.to/nerual_dreming](https://dalink.to/nerual_dreming)** | **[boosty.to/neuro_art](https://boosty.to/neuro_art)**
+
+- **BTC:** `1E7dHL22RpyhJGVpcvKdbyZgksSYkYeEBC`
+- **ETH (ERC20):** `0xb5db65adf478983186d4897ba92fe2c25c594a0c`
+- **USDT (TRC20):** `TQST9Lp2TjK6FiVkn4fwfGUee7NmkxEE7C`
 
 ## Star History
 
