@@ -25,7 +25,7 @@ from dubengine import (EngineOpts, Project, add_blur, add_title, analyze, del_bl
                        rewrite, set_mode, source_frame, translate)
 from dubengine import captions as _captions  # noqa: E402  (font catalog for the editor)
 from dubengine import voices as _voices  # noqa: E402  (voice-pack catalog for the editor)
-from dubengine import translate as _translate  # noqa: E402  (creative rewrite/remix on a theme)
+from dubengine.translate import rewrite as _seg_rewrite  # noqa: E402  (creative remix; submodule, NOT the api.translate fn)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -209,7 +209,7 @@ async def remix_project(pid: str, instruction: str = ""):
             raise RuntimeError("no transcript to remix — analyze first")
         progress({"msg": f"Gemma remixing {len(segs)} lines → {instruction[:60]}"})
         n_gpu = -1 if OPTS.device == "cuda" else 0
-        _translate.rewrite(segs, instruction, "auto", p.tgt_lang, OPTS.mt_model_path, n_gpu_layers=n_gpu)
+        _seg_rewrite(segs, instruction, "auto", p.tgt_lang, OPTS.mt_model_path, n_gpu_layers=n_gpu)
         tj.write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
         for i, s in enumerate(p.segments):                 # map rewritten tgt back (same order); mark dirty
             if i < len(segs) and (segs[i].get("tgt") or "").strip():
