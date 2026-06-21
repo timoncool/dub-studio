@@ -61,7 +61,12 @@ set KMP_DUPLICATE_LIB_OK=TRUE
 - ✅ Single‑process serving (FastAPI mounts `frontend\dist`, SPA deep‑link fallback, API not shadowed).
 - ✅ `run.bat` (env isolation + uvicorn + browser), `requirements.txt` (thin), `vite base:'./'`,
   API base same‑origin in production.
-- ⏳ `install.bat` (GPU menu + embed Python + torch + **engine ML stack per the recipe** + build).
-- ⏳ First‑run model‑download UI; bundle Cyrillic caption fonts for ffmpeg fontsdir.
-- ⏳ GitHub Actions per‑GPU build → `gh release` (archives + checksums); SmartScreen note in README.
+- ✅ `install.bat` + `requirements-engine.txt` — WRITTEN with the PROVEN cu128/cp311 pins (torch 2.8.0+cu128,
+  llama‑cpp JamePeng wheel, triton‑windows 3.7, onnxruntime‑gpu 1.26, audio‑separator/rapidocr/resemblyzer…),
+  embeddable Python 3.11 + `._pth`, Python.h via dev.msi, ffmpeg NVENC, Node + `vite build`. ⚠️ NOT yet run on a
+  clean machine — needs a real-hardware validation pass. Sortformer (NeMo) sub‑venv is best‑effort/optional
+  (core pipeline degrades to single‑speaker if it fails); embeddable‑Python + NeMo sub‑venv is the fragile bit.
+- ⏳ First‑run model‑download UI (Gemma GGUF + mmproj, Parakeet, Qwen3‑TTS, Sortformer); bundle Cyrillic caption
+  fonts for the ffmpeg fontsdir (preview==burn).
+- ⏳ GitHub Actions build → `gh release` (archive + checksums); SmartScreen note in README.
 - ⏳ Optional pywebview desktop window (browser tab is the working fallback).
