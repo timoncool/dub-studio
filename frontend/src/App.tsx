@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -331,7 +331,17 @@ function Editor() {
   const [lane, setLane] = useState<"subs" | "blur" | "titles">("subs"); // left lane: which object type to edit
   const [blurAll, setBlurAll] = useState(false);                      // blur: only active-on-frame vs all zones
   const [compare, setCompare] = useState(false);                      // before/after split preview (Topaz-style)
-  const [play, setPlay] = useState(false);                            // play the dubbed video (frames + dub audio) in-editor
+  const [play, setPlay] = useState(false);                            // dub playback: play TTS audio + advance preview frames + playhead
+  const audioRef = useRef<HTMLAudioElement>(null);
+  // Dub playback — drive the EDITOR preview from the dub audio track (no video element): the preview frame and the
+  // waveform playhead follow audio.currentTime, so you hear the dub while the future result plays frame-by-frame.
+  useEffect(() => {
+    const a = audioRef.current; if (!a) return;
+    if (!play) { a.pause(); return; }
+    a.currentTime = scrub; setRendered(false); a.play().catch(() => {});
+    const id = window.setInterval(() => setScrub(a.currentTime), 200);
+    return () => window.clearInterval(id);
+  }, [play]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [remixText, setRemixText] = useState("");                     // funny-remix theme/instruction for Gemma
   const [remixing, setRemixing] = useState(false);
   const ss = p.captions.sub_style;
@@ -549,10 +559,7 @@ function Editor() {
           </button>
         </div>
         <div className="flex-1 min-h-0 p-3 overflow-hidden">
-          {play ? (
-            <video src={api.dubUrl(pid, rev)} controls autoPlay
-              className="w-full h-full object-contain rounded-xl bg-black" />
-          ) : compare ? (
+          {compare ? (
             <div className="w-full h-full grid grid-cols-2 gap-2 min-h-0">
               <ComparePane label={t("compare.original")} src={api.originalUrl(pid, scrub)} />
               <ComparePane label={t("compare.result")} src={api.previewUrl(pid, scrub, rev)} />
@@ -565,8 +572,9 @@ function Editor() {
         <div className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
           <button onClick={() => setPlay((v) => !v)} title={t("play.dub")}
             className={`shrink-0 p-1.5 rounded-md transition-colors ${play ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
-            <Play size={15} />
+            {play ? <Pause size={15} /> : <Play size={15} />}
           </button>
+          <audio ref={audioRef} src={api.dubUrl(pid)} onEnded={() => setPlay(false)} preload="auto" className="hidden" />
           <button onClick={() => setCompare((c) => !c)} title={t("compare.toggle")}
             className={`shrink-0 p-1.5 rounded-md transition-colors ${compare ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
             <Columns2 size={15} />
@@ -574,7 +582,7 @@ function Editor() {
           <span className="mono text-[11px] tabnum w-24 shrink-0"><span className="text-[var(--color-accent)] font-semibold">{fmtT(scrub)}</span><span className="text-[var(--color-muted)]"> / {fmtT(p.meta.duration || 0)}</span></span>
           <div className="flex-1 min-w-0">
             <WaveformTimeline pid={pid} duration={p.meta.duration || 0} scrub={scrub} segments={p.segments}
-              onSeek={(t) => { setRendered(false); setScrub(t); }} />
+              onSeek={(t) => { setRendered(false); setScrub(t); if (audioRef.current) audioRef.current.currentTime = t; }} />
           </div>
         </div>
       </main>
