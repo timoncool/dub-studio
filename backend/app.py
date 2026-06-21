@@ -8,6 +8,7 @@ Run:  KMP_DUPLICATE_LIB_OK=TRUE <venv>/python -m uvicorn backend.app:app --port 
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
 import os
 import sys
@@ -35,6 +36,14 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKSPACE = ROOT / "workspace"
 WORKSPACE.mkdir(exist_ok=True)
 OPTS = EngineOpts()
+
+
+def _snap_opts() -> EngineOpts:
+    """Atomic snapshot of the global OPTS, taken on the event loop at job-enqueue time. The GPU job
+    (worker thread) reads THIS stable copy — never the live global — so a concurrent PATCH /engine/opts
+    can't half-swap the model stack mid-job (mismatched GGUF/mmproj). Fields are immutable scalars/Paths,
+    so a shallow copy is a fully independent, internally-consistent set."""
+    return copy.copy(OPTS)
 
 # ---- single GPU worker + job registry (created on the event loop in lifespan) ----
 _loop: Optional[asyncio.AbstractEventLoop] = None
@@ -181,9 +190,10 @@ async def create_project(file: UploadFile):
 async def analyze_project(pid: str, tgt_lang: str = "en", mode: str = "auto", src_lang: str = "auto"):
     src = (_proj_dir(pid) / "source.txt").read_text(encoding="utf-8").strip()
     wd = str(_proj_dir(pid))
+    opts = _snap_opts()                                    # capture model stack now; immune to a mid-job PATCH /engine/opts
 
     def job(progress):
-        proj, out = analyze(src, OPTS, tgt_lang=tgt_lang, work_dir=wd, mode=mode, src_lang=src_lang, progress=progress)
+        proj, out = analyze(src, opts, tgt_lang=tgt_lang, work_dir=wd, mode=mode, src_lang=src_lang, progress=progress)
         proj.save(Path(wd) / "project.json")
         return {"project_id": pid, "output": out}
     return {"job_id": _enqueue(job)}
@@ -198,6 +208,7 @@ async def remix_project(pid: str, instruction: str = ""):
         raise HTTPException(400, "empty remix instruction")
     wd = _proj_dir(pid)
     tj = wd / "transcript.json"
+    opts = _snap_opts()                                    # stable model stack for this remix
 
     def job(progress):
         p = _load(pid)
@@ -208,8 +219,8 @@ async def remix_project(pid: str, instruction: str = ""):
         if not segs:
             raise RuntimeError("no transcript to remix — analyze first")
         progress({"msg": f"Gemma remixing {len(segs)} lines → {instruction[:60]}"})
-        n_gpu = -1 if OPTS.device == "cuda" else 0
-        _seg_rewrite(segs, instruction, "auto", p.tgt_lang, OPTS.mt_model_path, n_gpu_layers=n_gpu)
+        n_gpu = -1 if opts.device == "cuda" else 0
+        _seg_rewrite(segs, instruction, "auto", p.tgt_lang, opts.mt_model_path, n_gpu_layers=n_gpu)
         tj.write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
         for i, s in enumerate(p.segments):                 # map rewritten tgt back (same order); mark dirty
             if i < len(segs) and (segs[i].get("tgt") or "").strip():
@@ -333,9 +344,10 @@ async def put_project(pid: str, body: dict = Body(...)):
 @app.get("/projects/{pid}/preview")
 async def preview(pid: str, t: float = 0.0, rev: int = 0):  # rev = client cache-buster (unused server-side)
     p = _load(pid)                                          # raises 409 if not analyzed yet
+    opts = _snap_opts()
 
     def job(progress):
-        return preview_frame(p, t, OPTS, progress)
+        return preview_frame(p, t, opts, progress)
     job_id = _enqueue(job)                                  # serialized through the GPU worker
     try:
         png = await asyncio.wait_for(JOBS[job_id]["future"], timeout=300)
@@ -349,9 +361,10 @@ async def preview(pid: str, t: float = 0.0, rev: int = 0):  # rev = client cache
 @app.get("/projects/{pid}/original")
 async def original(pid: str, t: float = 0.0):
     p = _load(pid)
+    opts = _snap_opts()
 
     def job(progress):
-        return source_frame(p, t, OPTS, progress)
+        return source_frame(p, t, opts, progress)
     job_id = _enqueue(job)
     try:
         png = await asyncio.wait_for(JOBS[job_id]["future"], timeout=60)
@@ -366,11 +379,12 @@ async def original(pid: str, t: float = 0.0):
 async def render_project(pid: str):
     wd = _proj_dir(pid)
     out = str(wd / "output.mp4")
+    opts = _snap_opts()                                    # stable model stack for this export
 
     def job(progress):
         proj = Project.load(wd / "project.json")
         regen = any(getattr(s, "dirty", False) for s in proj.segments)   # voice/text/rewrite edited -> re-synth dub
-        render(proj, out, OPTS, progress=progress, regen_dub=regen)
+        render(proj, out, opts, progress=progress, regen_dub=regen)
         if regen:                                                        # edits baked into the dub -> clear dirty,
             baked = {s.id: s.tgt_text for s in proj.segments}            # but re-load so edits made DURING the long
             cur = Project.load(wd / "project.json")                      # render aren't clobbered by this stale save
