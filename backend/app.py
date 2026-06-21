@@ -267,7 +267,13 @@ async def render_project(pid: str):
     out = str(wd / "output.mp4")
 
     def job(progress):
-        render(Project.load(wd / "project.json"), out, OPTS, progress=progress)
+        proj = Project.load(wd / "project.json")
+        regen = any(getattr(s, "dirty", False) for s in proj.segments)   # voice/text/rewrite edited -> re-synth dub
+        render(proj, out, OPTS, progress=progress, regen_dub=regen)
+        if regen:                                                        # edits now baked into the dub -> clear dirty
+            for s in proj.segments:
+                s.dirty = False
+            proj.save(wd / "project.json")
         return {"output": out}
     return {"job_id": _enqueue(job)}
 
