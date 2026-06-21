@@ -45,7 +45,15 @@ Russian original (left) → dubbed into English by Dub Studio (right) — voice 
 
 | Original — RU | Dubbed to English |
 |:--:|:--:|
-| https://github.com/timoncool/dub-studio/raw/master/docs/example_original.mp4 | https://github.com/timoncool/dub-studio/raw/master/docs/example_dub.mp4 |
+| https://github.com/user-attachments/assets/f1e1046f-7f65-445e-ae15-cd6cc6cf2db2 | https://github.com/user-attachments/assets/a7a72493-0e25-4d37-acc1-e28998355cfe |
+
+
+
+
+
+
+
+
 
 ## Features
 
