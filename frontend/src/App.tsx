@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions } from "lucide-react";
 import { api, type Project } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -167,15 +167,6 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick: (
   );
 }
 
-function BranchBtn({ icon: Icon, label, onClick }: { icon: typeof Languages; label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick}
-      className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:border-[#3a414c] transition-colors">
-      <Icon size={15} /> {label}
-    </button>
-  );
-}
-
 function Editor() {
   const { t } = useTranslation();
   const p = useStore((s) => s.project) as Project;        // subscribe ONLY to what we render -> no re-render on
@@ -215,6 +206,8 @@ function Editor() {
 
   const isActive = (seg: Project["segments"][number]) => scrub >= seg.start && scrub < seg.end;
   const activeId = p.segments.find(isActive)?.id;
+  const mode = p.audio.rewrite ? "funny" : (p.mode === "nodub" ? "subtitles" : "dub");   // derived output mode
+  const MODES = [["subtitles", Captions], ["dub", AudioLines], ["funny", Sparkles]] as const;
   const activeRef = useRef<HTMLDivElement>(null);
   useEffect(() => { activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [activeId]);
   return (
@@ -245,13 +238,19 @@ function Editor() {
       </aside>
 
       <main className="flex flex-col min-w-0 min-h-0">
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
-          <BranchBtn icon={Languages} label={t("actions.translate")} onClick={() => branch("translate", { lang: p.tgt_lang })} />
-          <BranchBtn icon={AudioLines} label={t("actions.dub")} onClick={() => branch("recast", { voice_mode: "clone" })} />
-          <BranchBtn icon={Sparkles} label={t("actions.funny")} onClick={() => branch("rewrite", { instruction: "make it a funny, playful dub" })} />
+        <div className="flex items-center gap-3 px-4 py-2.5 border-b border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div className="inline-flex rounded-lg bg-[var(--color-surface-2)] p-0.5 border border-[var(--color-border)] shrink-0">
+            {MODES.map(([k, Ic]) => (
+              <button key={k} onClick={() => branch("mode", { value: k })}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[13px] transition-colors ${mode === k ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+                <Ic size={15} /> {t(`mode.${k}`)}
+              </button>
+            ))}
+          </div>
+          <span className="text-[12px] text-[var(--color-muted)] truncate hidden xl:inline">{t(`mode.${mode}_desc`)}</span>
           <div className="flex-1" />
           <button onClick={doExport} disabled={rendering}
-            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-70 hover:brightness-105 transition">
+            className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-70 hover:brightness-105 transition shrink-0">
             {rendering ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}{t("export.proceed")}
           </button>
         </div>
@@ -280,13 +279,17 @@ function Editor() {
             </Row>
           </div>
         )}
-        <div className="mt-6"><SectionLabel>{t("editor.voice")}</SectionLabel></div>
-        <select value={p.audio.voice.mode} onChange={(e) => branch("recast", { voice_mode: e.target.value })}
-          className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
-          <option value="clone">{t("voice.clone")}</option>
-          <option value="autocast">{t("voice.autocast")}</option>
-          <option value="voice">{t("voice.pack")}</option>
-        </select>
+        {mode !== "subtitles" && (
+          <>
+            <div className="mt-6"><SectionLabel>{t("editor.voice")}</SectionLabel></div>
+            <select value={p.audio.voice.mode} onChange={(e) => branch("recast", { voice_mode: e.target.value })}
+              className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+              <option value="clone">{t("voice.clone")}</option>
+              <option value="autocast">{t("voice.autocast")}</option>
+              <option value="voice">{t("voice.pack")}</option>
+            </select>
+          </>
+        )}
 
         <div className="mt-6 flex items-center justify-between">
           <SectionLabel>{t("blur.title")}</SectionLabel>

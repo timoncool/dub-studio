@@ -21,7 +21,8 @@ import torch  # noqa: F401,E402  before llama_cpp (engine loads it lazily)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dub-engine"))
 from dubengine import (EngineOpts, Project, add_blur, analyze, del_blur, edit_blur,  # noqa: E402
-                       edit_caption, edit_segment, preview_frame, recast, render, rewrite, translate)
+                       edit_caption, edit_segment, preview_frame, recast, render, rewrite,
+                       set_mode, translate)
 
 from fastapi import Body, FastAPI, HTTPException, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
@@ -180,6 +181,11 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         p.render.blur = bool(edit.get("on", True))             # global blur on/off
     elif op == "subpos":
         p.captions.sub_y = int(edit["sub_y"])              # drag the subtitle band vertically
+    elif op == "mode":
+        try:
+            set_mode(p, edit.get("value", ""))
+        except ValueError as e:
+            raise HTTPException(400, str(e))
     elif op == "translate":
         translate(p, edit.get("lang", p.tgt_lang), edit.get("mode", "plain"))
     elif op == "rewrite":

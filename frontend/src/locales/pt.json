@@ -17,6 +17,7 @@
     "cancel": "Cancelar"
   },
   "editor": { "transcript": "Transcrição", "style": "Estilo", "voice": "Voz", "preview": "Pré-visualização", "timeline": "Linha do tempo" },
+  "mode": { "subtitles": "Legendas", "dub": "Dublagem", "funny": "Engraçado", "subtitles_desc": "Áudio original + legendas traduzidas", "dub_desc": "Redublado no idioma de destino", "funny_desc": "Gemma reescreve o roteiro e redubla" },
   "actions": { "translate": "Traduzir", "dub": "Dublagem completa", "funny": "Remix engraçado", "dubFile": "Dublar arquivo" },
   "style": { "font": "Fonte", "size": "Tamanho", "color": "Cor", "outline": "Contorno", "bold": "Negrito", "italic": "Itálico", "caps": "MAIÚSCULAS", "plate": "Placa", "resetAuto": "Redefinir para auto", "resetGlobal": "Redefinir para global" },
   "voice": { "clone": "Clonar original", "autocast": "Elenco automático por falante", "pack": "Voz do pacote", "funny": "Voz engraçada", "fixed": "Duração fixa", "dynamic": "Duração natural" },
