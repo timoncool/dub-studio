@@ -60,17 +60,19 @@ function Feature({ icon: Icon, title, desc, delay }: { icon: typeof Languages; t
 }
 
 function DropZone() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const s = useStore();
   const inputRef = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
+  const [tgt, setTgt] = useState<string>((i18n.language as string) || "ru");   // translate TO (default = UI lang)
+  const [src, setSrc] = useState("auto");                                       // translate FROM (auto-detect)
 
   async function start(file: File) {
     s.setStage("analyzing");
     try {
       const { project_id } = await api.createProject(file);
       s.setPid(project_id);
-      const { job_id } = await api.analyze(project_id, "ru", "auto");
+      const { job_id } = await api.analyze(project_id, tgt, "auto", src);
       await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || ""); });
       s.setProject(await api.getProject(project_id));
       s.setStage("editor");
@@ -125,7 +127,20 @@ function DropZone() {
               </span>
             </div>
           </div>
-          <div className="mt-3.5 flex items-center justify-center gap-2 text-[12px] text-[var(--color-muted)]">
+          <div className="mt-3.5 flex items-center justify-center gap-2 text-[12px]">
+            <Languages size={14} className="text-[var(--color-accent-2)]" />
+            <select value={src} onChange={(e) => setSrc(e.target.value)}
+              className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[11px] text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none">
+              <option value="auto">auto</option>
+              {LANGS.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+            </select>
+            <ArrowRight size={12} className="text-[var(--color-muted)]" />
+            <select value={tgt} onChange={(e) => setTgt(e.target.value)}
+              className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1.5 py-0.5 text-[11px] text-[var(--color-text)] focus:border-[var(--color-accent)] focus:outline-none">
+              {LANGS.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+            </select>
+          </div>
+          <div className="mt-2 flex items-center justify-center gap-2 text-[12px] text-[var(--color-muted)]">
             <ShieldCheck size={14} className="text-[var(--color-accent-2)]" /> {t("hero.formats")}
           </div>
         </motion.div>
