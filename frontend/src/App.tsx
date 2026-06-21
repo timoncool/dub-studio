@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2 } from "lucide-react";
 import { api, type Project } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -197,6 +197,35 @@ function ComparePane({ label, src }: { label: string; src: string }) {
   );
 }
 
+function CommandPalette({ commands }: { commands: { label: string; run: () => void }[] }) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  useEffect(() => {
+    const h = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); setOpen((o) => !o); setQ(""); }
+      else if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", h); return () => window.removeEventListener("keydown", h);
+  }, []);
+  if (!open) return null;
+  const filtered = commands.filter((c) => c.label.toLowerCase().includes(q.toLowerCase()));
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-start justify-center pt-[14vh] bg-black/40" onClick={() => setOpen(false)}>
+      <div className="w-[min(92vw,520px)] rounded-xl border border-[var(--color-border)] bg-[var(--color-overlay)] shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="⌘K  —  команды…"
+          className="w-full bg-transparent px-4 py-3 text-[15px] border-b border-[var(--color-border)] focus:outline-none" />
+        <div className="max-h-[50vh] overflow-y-auto p-1.5">
+          {filtered.map((c, i) => (
+            <button key={i} onClick={() => { c.run(); setOpen(false); }}
+              className="w-full text-left px-3 py-2 rounded-lg text-[14px] text-[var(--color-text)] hover:bg-[var(--color-surface-2)] transition-colors">{c.label}</button>
+          ))}
+          {!filtered.length && <div className="px-3 py-4 text-center text-[var(--color-muted)] text-sm">—</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Editor() {
   const { t } = useTranslation();
   const p = useStore((s) => s.project) as Project;
@@ -210,6 +239,11 @@ function Editor() {
   const setRendering = useStore((s) => s.setRendering);
   const addExport = useStore((s) => s.addExport);
   const updateExport = useStore((s) => s.updateExport);
+  const pushHistory = useStore((s) => s.pushHistory);
+  const undo = useStore((s) => s.undo);
+  const redo = useStore((s) => s.redo);
+  const canUndo = useStore((s) => s.past.length > 0);
+  const canRedo = useStore((s) => s.future.length > 0);
   const [scrub, setScrub] = useState(1.0);
   const [fonts, setFonts] = useState<Record<string, string>>({});
   const [voiceList, setVoiceList] = useState<string[]>([]);
@@ -235,10 +269,25 @@ function Editor() {
     bump();
   }
   async function branch(op: string, extra: Record<string, unknown> = {}) {
+    pushHistory(p);                                                  // snapshot for undo BEFORE the mutation
     setRendered(false);
     setProject(await api.patch(pid, { op, ...extra }));
     bump();                                                          // style/voice/text change -> re-fetch the frame
   }
+  async function doUndo() { const prev = undo(); if (prev) { setRendered(false); await api.putProject(pid, prev); bump(); } }
+  async function doRedo() { const next = redo(); if (next) { setRendered(false); await api.putProject(pid, next); bump(); } }
+  useEffect(() => {                                                  // Cmd/Ctrl+Z / Shift+Z / Y (not while typing in a field)
+    const h = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) { e.preventDefault(); doUndo(); }
+      else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); doRedo(); }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [pid]);   // eslint-disable-line react-hooks/exhaustive-deps
   async function doExport() {
     const exId = `${pid}-${Date.now()}`;
     const name = (p.meta.video || pid).split(/[\\/]/).pop() || pid;
@@ -258,6 +307,16 @@ function Editor() {
   const activeId = p.segments.find(isActive)?.id;
   const mode = p.audio.rewrite ? "funny" : (p.mode === "nodub" ? "subtitles" : "dub");   // derived output mode
   const MODES = [["subtitles", Captions], ["dub", AudioLines], ["funny", Sparkles]] as const;
+  const cmds = [
+    { label: t("mode.subtitles"), run: () => branch("mode", { value: "subtitles" }) },
+    { label: t("mode.dub"), run: () => branch("mode", { value: "dub" }) },
+    { label: t("mode.funny"), run: () => branch("mode", { value: "funny" }) },
+    { label: t("export.proceed"), run: () => doExport() },
+    { label: t("common.undo"), run: () => doUndo() },
+    { label: t("common.redo"), run: () => doRedo() },
+    { label: t("compare.toggle"), run: () => setCompare((c) => !c) },
+    ...Object.keys(presets).map((n) => ({ label: `${t("preset.title")}: ${n}`, run: () => branch("preset", { name: n }) })),
+  ];
   const activeRef = useRef<HTMLDivElement>(null);
   useEffect(() => { activeRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [activeId]);
   return (
@@ -289,6 +348,7 @@ function Editor() {
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
                 <textarea value={seg.tgt_text} onChange={(e) => patchSeg(seg.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}                       // editing text must not re-seek on every click
+                  onFocus={() => pushHistory(p)}                             // snapshot pre-edit for undo
                   onBlur={(e) => persistSeg(seg.id, e.target.value)}
                   className="w-full mt-1.5 bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded-lg p-1.5 text-[13px] leading-snug resize-none focus:border-[var(--color-accent)] focus:outline-none transition-colors" rows={2} />
               </div>
@@ -376,6 +436,10 @@ function Editor() {
           </div>
           <span className="text-[12px] text-[var(--color-muted)] truncate hidden xl:inline">{t(`mode.${mode}_desc`)}</span>
           <div className="flex-1" />
+          <button onClick={doUndo} disabled={!canUndo} title="Ctrl+Z"
+            className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-30 transition-colors"><Undo2 size={16} /></button>
+          <button onClick={doRedo} disabled={!canRedo} title="Ctrl+Shift+Z"
+            className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] disabled:opacity-30 transition-colors"><Redo2 size={16} /></button>
           <button onClick={doExport} disabled={rendering}
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-70 hover:brightness-105 transition shrink-0">
             {rendering ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}{t("export.proceed")}
@@ -468,6 +532,7 @@ function Editor() {
         )}
 
       </aside>
+      <CommandPalette commands={cmds} />
     </div>
   );
 }

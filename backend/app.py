@@ -237,6 +237,15 @@ async def patch_project(pid: str, edit: dict = Body(...)):
     return p.model_dump()
 
 
+@app.put("/projects/{pid}")
+async def put_project(pid: str, body: dict = Body(...)):
+    """Replace the whole Project (undo/redo restores a snapshot)."""
+    _proj_dir(pid)
+    proj = Project.model_validate(body)
+    proj.save(_proj_dir(pid) / "project.json")
+    return proj.model_dump()
+
+
 @app.get("/projects/{pid}/preview")
 async def preview(pid: str, t: float = 0.0, rev: int = 0):  # rev = client cache-buster (unused server-side)
     p = _load(pid)                                          # raises 409 if not analyzed yet

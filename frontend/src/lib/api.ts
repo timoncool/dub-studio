@@ -57,6 +57,8 @@ export const api = {
   analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto") =>
     fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}`, { method: "POST" }).then(j<{ job_id: string }>),
   getProject: (pid: string) => fetch(`${BASE}/projects/${pid}`).then(j<Project>),
+  putProject: (pid: string, project: Project) =>
+    fetch(`${BASE}/projects/${pid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(project) }).then(j<Project>),
   patch: (pid: string, edit: Record<string, unknown>) => {
     const run = () => fetch(`${BASE}/projects/${pid}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(edit) }).then(j<Project>);
     _patchChain = _patchChain.then(run, run);   // run after the previous patch settles (ok or failed)
