@@ -300,6 +300,11 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         rewrite(p, edit.get("instruction", ""))
     elif op == "recast":
         recast(p, edit.get("voice_mode", "clone"), edit.get("voice_name"))
+    elif op == "regen":                                    # mark a segment dirty -> next /render re-synthesizes ONLY its TTS
+        s = next((x for x in p.segments if x.id == edit.get("id")), None)
+        if s is None:
+            raise HTTPException(404, f"segment {edit.get('id')!r} not found")
+        s.dirty = True
     else:
         raise HTTPException(400, f"unknown op {op!r}")
     p.save(_proj_dir(pid) / "project.json")

@@ -30,6 +30,7 @@
   "files": { "title": "文件", "download": "下载", "open": "打开" },
   "nav": { "new": "新建", "newHint": "用新视频开始" },
   "play": { "dub": "播放配音（画面 + 配音）" },
+  "seg": { "regen": "重新生成该句配音", "refresh": "刷新", "refreshHint": "强制刷新预览/字幕（如卡顿或卡住）" },
   "settings": { "title": "模型", "asr": "语音识别", "llm": "翻译", "vision": "视觉", "tts": "语音合成" },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }

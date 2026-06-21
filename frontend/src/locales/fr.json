@@ -30,6 +30,7 @@
   "files": { "title": "Fichiers", "download": "Télécharger", "open": "Ouvrir" },
   "nav": { "new": "Nouveau", "newHint": "Commencer avec une nouvelle vidéo" },
   "play": { "dub": "Lire le doublage (vidéo + voix)" },
+  "seg": { "regen": "Régénérer la voix de cette phrase", "refresh": "Actualiser", "refreshHint": "Forcer le rafraîchissement de l'aperçu / sous-titres" },
   "settings": { "title": "Modèles", "asr": "Reconnaissance vocale", "llm": "Traduction", "vision": "Vision", "tts": "Synthèse vocale" },
   "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
 }

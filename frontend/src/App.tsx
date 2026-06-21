@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -342,6 +342,8 @@ function Editor() {
     const id = window.setInterval(() => setScrub(a.currentTime), 200);
     return () => window.clearInterval(id);
   }, [play]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [regenId, setRegenId] = useState<string | null>(null);        // segment whose TTS is being re-generated
+  const [refreshing, setRefreshing] = useState(false);                // force-refresh in flight
   const [remixText, setRemixText] = useState("");                     // funny-remix theme/instruction for Gemma
   const [remixing, setRemixing] = useState(false);
   const ss = p.captions.sub_style;
@@ -362,6 +364,22 @@ function Editor() {
     setRendered(false);
     setProject(await api.patch(pid, { op, ...extra }));
     bump();                                                          // style/voice/text change -> re-fetch the frame
+  }
+  async function doRegen(segId: string) {                            // re-synthesize the TTS for ONE phrase (mark dirty -> /render)
+    if (regenId) return;
+    setRegenId(segId);
+    try {
+      await api.patch(pid, { op: "regen", id: segId });
+      const { job_id } = await api.render(pid);                       // re-TTS only the dirty seg + re-mux -> fresh dub
+      await api.watchJob(job_id, () => {});
+      setProject(await api.getProject(pid)); setRendered(false); bump();   // refresh preview + dub audio
+    } catch (e) { console.error("regen TTS failed", e); }
+    finally { setRegenId(null); }
+  }
+  async function forceRefresh() {                                     // force the preview/subtitles to re-render (if stuck/laggy)
+    setRefreshing(true);
+    try { setRendered(false); setProject(await api.getProject(pid)); bump(); }
+    finally { setRefreshing(false); }
   }
   async function doUndo() { const prev = undo(); if (prev) { setRendered(false); await api.putProject(pid, prev); bump(); } }
   async function doRedo() { const next = redo(); if (next) { setRendered(false); await api.putProject(pid, next); bump(); } }
@@ -435,6 +453,13 @@ function Editor() {
         </div>
         {lane === "subs" && (
         <div className="space-y-2">
+          <div className="flex items-center justify-between mb-1">
+            <span className="mono text-[10px] uppercase tracking-[0.14em] text-[var(--color-muted)]">{t("editor.transcript")}</span>
+            <button onClick={forceRefresh} disabled={refreshing} title={t("seg.refreshHint")}
+              className="inline-flex items-center gap-1 text-[11px] text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors">
+              {refreshing ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />} {t("seg.refresh")}
+            </button>
+          </div>
           {p.segments.map((seg) => {
             const on = isActive(seg);
             return (
@@ -445,7 +470,13 @@ function Editor() {
                   <span className={`mono text-[11px] px-1.5 py-0.5 rounded tabnum ${on ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "bg-[var(--color-overlay)] text-[var(--color-muted)]"}`}>{fmtT(seg.start)}</span>
                   <span className="mono text-[10px] text-[var(--color-muted)]/60 tabnum">→ {fmtT(seg.end)}</span>
                   {seg.speaker != null && <span className="mono px-1.5 py-px rounded bg-[var(--color-overlay)] text-[9px] text-[var(--color-muted)]">SPK {seg.speaker}</span>}
-                  {seg.dirty && <span className="ml-auto text-[var(--color-accent)] text-[10px]" title="edited">●</span>}
+                  <span className="ml-auto flex items-center gap-1.5">
+                    {seg.dirty && <span className="text-[var(--color-accent)] text-[10px]" title="edited">●</span>}
+                    <button onClick={(e) => { e.stopPropagation(); doRegen(seg.id); }} disabled={regenId !== null} title={t("seg.regen")}
+                      className="text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors">
+                      {regenId === seg.id ? <Loader2 size={12} className="animate-spin" /> : <RotateCw size={12} />}
+                    </button>
+                  </span>
                 </div>
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
                 <textarea value={seg.tgt_text} onChange={(e) => patchSeg(seg.id, e.target.value)}
@@ -574,7 +605,7 @@ function Editor() {
             className={`shrink-0 p-1.5 rounded-md transition-colors ${play ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
             {play ? <Pause size={15} /> : <Play size={15} />}
           </button>
-          <audio ref={audioRef} src={api.dubUrl(pid)} onEnded={() => setPlay(false)} preload="auto" className="hidden" />
+          <audio ref={audioRef} src={api.dubUrl(pid, rev)} onEnded={() => setPlay(false)} preload="auto" className="hidden" />
           <button onClick={() => setCompare((c) => !c)} title={t("compare.toggle")}
             className={`shrink-0 p-1.5 rounded-md transition-colors ${compare ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
             <Columns2 size={15} />
