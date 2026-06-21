@@ -288,6 +288,7 @@ async def patch_project(pid: str, edit: dict = Body(...)):
                   edit.get("font"), edit.get("color", "#FFFFFF"))
     elif op == "subpos":
         p.captions.sub_y = int(edit["sub_y"])              # drag the subtitle band vertically
+        p.captions.sub_y_locked = True                     # manual placement -> honor it for all lines
     elif op == "mode":
         try:
             set_mode(p, edit.get("value", ""))

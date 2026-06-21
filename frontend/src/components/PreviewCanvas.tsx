@@ -7,10 +7,9 @@ import type Konva from "konva";
 import { api, type Project } from "../lib/api";
 import { useStore } from "../store";
 
-type Props = { pid: string; project: Project; scrub: number; rendered: boolean; onChanged: () => void;
-               lane?: "subs" | "blur" | "titles" };
+type Props = { pid: string; project: Project; scrub: number; rendered: boolean; onChanged: () => void };
 
-export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged, lane }: Props) {
+export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged }: Props) {
   const rev = useStore((s) => s.rev);
   const bump = useStore((s) => s.bump);
   const sel = useStore((s) => s.selBlur);        // SHARED with the left blur list (click list <-> click canvas)
@@ -29,12 +28,15 @@ export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged
   // fit the overlay to the displayed media (preserve aspect)
   useEffect(() => {
     const el = wrap.current; if (!el) return;
-    const ro = new ResizeObserver(() => {
+    const measure = () => {
       const cw = el.clientWidth, ch = el.clientHeight;
+      if (cw <= 0 || ch <= 0) return;                 // container momentarily 0 -> don't collapse the overlay to 0x0
       const scale = Math.min(cw / vw, ch / vh);
       setDisp({ w: Math.round(vw * scale), h: Math.round(vh * scale) });
-    });
-    ro.observe(el); return () => ro.disconnect();
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(el); measure();                        // measure immediately + on every resize
+    return () => ro.disconnect();
   }, [vw, vh]);
 
   useEffect(() => {
@@ -68,9 +70,9 @@ export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged
                     stroke="#c6f24e" dash={[6, 4]} draggable
                     dragBoundFunc={(p) => ({ x: 0, y: p.y })}
                     onDragEnd={(e) => patch({ op: "subpos", sub_y: Math.round((e.target.y() + 14) / sy) })} />
-              {/* blur zones — ONLY in the BLUR lane; show those active on THIS frame; red = on, cyan = selected,
-                  dashed/dim = hidden (blur off). Click selects (synced with the left list via the store). */}
-              {lane === "blur" && blurs.map((b, i) => ({ b, i }))
+              {/* blur zones — always draggable on the frame (any lane); those active on THIS frame; red = on,
+                  cyan = selected, dashed/dim = hidden (blur off). Click selects (synced with the left list). */}
+              {blurs.map((b, i) => ({ b, i }))
                 .filter(({ b }) => scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4)
                 .map(({ b, i }) => {
                   const on = sel === i, hid = !!b.hidden;
