@@ -158,6 +158,25 @@ if not exist "python\Include\Python.h" (
 :after_triton
 
 REM ============================================================
+REM  6b) Qwen3-TTS combo (THE TTS engine) — installed exactly like dungeon-ultimate.
+REM  dub-engine\dubengine\tts.py HARD-imports qwen_tts + faster_qwen3_tts (CUDA path)
+REM  and qwen3_tts_triton (combo kernels); without them dubbing crashes at the TTS
+REM  stage with "No module named 'qwen_tts'". The heavy pins it needs (transformers
+REM  4.57.3 / accelerate / bitsandbytes / soundfile / einops / sentencepiece /
+REM  huggingface_hub) are already installed above via requirements-engine.txt.
+REM ============================================================
+echo   Installing Qwen3-TTS (qwen-tts + faster-qwen3-tts)...
+python\python.exe -m pip install faster-qwen3-tts==0.2.6 qwen-tts==0.1.1 --no-warn-script-location
+REM qwen3-tts-triton: the combo Triton kernels, built from the pinned fork (NOT on
+REM PyPI). Needs hatchling+editables as the build backend (--no-build-isolation uses
+REM them in-place); --ignore-requires-python because it tags 3.12 yet runs on our 3.11.
+REM NVIDIA only — Triton needs a GPU. Requires git on PATH.
+if "%CUDA_VERSION%"=="cpu" goto :after_qwen
+python\python.exe -m pip install hatchling editables --no-warn-script-location
+python\python.exe -m pip install --no-deps --no-build-isolation --ignore-requires-python "git+https://github.com/newgrit1004/qwen3-tts-triton" --no-warn-script-location
+:after_qwen
+
+REM ============================================================
 REM  7) dub-engine (bundled in the archive) — editable install
 REM ============================================================
 echo [6/8] Installing dub-engine...
