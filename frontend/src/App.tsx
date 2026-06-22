@@ -356,13 +356,16 @@ function Editor() {
   const [remixText, setRemixText] = useState("");                     // funny-remix theme/instruction for Gemma
   const [remixing, setRemixing] = useState(false);
   const ss = p.captions.sub_style;
+  // one undo snapshot per edit BURST (focus->type->blur), segments AND titles: snapshot on the FIRST change of a
+  // field, keyed by field, cleared on blur. Not on focus (that killed redo) nor per-keystroke (that flooded history).
+  const burstRef = useRef<string | null>(null);
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
-    if (!p.segments.find((x) => x.id === id)?.dirty) pushHistory(p);  // snapshot once, on the first edit of this phrase (pre-echo baseline)
+    if (burstRef.current !== `seg:${id}`) { pushHistory(p); burstRef.current = `seg:${id}`; }
     setProject({ ...p, segments: p.segments.map((x) => x.id === id ? { ...x, tgt_text: tgt, dirty: true } : x) });
   }
   function titleText(i: number, text: string) {                      // instant local echo for a title's text
-    if (p.captions.titles[i]?.text !== text) pushHistory(p);          // snapshot pre-change baseline on an actual edit, not on focus
+    if (burstRef.current !== `title:${i}`) { pushHistory(p); burstRef.current = `title:${i}`; }
     setProject({ ...p, captions: { ...p.captions, titles: p.captions.titles.map((x, j) => j === i ? { ...x, text } : x) } });
   }
   // a patch/PUT rejected (4xx/5xx/offline) -> surface it in the Files panel (like doExport) and re-sync from
@@ -504,7 +507,7 @@ function Editor() {
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
                 <textarea value={seg.tgt_text} onChange={(e) => patchSeg(seg.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}                       // editing text must not re-seek on every click
-                  onBlur={(e) => persistSeg(seg.id, e.target.value)}
+                  onBlur={(e) => { burstRef.current = null; persistSeg(seg.id, e.target.value); }}   // end the edit burst
                   className="w-full mt-1.5 bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded-lg p-1.5 text-[13px] leading-snug resize-none focus:border-[var(--color-accent)] focus:outline-none transition-colors" rows={2} />
               </div>
             );
@@ -554,7 +557,7 @@ function Editor() {
                   <button onClick={() => branch("title_del", { idx: i })} className="ml-auto hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
                 </div>
                 <input value={ti.text} onChange={(e) => titleText(i, e.target.value)}
-                  onBlur={async (e) => { setRendered(false); try { setProject(await api.patch(pid, { op: "title", idx: i, text: e.target.value })); bump(); } catch (err) { await surfaceErr(err); } }}
+                  onBlur={async (e) => { burstRef.current = null; setRendered(false); try { setProject(await api.patch(pid, { op: "title", idx: i, text: e.target.value })); bump(); } catch (err) { await surfaceErr(err); } }}
                   className="w-full bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded p-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors" />
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   <button onClick={() => branch("title", { idx: i, bold: !ti.bold })}
