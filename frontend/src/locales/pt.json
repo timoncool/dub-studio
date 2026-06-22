@@ -12,7 +12,7 @@
   },
   "analyze": {
     "title": "Analisando seu vídeo",
-    "separating": "Separando áudio", "recognizing": "Reconhecendo fala", "diarizing": "Identificando falantes",
+    "download": "Baixando modelos", "firstRunNote": "Primeira vez: modelos baixam uma vez (vários GB) — depois é rápido", "separating": "Separando áudio", "recognizing": "Reconhecendo fala", "diarizing": "Identificando falantes",
     "translating": "Traduzindo", "style": "Detectando estilo das legendas", "locating": "Localizando texto na tela",
     "cancel": "Cancelar"
   },

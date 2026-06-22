@@ -35,6 +35,16 @@ def _log(msg):
     print(f"[dub] {msg}", flush=True)
 
 
+def _stage(name):
+    """Stage marker hook (injected by api._run -> SSE so the editor shows a real stepper). CLI default: no-op."""
+    pass
+
+
+def _dl(pct, msg):
+    """Model-download progress hook (injected by api._run -> SSE with pct 0..100). CLI default: just log."""
+    _log(msg)
+
+
 def _auto_fill_boxes(video, boxes, scene_hint=None):
     """DEFAULT cover choice per box (always editable in the GUI): a near-uniform background behind the
     original text (e.g. the black/white letterbox bars) -> SOLID fill of that colour (clean edge); a
@@ -88,6 +98,7 @@ def _auto_fill_boxes(video, boxes, scene_hint=None):
 
 @contextlib.contextmanager
 def _timed(name, acc):
+    _stage(name)                       # announce the stage to the editor BEFORE the work starts
     s = time.time()
     yield
     d = time.time() - s
@@ -363,7 +374,8 @@ def run(cfg):
     localize_text = cfg.captions and cfg.subs != "transcribe"   # translate ON-SCREEN text; transcribe = zero MT
     if do_translate or localize_text or getattr(cfg, "orchestrate", False):
         from .download import ensure_mt_model
-        ensure_mt_model(cfg.mt_model_path, cfg.mmproj_path, log=_log)   # first run: fetch the MT/vision GGUF
+        _stage("download")                                             # first-run model fetch -> show a download bar
+        ensure_mt_model(cfg.mt_model_path, cfg.mmproj_path, log=_log, report=_dl)   # first run: fetch the MT/vision GGUF
     if cfg.dub and getattr(cfg, "regen_dub", False) and tj.exists():
         _log("regen: re-synthesizing dub from the EDITED transcript (new voice/text), no re-ASR")
         segs, new_audio = _regen_dub(cfg, wd, total, bench, vh)

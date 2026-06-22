@@ -12,7 +12,7 @@
   },
   "analyze": {
     "title": "Analyzing your video",
-    "separating": "Separating audio", "recognizing": "Recognizing speech", "diarizing": "Diarizing speakers",
+    "download": "Downloading models", "firstRunNote": "First run: models download once (several GB) — fast after that", "separating": "Separating audio", "recognizing": "Recognizing speech", "diarizing": "Diarizing speakers",
     "translating": "Translating", "style": "Detecting caption style", "locating": "Locating on-screen text",
     "cancel": "Cancel"
   },

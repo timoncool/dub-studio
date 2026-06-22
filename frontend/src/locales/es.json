@@ -12,7 +12,7 @@
   },
   "analyze": {
     "title": "Analizando tu video",
-    "separating": "Separando audio", "recognizing": "Reconociendo voz", "diarizing": "Identificando hablantes",
+    "download": "Descargando modelos", "firstRunNote": "Primera vez: los modelos se descargan una vez (varios GB) — luego es rápido", "separating": "Separando audio", "recognizing": "Reconociendo voz", "diarizing": "Identificando hablantes",
     "translating": "Traduciendo", "style": "Detectando estilo de subtítulos", "locating": "Localizando texto en pantalla",
     "cancel": "Cancelar"
   },

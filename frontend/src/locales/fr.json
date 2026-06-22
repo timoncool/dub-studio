@@ -12,7 +12,7 @@
   },
   "analyze": {
     "title": "Analyse de votre vidéo",
-    "separating": "Séparation de l'audio", "recognizing": "Reconnaissance vocale", "diarizing": "Identification des locuteurs",
+    "download": "Téléchargement des modèles", "firstRunNote": "Premier lancement : modèles téléchargés une fois (plusieurs Go) — rapide ensuite", "separating": "Séparation de l'audio", "recognizing": "Reconnaissance vocale", "diarizing": "Identification des locuteurs",
     "translating": "Traduction", "style": "Détection du style des sous-titres", "locating": "Localisation du texte à l'écran",
     "cancel": "Annuler"
   },

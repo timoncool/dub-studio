@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -118,15 +118,16 @@ function DropZone() {
 
   async function start(file: File) {
     s.setStage("analyzing");
+    s.setProgress("", "", null);             // fresh stepper for this run
     try {
       const { project_id } = await api.createProject(file);
       s.setPid(project_id);
       const { job_id } = await api.analyze(project_id, tgt, "auto", src);
-      await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || ""); });
+      await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || "", e.pct ?? null); });
       s.setProject(await api.getProject(project_id));
       s.setStage("editor");
     } catch (err) {
-      s.setProgress("error", String(err));  // surface backend failure instead of hanging on "analyzing"
+      s.setProgress("error", String(err), null);  // surface backend failure instead of hanging on "analyzing"
       s.setStage("empty");
     }
   }
@@ -205,17 +206,47 @@ function DropZone() {
   );
 }
 
+// editor stages mapped to the engine's stage markers (api._run emits `stage` per _timed block + "download").
+const ANALYZE_STEPS: { key: string; stages: string[] }[] = [
+  { key: "download",    stages: ["download"] },
+  { key: "separating",  stages: ["extract_audio", "separate"] },
+  { key: "diarizing",   stages: ["diarize"] },
+  { key: "recognizing", stages: ["asr"] },
+  { key: "translating", stages: ["translate", "translate_ctx", "rewrite", "rewrite_ctx"] },
+  { key: "locating",    stages: ["ocr_detect", "translate_titles", "translate_tagline", "build", "burn"] },
+];
+
 function AnalyzeProgress() {
   const { t } = useTranslation();
   const { progress } = useStore();
+  const cur = ANALYZE_STEPS.findIndex((stp) => stp.stages.includes(progress.stage));
+  const dl = progress.stage === "download";
+  const pct = progress.pct;
   return (
-    <div className="flex-1 grid place-items-center">
-      <div className="text-center">
-        <div className="text-lg font-medium">{t("analyze.title")}</div>
-        <div className="mt-3 h-1.5 w-64 mx-auto rounded-full bg-[var(--color-surface-2)] overflow-hidden">
-          <div className="h-full w-1/3 bg-[var(--color-accent)] animate-pulse" />
+    <div className="flex-1 grid place-items-center px-6">
+      <div className="w-full max-w-sm">
+        <div className="text-center text-lg font-semibold">{t("analyze.title")}</div>
+        {dl && <div className="mt-1 text-center text-[12px] text-[var(--color-muted)]">{t("analyze.firstRunNote")}</div>}
+        <div className="mt-6 space-y-2.5">
+          {ANALYZE_STEPS.map((stp, i) => {
+            const done = cur > i, active = cur === i;
+            return (
+              <div key={stp.key} className="flex items-center gap-3">
+                <span className={`grid place-items-center w-5 h-5 shrink-0 rounded-full ${done ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : active ? "text-[var(--color-accent)]" : "text-[var(--color-muted)]/40"}`}>
+                  {done ? <Check size={12} /> : active ? <Loader2 size={14} className="animate-spin" /> : <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                </span>
+                <span className={`text-sm ${active ? "text-[var(--color-text)] font-medium" : done ? "text-[var(--color-muted)]" : "text-[var(--color-muted)]/45"}`}>{t(`analyze.${stp.key}`)}</span>
+                {active && dl && pct != null && <span className="ml-auto mono text-[11px] text-[var(--color-accent)]">{Math.round(pct)}%</span>}
+              </div>
+            );
+          })}
         </div>
-        <div className="mt-2 text-sm text-[var(--color-muted)] min-h-5">{progress.msg}</div>
+        <div className="mt-5 h-1.5 w-full rounded-full bg-[var(--color-surface-2)] overflow-hidden">
+          {dl && pct != null
+            ? <div className="h-full rounded-full bg-[var(--color-accent)] transition-[width] duration-300" style={{ width: `${Math.max(2, Math.min(100, pct))}%` }} />
+            : <div className="h-full w-1/3 rounded-full bg-[var(--color-accent)] animate-pulse" />}
+        </div>
+        <div className="mt-2 min-h-4 text-center mono text-[12px] text-[var(--color-muted)] break-words">{progress.msg}</div>
       </div>
     </div>
   );

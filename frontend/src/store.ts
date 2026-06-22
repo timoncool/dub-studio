@@ -8,7 +8,7 @@ type State = {
   stage: Stage;
   pid: string | null;
   project: Project | null;
-  progress: { stage: string; msg: string };
+  progress: { stage: string; msg: string; pct: number | null };
   rendered: boolean;
   rendering: boolean;                // current project's export in flight (button state; does NOT block the screen)
   exports: ExportItem[];            // non-blocking export queue shown in the bottom-right Files panel
@@ -19,7 +19,7 @@ type State = {
   setStage: (s: Stage) => void;
   setPid: (p: string | null) => void;
   setProject: (p: Project | null) => void;
-  setProgress: (stage: string, msg: string) => void;
+  setProgress: (stage: string, msg: string, pct?: number | null) => void;
   setRendered: (b: boolean) => void;
   setRendering: (b: boolean) => void;
   addExport: (e: ExportItem) => void;
@@ -35,7 +35,7 @@ export const useStore = create<State>((set, get) => ({
   stage: "empty",
   pid: null,
   project: null,
-  progress: { stage: "", msg: "" },
+  progress: { stage: "", msg: "", pct: null },
   rendered: false,
   rendering: false,
   exports: [],
@@ -46,7 +46,9 @@ export const useStore = create<State>((set, get) => ({
   setStage: (stage) => set({ stage }),
   setPid: (pid) => set({ pid }),
   setProject: (project) => set({ project }),
-  setProgress: (stage, msg) => set({ progress: { stage, msg } }),
+  setProgress: (stage, msg, pct = null) => set((s) => ({   // keep the last message on a stage-only tick; pct only during a download
+    progress: { stage, msg: msg || s.progress.msg, pct: pct ?? null },
+  })),
   setRendered: (rendered) => set({ rendered }),
   setRendering: (rendering) => set({ rendering }),
   addExport: (e) => set((s) => ({ exports: [e, ...s.exports] })),

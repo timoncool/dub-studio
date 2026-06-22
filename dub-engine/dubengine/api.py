@@ -54,12 +54,19 @@ def _to_config(project: Project, opts: EngineOpts, output: str, *, mode: str = "
 
 def _run(cfg: Config, progress: Progress):
     """Run the pipeline with the engine's stdout routed to the injectable progress callback."""
-    prev = pipeline._log
-    pipeline._log = lambda m: progress({"stage": "", "pct": None, "msg": str(m)})
+    prev_log, prev_stage, prev_dl = pipeline._log, pipeline._stage, pipeline._dl
+    st = {"stage": ""}
+    def emit(stage=None, pct=None, msg=""):
+        if stage is not None:
+            st["stage"] = stage                     # carry the CURRENT stage on EVERY event (msg + download %)
+        progress({"stage": st["stage"], "pct": pct, "msg": msg})
+    pipeline._log = lambda m: emit(msg=str(m))
+    pipeline._stage = lambda name: emit(stage=name, msg="")
+    pipeline._dl = lambda pct, msg: emit(pct=pct, msg=str(msg))
     try:
         return pipeline.run(cfg)
     finally:
-        pipeline._log = prev
+        pipeline._log, pipeline._stage, pipeline._dl = prev_log, prev_stage, prev_dl
 
 
 def _fps(r) -> float:
