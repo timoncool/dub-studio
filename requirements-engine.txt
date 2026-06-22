@@ -1,4 +1,4 @@
-# dub-engine runtime deps — PROVEN pins from the working shorts-dub venv (cu128 / cp311).
+# dub-engine runtime deps — PROVEN pins for the engine ML stack (cu128 / cp311).
 # torch/torchaudio/torchvision, llama-cpp-python (JamePeng cu128 wheel) and triton-windows are
 # installed SEPARATELY in install.bat (explicit wheels). Sortformer (NeMo) lives in its OWN
 # sub-venv (.venv-sortformer) — see install.bat. This file is the MAIN-env engine stack.

@@ -138,6 +138,26 @@ call "%SCRIPT_DIR%node\npm.cmd" install
 call "%SCRIPT_DIR%node\npm.cmd" run build
 cd "%SCRIPT_DIR%"
 
+REM ============================================================
+REM  Base voice pack — preset reference voices, pulled as a zip from HF
+REM ============================================================
+echo [+] Downloading the base voice pack...
+if exist "voices\*.mp3" (
+    echo   [OK] voices already present
+) else (
+    curl -L -o downloads\voice-pack.zip https://huggingface.co/datasets/nerualdreming/VibeVoice/resolve/main/voice-pack.zip
+    if exist "downloads\voice-pack.zip" (
+        powershell -Command "Expand-Archive -Path 'downloads\voice-pack.zip' -DestinationPath 'downloads\vp' -Force"
+        if exist "downloads\vp\voice-pack" (
+            xcopy /E /Y /Q "downloads\vp\voice-pack\*" "voices\" >nul
+        ) else (
+            xcopy /E /Y /Q "downloads\vp\*" "voices\" >nul
+        )
+        rmdir /s /q "downloads\vp"
+        echo   [OK] voice pack installed
+    )
+)
+
 echo.
 echo ========================================
 echo   Done. Start with run.bat

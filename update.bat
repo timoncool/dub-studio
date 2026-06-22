@@ -19,13 +19,7 @@ if exist ".git" (
     git pull
 )
 
-REM update + reinstall the engine (bundled next to the app)
-if exist "dub-engine\.git" (
-    echo Updating dub-engine...
-    cd dub-engine
-    git pull
-    cd /d "%SCRIPT_DIR%"
-)
+REM reinstall the engine (it lives in this repo under dub-engine\, refreshed by the git pull above)
 if exist "dub-engine\pyproject.toml" python\python.exe -m pip install -e dub-engine --no-deps --no-warn-script-location
 
 REM rebuild the SPA (UI source may have changed)

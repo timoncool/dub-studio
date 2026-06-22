@@ -20,7 +20,7 @@ from typing import Callable, Dict, Optional
 os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
 import torch  # noqa: F401,E402  before llama_cpp (engine loads it lazily)
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "dub-engine"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dub-engine"))  # engine vendored in-repo
 from dubengine import (EngineOpts, Project, add_blur, add_title, analyze, del_blur, del_title,  # noqa: E402
                        edit_blur, edit_caption, edit_segment, edit_title, preview_frame, recast, render,
                        rewrite, set_mode, source_frame, translate)

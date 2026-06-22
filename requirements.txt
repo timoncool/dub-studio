@@ -1,9 +1,9 @@
 # Dub Studio backend — THIN wrapper deps only.
 # torch / torchaudio + the dub-engine ML stack (Parakeet ONNX, Sortformer/NeMo, llama-cpp-python
 # fork for Gemma, Qwen3-TTS + triton-windows) are installed SEPARATELY by install.bat per the
-# proven shorts-dub venv recipe — never pinned blindly here. See PACKAGING.md.
+# proven engine venv recipe — never pinned blindly here. See PACKAGING.md.
 fastapi
 uvicorn[standard]
 python-multipart
 numpy
-# dub-engine itself: pip install -e <dub-engine checkout>  (private repo, installed by install.bat)
+# the engine lives in ./dub-engine (this repo); install.bat installs it editable: pip install -e dub-engine

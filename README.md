@@ -73,7 +73,6 @@ Russian original (left) → dubbed into English by Dub Studio (right) — voice 
 | 🎛️ **Caption presets** | 26 built‑in looks (karaoke / word‑by‑word / hormozi / neon / …) rendered on *your* frame |
 | 😂 **Funny remix** | give a theme ("pirate", "as a news report") → the model rewrites the whole script → re‑dub |
 | 🔁 **Before / after** | side‑by‑side original ↔ dubbed — the trust check |
-| 🧩 **Swappable models** | ASR / LLM / vision / TTS slots — bring your own |
 
 ## Dub Studio vs the alternatives
 
@@ -88,25 +87,16 @@ Russian original (left) → dubbed into English by Dub Studio (right) — voice 
 ## Quickstart (portable, Windows)
 
 1. Download the latest `DubStudio_*.zip` from [Releases](https://github.com/timoncool/dub-studio/releases) and unzip.
-2. Run **`install.bat`** once — embeddable Python + per‑GPU CUDA wheels + builds the UI.
-3. Run **`run.bat`** → the editor opens in your browser. Drop a video. Models download on first run.
+2. Double‑click **`run.bat`**. On the first run it installs everything (embeddable Python, the matching CUDA wheels for your GPU, the engine, the prebuilt UI), then opens the editor in your browser. Drop a video — models download automatically on first use.
 
-Targets NVIDIA RTX 20xx–50xx (CUDA 12.8). Run from source:
-
-```bash
-cd dub-studio && pip install -e ../dub-engine -r requirements.txt -r requirements-engine.txt
-# build the UI once (served single-process by the backend):
-cd frontend && npm i && npm run build && cd ..
-set KMP_DUPLICATE_LIB_OK=TRUE
-python -m uvicorn backend.app:app --port 8765   # open http://127.0.0.1:8765
-```
+That's it — one click, no manual steps. Targets NVIDIA RTX 20xx–50xx (CUDA 12.8), ~12 GB VRAM. Everything lives in the app folder; nothing is installed into your system. For a from‑source dev run, see [PACKAGING.md](PACKAGING.md).
 
 ## How it works
 
 `analyze()` is the fixed first stage: separate → ASR (word timings) → diarize → context‑translate +
 vision (caption style / titles / brands) → OCR (layout / blur boxes). It returns an editable
 **Project** document. Every edit is a patch on that Project with a ~0.14 s CPU preview; export re‑runs
-only the dirtied stages. The engine is a separate reusable package (**dub-engine**) bundled with the portable build.
+only the dirtied stages. The engine is a self‑contained package in this repo under `dub-engine/`, bundled into the portable build.
 
 **Stack:** React 19 + Vite + Tailwind + react‑konva over JASSUB · single‑worker FastAPI · Parakeet
 TDT (ASR) · Sortformer (diarization) · Gemma‑4‑12B GGUF (translate + vision) · Qwen3‑TTS · ffmpeg/NVENC.

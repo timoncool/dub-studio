@@ -1,0 +1,7 @@
+[project]
+name = "dubengine"
+version = "0.1.0"
+description = "Reusable local video dubbing/translation engine (ASR+diarize+translate+TTS+captions)"
+requires-python = ">=3.10"
+[tool.setuptools.packages.find]
+include = ["dubengine*"]
