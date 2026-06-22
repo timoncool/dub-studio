@@ -22,6 +22,10 @@ if not exist "python\python.exe" ( echo. & echo Install did not complete - see m
 :ready
 set "PYTHON=%SCRIPT_DIR%python\python.exe"
 
+REM === Which CUDA build was installed (chosen in install.bat) — informational ===
+set "CUDA_BUILD=unknown"
+if exist "cuda_version.txt" set /p CUDA_BUILD=<cuda_version.txt
+
 REM === Environment isolation (everything stays in the app folder) ===
 set "TEMP=%SCRIPT_DIR%temp"
 set "TMP=%SCRIPT_DIR%temp"
@@ -54,7 +58,7 @@ set "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
 set "DUB_PORT=8765"
 
 echo.
-echo   UI:  http://127.0.0.1:%DUB_PORT%
+echo   UI:  http://127.0.0.1:%DUB_PORT%   (GPU build: %CUDA_BUILD%)
 echo   Close this window to stop.
 echo.
 
