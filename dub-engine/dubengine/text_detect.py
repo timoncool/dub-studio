@@ -48,7 +48,9 @@ def _lines(img, score_thr=0.4):  # 0.4 (was 0.5) to catch stylised/italic captio
     """-> list of (text, x, y, w, h) in pixels (PP-OCR det+rec)."""
     res = _ocr_model()(img)
     out = []
-    if getattr(res, "boxes", None) is None:
+    if (getattr(res, "boxes", None) is None          # detection-only result (rec produced nothing) -> txts/scores None
+            or getattr(res, "txts", None) is None
+            or getattr(res, "scores", None) is None):
         return out
     for quad, txt, score in zip(res.boxes, res.txts, res.scores):
         if not (txt or "").strip() or float(score) < score_thr:
@@ -121,7 +123,7 @@ def detect_regions(video, work_dir, fps=2, min_dur=0.3, iou_thr=0.3, pad=8, jitt
                 tracks.append({"box": box, "t0": t, "t1": t, "last_t": t, "texts": [txt]})
     regions = []
     for tr in tracks:
-        if tr["t1"] - tr["t0"] >= min_dur and tr["texts"]:
+        if tr["t1"] - tr["t0"] + 1.0 / fps >= min_dur and tr["texts"]:   # match the +1/fps tail actually emitted below
             x, y, w, h = tr["box"]
             text = collections.Counter(tr["texts"]).most_common(1)[0][0]
             regions.append((text, max(0, int(x - pad)), max(0, int(y - pad)),

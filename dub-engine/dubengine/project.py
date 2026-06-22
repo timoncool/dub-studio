@@ -133,6 +133,7 @@ class Captions(BaseModel):
     sub_style: Optional[SubStyle] = None
     sub_y: Optional[int] = None
     sub_y_locked: bool = False      # editor dragged the subtitle band -> honor sub_y for ALL lines (override auto-tracking)
+    fresh_subs: bool = False        # source has NO burned-in subs -> floating captions (no band-ride); parity w/ Config.fresh_subs
     overrides: List[CaptionOverride] = Field(default_factory=list)
     titles: List[Title] = Field(default_factory=list)
     brands: List[Brand] = Field(default_factory=list)
@@ -177,7 +178,7 @@ class Project(BaseModel):
     # ---- back-compat with the engine's resume artifacts (transcript/ctx_extra/caption_plan) ----
     def write_artifacts(self, work_dir) -> None:
         wd = Path(work_dir); wd.mkdir(parents=True, exist_ok=True)
-        segs = [{"start": s.start, "end": s.end, "speaker": s.speaker,
+        segs = [{"id": s.id, "start": s.start, "end": s.end, "speaker": s.speaker,
                  "text": s.src_text, "tgt": s.tgt_text} for s in self.segments]
         (wd / "transcript.json").write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
         cap = self.captions
@@ -198,6 +199,7 @@ class Project(BaseModel):
             plan["sub_style"] = sub_style
         plan["sub_y"] = cap.sub_y                         # GUI edit (drag the band) must reach the renderer
         plan["sub_y_locked"] = bool(cap.sub_y_locked)
+        plan["fresh_subs"] = bool(cap.fresh_subs)
         if cap.blur_boxes or "blur_boxes" not in plan:
             # editor can hide a zone's blur (hidden=True) -> keep it in the Project list but DON'T burn it
             plan["blur_boxes"] = [[b.x, b.y, b.w, b.h, b.t0, b.t1]
@@ -231,6 +233,7 @@ class Project(BaseModel):
             p.captions.sub_style = SubStyle(**{k: v for k, v in src["sub_style"].items()
                                                if k in SubStyle.model_fields})
         p.captions.sub_y = src.get("sub_y")
+        p.captions.fresh_subs = bool(src.get("fresh_subs"))
         p.captions.titles = [Title.model_validate(t) for t in (src.get("titles") or []) if isinstance(t, dict)]
         p.captions.brands = [Brand(**{k: v for k, v in b.items() if k in Brand.model_fields})
                              for b in (src.get("brands") or []) if isinstance(b, dict)]

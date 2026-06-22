@@ -27,6 +27,7 @@ def _langname(code):
 
 
 _ENGINE = None
+_ENGINE_KEY = None
 _PATCHED = False
 _ACTIVE_MODE = "bf16"
 
@@ -101,8 +102,9 @@ def make(cfg):
     """Load the Qwen3-TTS clone engine, cached process-wide (a BATCH loads it ONCE). On CUDA: the
     faster-qwen3-tts combo (CUDA graphs + bnb-NF4 + Triton) — the SOLE fast path; it hard-fails if its deps
     are missing (no plain-qwen fallback). cfg.device=='cpu' is the explicit debug path on plain qwen-tts."""
-    global _ENGINE
-    if _ENGINE is not None:
+    global _ENGINE, _ENGINE_KEY
+    key = str(cfg.tts_model)
+    if _ENGINE is not None and _ENGINE_KEY == key:   # invalidate on model swap (mirror translate._llm / orchestrate._vlm)
         return _ENGINE
     import torch
     on_cuda = cfg.device == "cuda"
@@ -113,6 +115,7 @@ def make(cfg):
         from faster_qwen3_tts import FasterQwen3TTS
         _ENGINE = FasterQwen3TTS.from_pretrained(
             str(cfg.tts_model), device="cuda", dtype=dtype, attn_implementation="sdpa")
+        _ENGINE_KEY = key
         print(f"[dub] TTS: faster-qwen3-tts (CUDA graphs) [{_ACTIVE_MODE}]", flush=True)
         return _ENGINE
 
@@ -121,6 +124,7 @@ def make(cfg):
     _ENGINE = Qwen3TTSModel.from_pretrained(
         str(cfg.tts_model), device_map="cuda:0" if on_cuda else "cpu",
         dtype=dtype, attn_implementation="sdpa")
+    _ENGINE_KEY = key
     return _ENGINE
 
 
@@ -128,10 +132,11 @@ def release():
     """Drop the cached Qwen3-TTS engine and free its VRAM before the onnxruntime separation stage in a BATCH,
     so its cuFFT plan can allocate — otherwise clip #2's separation hits CUFFT_EXEC_FAILED behind the resident
     TTS model."""
-    global _ENGINE
+    global _ENGINE, _ENGINE_KEY
     if _ENGINE is None:
         return
     _ENGINE = None
+    _ENGINE_KEY = None
     try:
         import gc
         import torch
@@ -148,9 +153,12 @@ def clone(model, target_text, prompt_text, prompt_wav, num_steps=10, language="e
     # Clone only the speaker TIMBRE (x-vector), NOT the reference transcript, for cross-lingual dubbing
     # (EN ref -> RU output) — passing the English ref_text bleeds an English accent into the Russian.
     # faster-qwen3-tts exposes `xvec_only`; plain qwen-tts exposes `x_vector_only_mode` — pick by signature.
-    params = inspect.signature(model.generate_voice_clone).parameters
+    xvec = getattr(model, "_dub_xvec_param", None)
+    if xvec is None:                              # signature is fixed per engine -> resolve once, cache on the instance
+        xvec = "xvec_only" in inspect.signature(model.generate_voice_clone).parameters
+        model._dub_xvec_param = xvec
     kw = dict(text=target_text, language=_langname(language), ref_audio=str(prompt_wav))
-    if "xvec_only" in params:
+    if xvec:
         kw["xvec_only"] = x_vector_only
         kw["ref_text"] = "" if x_vector_only else (prompt_text or "")
     else:

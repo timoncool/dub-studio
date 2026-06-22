@@ -478,8 +478,8 @@ def build(width, height, out_ass, preset=None, titles=None, subs=None, max_lines
     if _explicit:
         sub_fs = max(20, min(int(_explicit), round(height / 5)))
     else:
-        sub_fs = max(44, min(int(round(sub_px * 1.25)) if sub_px else (round(_szf * height) if _szf else round(height / 16)),
-                             round(height / 10)))
+        sub_fs = min(max(44, int(round(sub_px * 1.25)) if sub_px else (round(_szf * height) if _szf else round(height / 16))),
+                     round(height / 10))   # frame-relative cap (height/10) wins on small frames so subs aren't oversized
     margin_v = round(height * 0.13)
     # font = the orchestrator's pick from our bundled set (validated against FONTS), else the default
     fontname = sub_style["font"] if (sub_style and sub_style.get("font") in FONTS) else FONT_NAME

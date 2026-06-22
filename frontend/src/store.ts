@@ -51,7 +51,14 @@ export const useStore = create<State>((set, get) => ({
   setRendering: (rendering) => set({ rendering }),
   addExport: (e) => set((s) => ({ exports: [e, ...s.exports] })),
   updateExport: (id, patch) => set((s) => ({ exports: s.exports.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
-  pushHistory: (p) => set((s) => ({ past: [...s.past, p].slice(-60), future: [] })),
+  pushHistory: (p) => set((s) => {
+    // no-op if the snapshot matches the current head: callers may re-snapshot the same
+    // baseline (e.g. a second keystroke in the same edit burst), and an unconditional
+    // future:[] there would silently kill the redo stack.
+    const head = s.past[s.past.length - 1];
+    if (head && JSON.stringify(head) === JSON.stringify(p)) return {};
+    return { past: [...s.past, p].slice(-60), future: [] };
+  }),
   undo: () => {
     const s = get(); if (!s.past.length || !s.project) return null;
     const prev = s.past[s.past.length - 1];

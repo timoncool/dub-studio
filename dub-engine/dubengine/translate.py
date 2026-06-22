@@ -151,9 +151,11 @@ def _run_hunyuan(segs, src, tgt, model_path, n_gpu_layers, spoken):
         else:                                   # numbering drifted -> reliable per-line mode for this chunk
             for gi in chunk:
                 segs[gi]["tgt"] = _translate_one(llm, (segs[gi].get("text") or "").strip(), tgt_name, extra, gloss_str)
-    for gi in idxs:
-        if not segs[gi].get("tgt"):             # empty MT result is a real failure, hard-fail
-            raise RuntimeError(f"MT returned empty for segment: {segs[gi].get('text')!r}")
+    empty = [gi for gi in idxs if not segs[gi].get("tgt")]
+    for gi in empty:                            # degrade per-line: keep source so the dub isn't empty (matches rewrite())
+        segs[gi]["tgt"] = (segs[gi].get("text") or "").strip()
+    if idxs and len(empty) == len(idxs):        # everything empty -> a real MT/config failure, hard-fail
+        raise RuntimeError(f"MT returned empty for all {len(idxs)} segments")
     return segs
 
 
@@ -195,5 +197,9 @@ def rewrite(segs, instruction, src, tgt, model_path, n_gpu_layers=0, spoken=True
                      (r["choices"][0]["message"]["content"] or ""), flags=re.DOTALL).strip()
         parsed = _parse_numbered(out, len(chunk))
         for j, gi in enumerate(chunk):
-            segs[gi]["tgt"] = parsed[j] or (segs[gi].get("text") or "").strip()
+            src_line = (segs[gi].get("text") or "").strip()
+            if parsed[j]:
+                segs[gi]["tgt"] = parsed[j]
+            else:                                # dropped/misnumbered line -> translate it (never voice raw source)
+                segs[gi]["tgt"] = _translate_one(llm, src_line, tgt_name, extra, "") or src_line
     return segs

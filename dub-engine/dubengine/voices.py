@@ -72,7 +72,10 @@ def auto_select(pack_dir, source_wav, work_dir, tgt_lang="ru"):
     else:
         cands = voices
     gender = "Female" if _median_f0(source_wav) >= 165 else "Male"
-    by_gender = [v for v in cands if gender.lower() in v.lower()] or cands
+    if gender == "Female":
+        by_gender = [v for v in cands if "female" in v.lower()] or cands
+    else:                                          # 'male' substring also matches 'female' -> exclude it
+        by_gender = [v for v in cands if "male" in v.lower() and "female" not in v.lower()] or cands
     name = by_gender[0]
     wav, text = load_voice(pack_dir, name, work_dir)
     return name, wav, text

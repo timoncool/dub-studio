@@ -55,8 +55,9 @@ async def _worker():
     assert _jobq is not None
     while True:
         job_id, fn = await _jobq.get()
-        job = JOBS.get(job_id)                              # caller may have given up (preview/SSE timeout popped it)
-        if job is None:                                     # -> skip instead of KeyError-ing out of the worker loop
+        job = JOBS.get(job_id)                              # caller may have given up (preview/original timeout)
+        if job is None or job.get("abandoned"):             # -> drop instead of running work nobody awaits
+            JOBS.pop(job_id, None)
             _jobq.task_done()
             continue
         job["status"] = "running"
@@ -141,14 +142,25 @@ async def capabilities():
 @app.patch("/engine/opts")
 async def set_opts(edit: dict = Body(...)):
     """Swap a model slot at runtime (ASR/LLM/vision/TTS) — next analyze/export uses it (modularity groundwork)."""
-    if edit.get("asr"):
-        OPTS.asr_model = edit["asr"]
-    if edit.get("tts"):
-        OPTS.tts_model = edit["tts"]
-    if edit.get("llm"):
-        OPTS.mt_model_path = Path(edit["llm"])
-    if edit.get("vision"):
-        OPTS.mmproj_path = Path(edit["vision"])
+    def _slot(key: str) -> Optional[str]:                  # present -> must be a non-blank string; else 400
+        if key not in edit:
+            return None
+        v = edit[key]
+        if not isinstance(v, str) or not v.strip():
+            raise HTTPException(400, f"{key!r} must be a non-empty path")
+        return v.strip()
+
+    asr, tts, llm, vision = _slot("asr"), _slot("tts"), _slot("llm"), _slot("vision")
+    if asr is not None:
+        OPTS.asr_model = asr
+    if tts is not None:
+        OPTS.tts_model = tts
+    if llm is not None:
+        OPTS.mt_model_path = Path(llm)
+        if vision is None:                                 # no explicit projector -> re-derive for the new MT GGUF
+            OPTS.mmproj_path = OPTS.mt_model_path.parent / ("mmproj-" + OPTS.mt_model_path.name)
+    if vision is not None:
+        OPTS.mmproj_path = Path(vision)
     return {"models": _model_stack()}
 
 
@@ -243,7 +255,10 @@ async def patch_project(pid: str, edit: dict = Body(...)):
     p = _load(pid)
     op = edit.pop("op", "")
     if op == "caption":
-        edit_caption(p, edit.pop("seg_id", None), **edit)
+        try:
+            edit_caption(p, edit.pop("seg_id", None), **edit)   # validated in edit_caption -> bad/unknown -> 400, not 500
+        except (TypeError, ValueError, KeyError) as e:
+            raise HTTPException(400, f"bad caption edit: {e}")
     elif op == "segment":
         sid = edit.get("id")
         if not sid:
@@ -261,8 +276,11 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         except (IndexError, KeyError) as e:
             raise HTTPException(404, f"bad blur idx: {e}")
     elif op == "blur_add":
-        add_blur(p, int(edit["x"]), int(edit["y"]), int(edit["w"]), int(edit["h"]),
-                 float(edit.get("t0", 0.0)), edit.get("t1"))
+        try:
+            add_blur(p, int(edit["x"]), int(edit["y"]), int(edit["w"]), int(edit["h"]),
+                     float(edit.get("t0", 0.0)), edit.get("t1"))
+        except (KeyError, TypeError, ValueError) as e:
+            raise HTTPException(400, f"bad blur_add: missing/invalid field {e}")
     elif op == "blur_del":
         try:
             del_blur(p, int(edit["idx"]))
@@ -283,11 +301,17 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         except (IndexError, KeyError) as e:
             raise HTTPException(404, str(e))
     elif op == "title_add":
-        add_title(p, edit.get("text", ""), int(edit["x"]), int(edit["y"]), int(edit["w"]), int(edit["h"]),
-                  float(edit.get("t0", 0.0)), edit.get("t1"), bool(edit.get("italic", False)),
-                  edit.get("font"), edit.get("color", "#FFFFFF"))
+        try:
+            add_title(p, edit.get("text", ""), int(edit["x"]), int(edit["y"]), int(edit["w"]), int(edit["h"]),
+                      float(edit.get("t0", 0.0)), edit.get("t1"), bool(edit.get("italic", False)),
+                      edit.get("font"), edit.get("color", "#FFFFFF"))
+        except (KeyError, TypeError, ValueError) as e:
+            raise HTTPException(400, f"bad title_add: missing/invalid field {e}")
     elif op == "subpos":
-        p.captions.sub_y = int(edit["sub_y"])              # drag the subtitle band vertically
+        try:
+            p.captions.sub_y = int(edit["sub_y"])          # drag the subtitle band vertically
+        except (KeyError, TypeError, ValueError) as e:
+            raise HTTPException(400, f"bad subpos sub_y: {e}")
         p.captions.sub_y_locked = True                     # manual placement -> honor it for all lines
     elif op == "mode":
         try:
@@ -312,10 +336,13 @@ async def patch_project(pid: str, edit: dict = Body(...)):
 
 
 def _compute_peaks(video: str, n: int):
+    import logging
     import subprocess
     import numpy as np
     p = subprocess.run(["ffmpeg", "-v", "quiet", "-i", str(video), "-ac", "1", "-ar", "8000", "-f", "s16le", "-"],
                        capture_output=True)
+    if p.returncode != 0:                                  # surface decode failure instead of masking it as silent []
+        logging.getLogger("dubstudio").warning("ffmpeg waveform decode failed (rc=%s) for %s", p.returncode, video)
     a = np.frombuffer(p.stdout, dtype=np.int16).astype(np.float32)
     if not len(a):
         return []
@@ -327,10 +354,10 @@ def _compute_peaks(video: str, n: int):
 @app.get("/projects/{pid}/waveform")
 async def waveform(pid: str, n: int = 600):
     """Downsampled audio peaks for the bottom WaveformTimeline (cached per project)."""
-    proj = _load(pid)
     cache = _proj_dir(pid) / "waveform.json"
     if cache.exists():
-        return json.loads(cache.read_text(encoding="utf-8"))
+        return json.loads(cache.read_text(encoding="utf-8"))   # cache hit -> skip the full Project parse entirely
+    proj = _load(pid)                                          # only parse when we actually need the video path
     peaks = await _loop.run_in_executor(None, _compute_peaks, proj.meta.video, n)   # CPU ffmpeg, off the GPU worker
     out = {"peaks": peaks}
     if peaks:                                  # don't poison the cache with [] from a transient ffmpeg failure
@@ -358,9 +385,11 @@ async def preview(pid: str, t: float = 0.0, rev: int = 0):  # rev = client cache
     try:
         png = await asyncio.wait_for(JOBS[job_id]["future"], timeout=300)
     except asyncio.TimeoutError:
+        job = JOBS.get(job_id)
+        if job is not None:
+            job["abandoned"] = True                        # mark, don't pop: worker skips if queued / drops late result
         raise HTTPException(504, "preview render timed out")
-    finally:
-        JOBS.pop(job_id, None)                             # one-shot job: never SSE-watched -> reclaim here
+    JOBS.pop(job_id, None)                                 # delivered in time -> reclaim now (terminal one-shot job)
     return Response(content=png, media_type="image/png")
 
 
@@ -375,9 +404,11 @@ async def original(pid: str, t: float = 0.0):
     try:
         png = await asyncio.wait_for(JOBS[job_id]["future"], timeout=60)
     except asyncio.TimeoutError:
+        job = JOBS.get(job_id)
+        if job is not None:
+            job["abandoned"] = True
         raise HTTPException(504, "original frame timed out")
-    finally:
-        JOBS.pop(job_id, None)
+    JOBS.pop(job_id, None)
     return Response(content=png, media_type="image/png")
 
 
@@ -439,7 +470,9 @@ async def job_events(job_id: str):
                 if ev.get("type") in ("done", "error"):
                     break
         finally:
-            JOBS.pop(job_id, None)                         # job terminal + delivered -> reclaim (no unbounded growth)
+            job = JOBS.get(job_id)                         # only reclaim a FINISHED job; a dropped stream must NOT
+            if job is not None and job["future"].done():   # de-register a still-running/queued job (reconnect + the
+                JOBS.pop(job_id, None)                     # worker's terminal call_later(300) reap both need it alive)
     return StreamingResponse(stream(), media_type="text/event-stream")
 
 

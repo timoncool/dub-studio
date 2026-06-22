@@ -76,7 +76,7 @@ def main(argv=None):
                     help="alias for --mode nodub: keep ORIGINAL audio, localize on-screen TEXT only")
     ap.add_argument("--dub", dest="mode", action="store_const", const="dub", help="alias for --mode dub")
     ap.add_argument("--max-stretch", type=float, default=None,
-                    help="max atempo when fitting dubbed speech to the slot (default 1.25)")
+                    help="max atempo when fitting dubbed speech to the slot (default 2.0)")
 
     # voice
     ap.add_argument("--voice-mode", dest="voice_mode", default="clone",

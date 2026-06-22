@@ -46,10 +46,17 @@ def _frame_b64(video, t, tmp):
     # PAD to a SQUARE before Gemma: its SigLIP encoder resizes every image to a fixed 896x896, so a vertical 9:16
     # frame gets squished -> distorted/unreadable text and lost italic slant (Gemma3 report, Table 8: P&S helps text).
     # A square letterbox preserves letter geometry; height is unchanged for tall clips so y_frac/size_frac stay valid.
-    subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.1f}", "-i", str(video), "-frames:v", "1",
-                    "-vf", "pad='max(iw,ih)':'max(iw,ih)':'(ow-iw)/2':'(oh-ih)/2':color=black", str(tmp)],
-                   capture_output=True)
-    return base64.b64encode(Path(tmp).read_bytes()).decode()
+    p = Path(tmp)
+    try:                              # drop a prior call's frame so a failure here can't silently read it back stale
+        p.unlink()
+    except OSError:
+        pass
+    r = subprocess.run(["ffmpeg", "-y", "-ss", f"{t:.1f}", "-i", str(video), "-frames:v", "1",
+                        "-vf", "pad='max(iw,ih)':'max(iw,ih)':'(ow-iw)/2':'(oh-ih)/2':color=black", str(tmp)],
+                       capture_output=True)
+    if r.returncode != 0 or not p.exists():   # no fresh frame -> fail (the caller's per-phase try/except skips it)
+        raise RuntimeError(f"ffmpeg frame extract failed at {t:.1f}s (rc={r.returncode})")
+    return base64.b64encode(p.read_bytes()).decode()
 
 
 def run(cfg, segs, vocal, total, vh, log=lambda m: None, rewrite=None):
@@ -300,11 +307,10 @@ def run(cfg, segs, vocal, total, vh, log=lambda m: None, rewrite=None):
               "numbering, match tone/slang/intent. Use ALL the context below (what the words alone don't convey):"
               f"\n\n{ctx}=== LINES ===\n{numbered}\n\nOutput ONLY 'N. <translation>' per line, nothing else.")
     raw = ask([{"type": "text", "text": TP}], 80 + 45 * len(lines_all))
-    by_n = {int(m.group(1)): m.group(2).strip() for m in re.finditer(r"(?m)^\s*(\d+)[.)]\s*(.+?)\s*$", raw)}
+    by_n = {int(m.group(1)): m.group(2).strip() for m in re.finditer(r"(?m)^\s*(\d+)[.)\]:]\s*(.+?)\s*$", raw)}
     for i, s in enumerate(segs):
         t = by_n.get(i + 1, "")
-        if t:
-            s["tgt"] = t
+        s["tgt"] = t or (s.get("text") or "").strip()   # dropped/misnumbered -> source line, never a blank segment (parity w/ titles below)
     for j, ttl in enumerate(extra["titles"]):           # title translations land after the speech lines
         ttl["tgt"] = by_n.get(n_seg + j + 1, ttl["text"])
 

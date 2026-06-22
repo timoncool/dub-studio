@@ -143,6 +143,11 @@ function DropZone() {
           </div>
           <h1 className="mt-5 text-3xl lg:text-[36px] leading-[1.06] font-extrabold tracking-tight max-w-xl">{t("hero.headline")}</h1>
           <p className="mt-4 text-[15px] leading-relaxed text-[var(--color-muted)] max-w-lg">{t("hero.sub")}</p>
+          {s.progress.stage === "error" && (   // analyze failed -> stage flips back to "empty"; show WHY here instead of silently returning to the drop screen
+            <div className="mt-4 max-w-lg rounded-lg border border-[var(--color-warn)]/40 bg-[color-mix(in_oklab,var(--color-warn)_10%,transparent)] px-3 py-2 text-[13px] text-[var(--color-warn)]">
+              <span className="font-semibold">{t("common.error")}</span> · <span className="mono text-[11px] break-words">{s.progress.msg}</span>
+            </div>
+          )}
           <div className="mt-8 space-y-4">
             <Feature icon={Languages} title={t("actions.translate")} desc={t("hero.f1")} delay={0.12} />
             <Feature icon={AudioLines} title={t("actions.dub")} desc={t("hero.f2")} delay={0.18} />
@@ -334,6 +339,7 @@ function Editor() {
   const [play, setPlay] = useState(false);                            // dub playback: play TTS audio + advance preview frames + playhead
   const audioRef = useRef<HTMLAudioElement>(null);
   const playEndRef = useRef<number>(Infinity);                        // stop time for single-phrase playback (Infinity = full)
+  const [dubRev, setDubRev] = useState(0);                            // dub-audio cache-buster — bumped ONLY when the dub track is re-rendered (regen/export), NOT on every edit, so live edits don't reload <audio> mid-playback
   // Dub playback — drive the EDITOR preview from the dub audio track (no video element): the preview frame and the
   // waveform playhead follow audio.currentTime, so you hear the dub while the future result plays frame-by-frame.
   useEffect(() => {
@@ -352,21 +358,29 @@ function Editor() {
   const ss = p.captions.sub_style;
 
   function patchSeg(id: string, tgt: string) {                       // instant local echo while typing
+    if (!p.segments.find((x) => x.id === id)?.dirty) pushHistory(p);  // snapshot once, on the first edit of this phrase (pre-echo baseline)
     setProject({ ...p, segments: p.segments.map((x) => x.id === id ? { ...x, tgt_text: tgt, dirty: true } : x) });
   }
   function titleText(i: number, text: string) {                      // instant local echo for a title's text
+    if (p.captions.titles[i]?.text !== text) pushHistory(p);          // snapshot pre-change baseline on an actual edit, not on focus
     setProject({ ...p, captions: { ...p.captions, titles: p.captions.titles.map((x, j) => j === i ? { ...x, text } : x) } });
+  }
+  // a patch/PUT rejected (4xx/5xx/offline) -> surface it in the Files panel (like doExport) and re-sync from
+  // the server so the optimistic local echo can't silently diverge from persisted truth
+  async function surfaceErr(err: unknown) {
+    addExport({ id: `err-${Date.now()}`, name: t("common.error"), status: "error", msg: String(err) });
+    try { setProject(await api.getProject(pid)); } catch { /* offline -> keep optimistic state */ }
   }
   async function persistSeg(id: string, tgt: string) {               // on blur -> persist to backend + refresh frame
     setRendered(false);
-    setProject(await api.patch(pid, { op: "segment", id, tgt_text: tgt }));
-    bump();
+    try { setProject(await api.patch(pid, { op: "segment", id, tgt_text: tgt })); bump(); }
+    catch (err) { await surfaceErr(err); }
   }
   async function branch(op: string, extra: Record<string, unknown> = {}) {
     pushHistory(p);                                                  // snapshot for undo BEFORE the mutation
     setRendered(false);
-    setProject(await api.patch(pid, { op, ...extra }));
-    bump();                                                          // style/voice/text change -> re-fetch the frame
+    try { setProject(await api.patch(pid, { op, ...extra })); bump(); }   // style/voice/text change -> re-fetch the frame
+    catch (err) { await surfaceErr(err); }
   }
   async function doRegen(segId: string) {                            // re-synthesize the TTS for ONE phrase (mark dirty -> /render)
     if (regenId) return;
@@ -375,7 +389,7 @@ function Editor() {
       await api.patch(pid, { op: "regen", id: segId });
       const { job_id } = await api.render(pid);                       // re-TTS only the dirty seg + re-mux -> fresh dub
       await api.watchJob(job_id, () => {});
-      setProject(await api.getProject(pid)); setRendered(false); bump();   // refresh preview + dub audio
+      setProject(await api.getProject(pid)); setRendered(false); bump(); setDubRev(Date.now());   // refresh preview + reload the re-rendered dub audio
     } catch (e) { console.error("regen TTS failed", e); }
     finally { setRegenId(null); }
   }
@@ -416,7 +430,7 @@ function Editor() {
       const { job_id } = await api.render(pid);
       await api.watchJob(job_id, (e) => { if (e.type === "progress") updateExport(exId, { msg: e.msg || "" }); });
       updateExport(exId, { status: "done", msg: "", url: `${api.outputUrl(pid)}?rev=${Date.now()}` });   // bust cache on re-export
-      setRendered(true);
+      setRendered(true); setDubRev(Date.now());   // /dub now serves the freshly rendered output.mp4 -> reload <audio>
     } catch (err) {
       updateExport(exId, { status: "error", msg: String(err) });
     } finally { setRendering(false); }
@@ -490,7 +504,6 @@ function Editor() {
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
                 <textarea value={seg.tgt_text} onChange={(e) => patchSeg(seg.id, e.target.value)}
                   onClick={(e) => e.stopPropagation()}                       // editing text must not re-seek on every click
-                  onFocus={() => pushHistory(p)}                             // snapshot pre-edit for undo
                   onBlur={(e) => persistSeg(seg.id, e.target.value)}
                   className="w-full mt-1.5 bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded-lg p-1.5 text-[13px] leading-snug resize-none focus:border-[var(--color-accent)] focus:outline-none transition-colors" rows={2} />
               </div>
@@ -541,8 +554,7 @@ function Editor() {
                   <button onClick={() => branch("title_del", { idx: i })} className="ml-auto hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
                 </div>
                 <input value={ti.text} onChange={(e) => titleText(i, e.target.value)}
-                  onFocus={() => pushHistory(p)}                              // snapshot pre-edit (local echo already mutates p)
-                  onBlur={async (e) => { setRendered(false); setProject(await api.patch(pid, { op: "title", idx: i, text: e.target.value })); bump(); }}
+                  onBlur={async (e) => { setRendered(false); try { setProject(await api.patch(pid, { op: "title", idx: i, text: e.target.value })); bump(); } catch (err) { await surfaceErr(err); } }}
                   className="w-full bg-[var(--color-bg)]/60 border border-[var(--color-border)] rounded p-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors" />
                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                   <button onClick={() => branch("title", { idx: i, bold: !ti.bold })}
@@ -606,7 +618,7 @@ function Editor() {
             </div>
           ) : (
             <PreviewCanvas pid={pid} project={p} scrub={scrub} rendered={rendered}
-              onChanged={async () => setProject(await api.getProject(pid))} />
+              onChanged={(fresh) => setProject(fresh)} />
           )}
         </div>
         <div className="flex items-center gap-3 px-4 py-2.5 border-t border-[var(--color-border)] bg-[var(--color-surface)]">
@@ -614,7 +626,7 @@ function Editor() {
             className={`shrink-0 p-1.5 rounded-md transition-colors ${play ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
             {play ? <Pause size={15} /> : <Play size={15} />}
           </button>
-          <audio ref={audioRef} src={api.dubUrl(pid, rev)} onEnded={() => setPlay(false)} preload="auto" className="hidden" />
+          <audio ref={audioRef} src={api.dubUrl(pid, dubRev)} onEnded={() => setPlay(false)} preload="auto" className="hidden" />
           <button onClick={() => setCompare((c) => !c)} title={t("compare.toggle")}
             className={`shrink-0 p-1.5 rounded-md transition-colors ${compare ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
             <Columns2 size={15} />
@@ -698,7 +710,7 @@ function Editor() {
         {mode !== "subtitles" && (
           <>
             <div className="mt-6"><SectionLabel>{t("editor.voice")}</SectionLabel></div>
-            <select value={p.audio.voice.mode} onChange={(e) => branch("recast", { voice_mode: e.target.value })}
+            <select value={p.audio.voice.mode} onChange={(e) => branch("recast", { voice_mode: e.target.value, voice_name: p.audio.voice.name })}
               className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
               <option value="clone">{t("voice.clone")}</option>
               <option value="autocast">{t("voice.autocast")}</option>
@@ -774,7 +786,7 @@ function FilesPanel() {
                 )}
                 {e.status === "done" && e.url && (
                   <div className="mt-2 flex gap-1.5">
-                    <a href={`${e.url}?dl=1`} className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] py-1 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold"><Download size={13} /> {t("files.download")}</a>
+                    <a href={`${e.url}&dl=1`} className="flex-1 inline-flex items-center justify-center gap-1.5 text-[12px] py-1 rounded-md bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold"><Download size={13} /> {t("files.download")}</a>
                     <a href={e.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 text-[12px] px-2.5 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"><ExternalLink size={13} /> {t("files.open")}</a>
                   </div>
                 )}

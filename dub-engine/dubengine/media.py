@@ -58,7 +58,7 @@ def mux(video, audio, out):
     # NO -shortest: the output spans the longest stream, so the stream-copied video is NEVER truncated
     # (the dub track is padded ~+1s in assemble.timeline, so a short audio can't cut the video tail).
     _run(["ffmpeg", "-y", "-i", str(video), "-i", str(audio),
-          "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", str(out)])
+          "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy", "-c:a", "aac", str(out)])
 
 
 def trim(src, dst, start: float, end: float):

@@ -1,4 +1,5 @@
 import os
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -95,6 +96,8 @@ class Config:
         if self.mode == "nodub":        # forced text-only; "dub"/"auto" leave dub=True (auto may flip it)
             self.dub = False
         if self.rewrite:                # a creative re-dub is always a dub
+            if self.mode == "nodub":    # explicit nodub wanted text-only; rewrite needs a dub -> overrides it, warn
+                warnings.warn("mode='nodub' ignored: rewrite implies a dub (dub forced on)", stacklevel=2)
             self.dub = True
         # SUBS axis (speech subtitles from ASR), independent of the audio dub:
         #   auto = legacy (translated subs only when captioning a dub, else none -> on-screen localize only)

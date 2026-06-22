@@ -17,6 +17,7 @@ import json
 import re
 import sys
 import time
+import traceback
 from pathlib import Path
 
 import soundfile as sf
@@ -143,7 +144,8 @@ def _build_dub(cfg, wd, total, bench, vh):
                     segs, ctx_extra = ctx_translate.run(cfg, segs, vocals16, total, vh, log=_log, rewrite=cfg.rewrite)
                 (wd / "ctx_extra.json").write_text(json.dumps(ctx_extra, ensure_ascii=False), encoding="utf-8")
             except Exception as e:
-                _log(f"  rewrite-ctx failed ({e}); plain text rewrite")
+                _log(f"  rewrite-ctx failed ({e!r}); plain text rewrite")
+                _log(traceback.format_exc())
                 with _timed("rewrite", bench):
                     segs = translate.rewrite(segs, cfg.rewrite, src, cfg.tgt_lang, cfg.mt_model_path, n_gpu_layers=n_gpu)
         else:
@@ -166,7 +168,8 @@ def _build_dub(cfg, wd, total, bench, vh):
                 segs, ctx_extra = ctx_translate.run(cfg, segs, vocals16, total, vh, log=_log)
             (wd / "ctx_extra.json").write_text(json.dumps(ctx_extra, ensure_ascii=False), encoding="utf-8")
         except Exception as e:
-            _log(f"  ctx-translate failed ({e}); falling back to plain MT")
+            _log(f"  ctx-translate failed ({e!r}); falling back to plain MT")
+            _log(traceback.format_exc())
             with _timed("translate", bench):
                 segs = translate.run(segs, src, cfg.tgt_lang, cfg.mt_model_path, n_gpu_layers=n_gpu)
     else:
@@ -216,7 +219,7 @@ def _build_dub(cfg, wd, total, bench, vh):
     dub_dur = media.duration(dub)
     if dub_dur > total + 0.15:
         media.time_stretch(dub, wd / "dub_fit.wav", dub_dur / total)
-        dub = wd / "dub_fit.wav"
+        os.replace(wd / "dub_fit.wav", dub)            # canonical dub_vocals.wav := the FITTED track, so resume reuses the final audio
         _log(f"  dub {dub_dur:.1f}s > video {total:.1f}s -> tempo-fit whole track x{dub_dur/total:.2f}")
     if music:
         new_audio = wd / "new_audio.m4a"
@@ -275,7 +278,7 @@ def _regen_dub(cfg, wd, total, bench, vh):
     dub_dur = media.duration(dub)
     if dub_dur > total + 0.15:
         media.time_stretch(dub, wd / "dub_fit.wav", dub_dur / total)
-        dub = wd / "dub_fit.wav"
+        os.replace(wd / "dub_fit.wav", dub)            # canonical dub_vocals.wav := the FITTED track (resume-safe)
     if music:
         new_audio = wd / "new_audio.m4a"
         with _timed("mix", bench):
@@ -290,8 +293,13 @@ def run(cfg):
     bench = []
     wd = cfg.work_dir
     info = media.probe(cfg.input)
-    total = float(info["format"]["duration"])
-    vstream = next(s for s in info["streams"] if s.get("codec_type") == "video")
+    dur = (info.get("format") or {}).get("duration")
+    if dur is None:
+        raise ValueError(f"could not determine duration of {cfg.input}")
+    total = float(dur)
+    vstream = next((s for s in info["streams"] if s.get("codec_type") == "video"), None)
+    if vstream is None:
+        raise ValueError("input has no video stream")
     vw, vh = int(vstream["width"]), int(vstream["height"])
     _log(f"input {cfg.input.name} dur={total:.1f}s {vw}x{vh}")
 
@@ -608,7 +616,7 @@ def run(cfg):
                 _free_gpu()
             # TRUST the vision LLM's orchestration: use the sub_style (colour/box/font) and sub_y it read from
             # the ORIGINAL — do NOT second-guess/override it with heuristics. It looked at the frames; use it.
-            _sh = sorted(r[4] for r in localize_ocr if sub_y and abs((r[2] + r[4] / 2.0) - sub_y) <= vh * 0.07)
+            _sh = sorted(r[4] for r in localize_ocr if sub_y is not None and abs((r[2] + r[4] / 2.0) - sub_y) <= vh * 0.07)
             _bh = sorted(b[3] for b in caption_boxes) if caption_boxes else []
             sub_px = (_sh[len(_sh) // 2] if _sh else None) or cap_px or (_bh[len(_bh) // 2] if _bh else None)
             plan_f.write_text(json.dumps({"titles": loc_blocks, "blur_boxes": blur_boxes, "sub_y": sub_y,
@@ -621,7 +629,7 @@ def run(cfg):
         # the other line's original leaks). Fallback: the default sub_y.
         cap_lo, cap_hi = 0.40 * vw, 0.60 * vw
         no_band = len(caption_boxes) < 3                       # no recurring ORIGINAL subtitle band detected
-        if not sub_y:
+        if sub_y is None:
             sub_y = int(vh * 0.82)                              # default ONLY when truly unset — never clobber an edited/pinned sub_y
         for s in segs:
             if sub_y_locked or cfg.fresh_subs or no_band:

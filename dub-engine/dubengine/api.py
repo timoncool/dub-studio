@@ -48,6 +48,7 @@ def _to_config(project: Project, opts: EngineOpts, output: str, *, mode: str = "
         max_stretch=opts.max_stretch,
         mode=mode, captions=captions, subs=subs,
         keep_music=a.keep_music, voice_mode=a.voice.mode, voice_name=a.voice.name, rewrite=a.rewrite,
+        fresh_subs=project.captions.fresh_subs,
     )
 
 
@@ -126,10 +127,11 @@ def preview_frame(project: Project, t: float, opts: Optional[EngineOpts] = None,
     cap_lo, cap_hi = 0.40 * vw, 0.60 * vw
     no_band = len(cboxes) < 3
     locked = bool(plan.get("sub_y_locked"))            # editor dragged the band -> place EVERY line at sub_y
-    if not sub_y:
-        sub_y = int(vh * 0.82)                         # default ONLY when truly unset — never clobber an edited sub_y
+    fresh = bool(plan.get("fresh_subs"))               # FRESH mode: no original band to ride -> pin to sub_y (parity w/ pipeline.run)
+    if sub_y is None:
+        sub_y = int(vh * 0.82)                         # default ONLY when truly unset — 0 is a valid (top-pinned) value
     for s in segs:
-        if locked or no_band:
+        if locked or fresh or no_band:
             s["y"] = sub_y
         else:
             ys = sorted(b[1] + b[3] / 2.0 for b in cboxes
@@ -214,20 +216,22 @@ def set_mode(project: Project, value: str) -> Project:
 
 
 def edit_caption(project: Project, seg_id: Optional[str] = None, **overrides) -> Project:
-    """seg_id=None -> edit the GLOBAL sub_style; else add/update a per-segment override."""
+    """seg_id=None -> edit the GLOBAL sub_style; else add/update a per-segment override.
+    Overrides are validated against the model (unknown key / bad type -> ValueError); no blind setattr."""
+    def _apply(model):
+        unknown = set(overrides) - set(type(model).model_fields)
+        if unknown:
+            raise ValueError(f"unknown caption field(s): {', '.join(sorted(unknown))}")
+        return type(model).model_validate({**model.model_dump(), **overrides})
     if seg_id is None:
-        ss = project.captions.sub_style or SubStyle()
-        for k, v in overrides.items():
-            setattr(ss, k, v)
-        project.captions.sub_style = ss
+        project.captions.sub_style = _apply(project.captions.sub_style or SubStyle())
     else:
         from .project import CaptionOverride
-        ov = next((o for o in project.captions.overrides if o.seg_id == seg_id), None)
-        if ov is None:
-            ov = CaptionOverride(seg_id=seg_id)
-            project.captions.overrides.append(ov)
-        for k, v in overrides.items():
-            setattr(ov, k, v)
+        idx = next((i for i, o in enumerate(project.captions.overrides) if o.seg_id == seg_id), None)
+        if idx is None:
+            project.captions.overrides.append(_apply(CaptionOverride(seg_id=seg_id)))
+        else:
+            project.captions.overrides[idx] = _apply(project.captions.overrides[idx])
     return project
 
 
@@ -249,6 +253,8 @@ def edit_segment(project: Project, seg_id: str, *, tgt_text: Optional[str] = Non
 
 
 def edit_blur(project: Project, idx: int, **geom) -> Project:
+    if not (0 <= idx < len(project.captions.blur_boxes)):
+        raise IndexError(f"blur idx {idx} out of range")
     b = project.captions.blur_boxes[idx]
     for k, v in geom.items():
         setattr(b, k, v)
