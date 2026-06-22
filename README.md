@@ -84,12 +84,20 @@ Russian original (left) → dubbed into English by Dub Studio (right) — voice 
 | On‑screen text blur + re‑caption | ✅ | ❌ | ⚠️ few, cloud |
 | Portable (one folder) | ✅ | ⚠️ | — |
 
-## Quickstart (portable, Windows)
+## Quickstart (Windows, NVIDIA GPU)
 
-1. Download the latest `DubStudio_*.zip` from [Releases](https://github.com/timoncool/dub-studio/releases) and unzip.
-2. Double‑click **`run.bat`**. On the first run it installs everything (embeddable Python, the matching CUDA wheels for your GPU, the engine, the prebuilt UI), then opens the editor in your browser. Drop a video — models download automatically on first use.
+Install straight from the repo - one clone, one double-click. You need [Git](https://git-scm.com/download/win) and an NVIDIA GPU; everything else (Python, CUDA, Node, ffmpeg) is fetched for you.
 
-That's it — one click, no manual steps. Targets NVIDIA RTX 20xx–50xx (CUDA 12.8), ~12 GB VRAM. Everything lives in the app folder; nothing is installed into your system. For a from‑source dev run, see [PACKAGING.md](PACKAGING.md).
+```bash
+git clone https://github.com/timoncool/dub-studio.git
+cd dub-studio
+```
+
+Now double-click **`run.bat`** (or run it from a terminal). **The first run installs everything into this folder by itself** - embeddable Python 3.11, the CUDA 12.8 wheels, the engine, ffmpeg & Node, the base voice pack and the prebuilt UI (it calls `install.bat` for you) - then opens the editor at **http://127.0.0.1:8765**. Drop a video; the models (Gemma-4 GGUF, Parakeet, Qwen3-TTS, Sortformer) download automatically on first use.
+
+That's it - no manual Python/CUDA/Node setup. Targets NVIDIA RTX 20xx-50xx (CUDA 12.8), ~12 GB VRAM. Everything lives inside the cloned folder; nothing is installed system-wide. **Update later** with `git pull` then **`update.bat`**. Build & packaging internals: [PACKAGING.md](PACKAGING.md).
+
+> **Want a no-git, one-click `.zip`?** A portable `DubStudio_*.zip` will be attached to [Releases](https://github.com/timoncool/dub-studio/releases) once the first build is tagged - not published yet, so clone the repo for now.
 
 ## How it works
 
