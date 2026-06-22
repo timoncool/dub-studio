@@ -118,6 +118,8 @@ class BlurBox(BaseModel):
     t0: float = 0.0
     t1: float = 0.0
     hidden: bool = False           # editor: this zone's blur is OFF (kept in the list, just not burned)
+    fill: Optional[str] = None     # cover MODE (mutually exclusive): None = gblur (textured bg);
+                                   # "#hex" = SOLID colour rectangle (flat bg, e.g. the black/white letterbox bars)
 
 
 class Preset(BaseModel):
@@ -202,7 +204,7 @@ class Project(BaseModel):
         plan["fresh_subs"] = bool(cap.fresh_subs)
         if cap.blur_boxes or "blur_boxes" not in plan:
             # editor can hide a zone's blur (hidden=True) -> keep it in the Project list but DON'T burn it
-            plan["blur_boxes"] = [[b.x, b.y, b.w, b.h, b.t0, b.t1]
+            plan["blur_boxes"] = [[b.x, b.y, b.w, b.h, b.t0, b.t1, b.fill]
                                   for b in cap.blur_boxes if not getattr(b, "hidden", False)]
         plan["titles"] = [t.model_dump() for t in cap.titles]   # typed titles = source of truth (GUI edit/add/delete)
         plan.setdefault("caption_boxes", [])
@@ -241,5 +243,6 @@ class Project(BaseModel):
             if isinstance(bb, (list, tuple)) and len(bb) >= 4:
                 p.captions.blur_boxes.append(BlurBox(x=int(bb[0]), y=int(bb[1]), w=int(bb[2]), h=int(bb[3]),
                                                      t0=float(bb[4]) if len(bb) > 4 else 0.0,
-                                                     t1=float(bb[5]) if len(bb) > 5 else 0.0))
+                                                     t1=float(bb[5]) if len(bb) > 5 else 0.0,
+                                                     fill=(bb[6] if len(bb) > 6 and bb[6] else None)))
         return p

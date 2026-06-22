@@ -329,6 +329,9 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         if s is None:
             raise HTTPException(404, f"segment {edit.get('id')!r} not found")
         s.dirty = True
+    elif op == "regen_all":                                # mark EVERY segment dirty -> next /render re-synthesizes the WHOLE dub (global voice change / re-roll)
+        for s in p.segments:
+            s.dirty = True
     else:
         raise HTTPException(400, f"unknown op {op!r}")
     p.save(_proj_dir(pid) / "project.json")

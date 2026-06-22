@@ -12,7 +12,7 @@ export type Segment = {
   id: string; start: number; end: number; speaker?: string | null;
   src_text: string; tgt_text: string; voice?: string | null; dirty: boolean;
 };
-export type BlurBox = { x: number; y: number; w: number; h: number; t0: number; t1: number; hidden?: boolean };
+export type BlurBox = { x: number; y: number; w: number; h: number; t0: number; t1: number; hidden?: boolean; fill?: string | null };
 export type Title = {
   text: string; tgt: string; bbox?: number[] | null; color?: string | null; bg?: string | null;
   font?: string | null; italic: boolean; align: string; start: number; end: number;

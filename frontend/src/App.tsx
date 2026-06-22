@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -396,6 +396,17 @@ function Editor() {
     } catch (e) { console.error("regen TTS failed", e); }
     finally { setRegenId(null); }
   }
+  async function doRegenAll() {                                      // re-synthesize the WHOLE dub (after switching the pack voice/speaker, or to re-roll)
+    if (regenId) return;
+    setRegenId("__all__");                                          // sentinel: disables per-seg regen buttons, no per-seg spinner
+    try {
+      await api.patch(pid, { op: "regen_all" });                    // mark every segment dirty
+      const { job_id } = await api.render(pid);                     // re-TTS all dirty segs + re-mux -> fresh dub
+      await api.watchJob(job_id, () => {});
+      setProject(await api.getProject(pid)); setRendered(false); bump(); setDubRev(Date.now());
+    } catch (e) { console.error("regen all TTS failed", e); }
+    finally { setRegenId(null); }
+  }
   async function forceSeg(seg: Project["segments"][number]) {        // force-refresh ONE phrase: re-seek + re-fetch + re-render (if stuck)
     setScrub(seg.start); setRendered(false);
     setProject(await api.getProject(pid)); bump();
@@ -534,6 +545,14 @@ function Editor() {
                         title={b.hidden ? t("blur.show") : t("blur.hide")}
                         className="shrink-0 hover:text-[var(--color-accent)] transition-colors">{b.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
                       <span className="flex-1 truncate">#{i + 1} · {b.w}×{b.h} · {fmtT(b.t0)}{b.hidden ? ` · ${t("blur.off")}` : ""}</span>
+                      {b.fill && (
+                        <input type="color" value={b.fill} onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => { e.stopPropagation(); branch("blur", { idx: i, fill: e.target.value }); }}
+                          title={t("blur.fillColor")} className="w-4 h-4 shrink-0 p-0 border-0 bg-transparent rounded cursor-pointer" />
+                      )}
+                      <button onClick={(e) => { e.stopPropagation(); branch("blur", { idx: i, fill: b.fill ? null : "#000000" }); }}
+                        title={b.fill ? t("blur.modeFill") : t("blur.modeBlur")}
+                        className="shrink-0 hover:text-[var(--color-accent)] transition-colors">{b.fill ? <Square size={12} /> : <Droplet size={12} />}</button>
                       <button onClick={(e) => { e.stopPropagation(); branch("blur_del", { idx: i }); }} className="shrink-0 hover:text-[var(--color-warn)] transition-colors"><Trash2 size={12} /></button>
                     </div>
                   ))}
@@ -714,7 +733,7 @@ function Editor() {
           <>
             <div className="mt-6"><SectionLabel>{t("editor.voice")}</SectionLabel></div>
             <select value={p.audio.voice.mode} onChange={(e) => branch("recast", { voice_mode: e.target.value, voice_name: p.audio.voice.name })}
-              className="w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+              className="w-[200px] max-w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
               <option value="clone">{t("voice.clone")}</option>
               <option value="autocast">{t("voice.autocast")}</option>
               <option value="voice">{t("voice.pack")}</option>
@@ -726,7 +745,7 @@ function Editor() {
               const names = (p.audio.voice.name || "").split(",").map((s) => s.trim());
               const pick = (cur: string, on: (v: string) => void) => (
                 <select value={cur} onChange={(e) => on(e.target.value)}
-                  className="flex-1 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+                  className="w-[200px] max-w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none transition-colors">
                   <option value="">{voiceList.length ? "—" : "(пак не найден)"}</option>
                   {voiceList.map((v) => <option key={v} value={v}>{v}</option>)}
                 </select>
@@ -747,6 +766,10 @@ function Editor() {
                 </div>
               );
             })()}
+            <button onClick={doRegenAll} disabled={regenId !== null} title={t("voice.regenAll")}
+              className="mt-3 w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-50 hover:brightness-105 transition">
+              {regenId === "__all__" ? <Loader2 size={15} className="animate-spin" /> : <RotateCw size={15} />}{t("voice.regenAll")}
+            </button>
           </>
         )}
 

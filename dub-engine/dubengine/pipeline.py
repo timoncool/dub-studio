@@ -35,6 +35,57 @@ def _log(msg):
     print(f"[dub] {msg}", flush=True)
 
 
+def _auto_fill_boxes(video, boxes, scene_hint=None):
+    """DEFAULT cover choice per box (always editable in the GUI): a near-uniform background behind the
+    original text (e.g. the black/white letterbox bars) -> SOLID fill of that colour (clean edge); a
+    textured/scene background -> blur (fill=None). Signal = the dominant colour's area share inside the box
+    (the text is a minority, so the bg wins); Gemma's scene_hint {flat,color} relaxes the bar when it agrees.
+    Pure heuristic, fully guarded -> on ANY failure every box falls back to blur (no regression).
+    `boxes` are (x,y,w,h,t0,t1); returns 7-tuples (...,fill)."""
+    g_flat = bool(scene_hint and scene_hint.get("flat"))
+    g_col = (scene_hint or {}).get("color")
+    g_col = g_col if (isinstance(g_col, str) and g_col.startswith("#") and len(g_col) >= 7) else None
+    try:
+        import cv2
+        import numpy as np
+    except Exception:
+        return [(*b, None) for b in boxes]
+    out, cap = [], None
+    try:
+        cap = cv2.VideoCapture(str(video))
+        for b in boxes:
+            x, y, w, h, t0, t1 = int(b[0]), int(b[1]), int(b[2]), int(b[3]), float(b[4]), float(b[5])
+            fill = None
+            try:
+                cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, (t0 + t1) / 2.0) * 1000.0)
+                ok, fr = cap.read()
+                if ok and fr is not None and w >= 6 and h >= 6:
+                    hh, ww = fr.shape[:2]
+                    x0, y0, x1, y1 = max(0, x), max(0, y), min(ww, x + w), min(hh, y + h)
+                    if x1 - x0 >= 6 and y1 - y0 >= 6:
+                        roi = fr[y0:y1, x0:x1].reshape(-1, 3).astype(np.int64)   # BGR
+                        keys = (roi[:, 0] // 24) * 65536 + (roi[:, 1] // 24) * 256 + (roi[:, 2] // 24)
+                        vals, counts = np.unique(keys, return_counts=True)
+                        j = int(counts.argmax())
+                        frac = float(counts[j]) / float(len(keys))
+                        if frac >= 0.72 or (g_flat and frac >= 0.55):           # bg dominates the box -> flat
+                            mb, mg, mr = roi[keys == vals[j]].mean(axis=0)
+                            fill = (g_col if (g_flat and g_col and frac < 0.72)
+                                    else f"#{int(mr):02x}{int(mg):02x}{int(mb):02x}")
+            except Exception:
+                fill = None
+            out.append((*b, fill))
+    except Exception:
+        return [(*b, None) for b in boxes]
+    finally:
+        if cap is not None:
+            try:
+                cap.release()
+            except Exception:
+                pass
+    return out
+
+
 @contextlib.contextmanager
 def _timed(name, acc):
     s = time.time()
@@ -461,6 +512,7 @@ def run(cfg):
             blur_boxes = ([(*b["bbox"], b["start"], b["end"]) for b in loc_blocks]
                           + [(r[1], r[2], r[3], r[4], r[5], r[6]) for r in taglines]
                           + group_blur + band_blur)
+            blur_boxes = _auto_fill_boxes(cfg.input, blur_boxes)   # DEFAULT cover: flat bg -> solid fill, else blur (GUI-editable)
             # subtitle band centre y -> place our subs there so the plate COVERS the blurred originals
             sub_y = sub_y_det   # default line (richest); each line is re-placed per-segment below
             # VISION ORCHESTRATOR (Gemma on a few keyframes): the ORIGINAL subtitle line's colour/weight so our
@@ -596,6 +648,8 @@ def run(cfg):
                                              for (yy0, yy1, sst, een) in _drawn)]
                         blur_boxes = ([(*b["bbox"], b["start"], b["end"]) for b in loc_blocks]
                                       + band_blur + _leftover + cap_blur + group_blur)
+                        blur_boxes = _auto_fill_boxes(cfg.input, blur_boxes, scene_hint={   # flat bg -> solid fill (Gemma-assisted), else blur
+                            "flat": bool((ss or {}).get("scene_flat")), "color": (ss or {}).get("scene_color")})
                         _log(f"  ctx titles -> {[t['tgt'] for t in ctitles]}; +{len(tcard_rows)} tagline(s) translated; "
                              f"brands left: {[b.get('text') for b in (ce.get('brands') or [])]}")
                 except Exception as e:

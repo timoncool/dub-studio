@@ -606,6 +606,57 @@ def build(width, height, out_ass, preset=None, titles=None, subs=None, max_lines
     return out_ass
 
 
+def _enable(t0, t1):
+    return f"enable='between(t\\,{float(t0):.2f}\\,{float(t1):.2f})'"
+
+
+def _ff_color(hexc):
+    """'#RRGGBB' -> ffmpeg drawbox colour '0xRRGGBB' (defaults to black on a bad value)."""
+    c = (hexc or "").lstrip("#")
+    return "0x" + (c[:6].lower() if len(c) >= 6 else "000000")
+
+
+def _cover_parts(blur_boxes, blur_sigma, W, H, base_in):
+    """Filtergraph parts that COVER each original-text box. Per box, mutually exclusive:
+      - fill set ("#hex") -> a SOLID drawbox of that colour (flat bg: the black/white letterbox bars),
+      - fill None         -> the box joins ONE full-frame gblur, composited back tight (textured/scene bg).
+    `base_in` is the source pad label ('0:v' or 'sel'). Returns (parts, out_label)."""
+    norm = []
+    for b in blur_boxes:
+        x, y, w, h, t0, t1, *rest = b
+        norm.append((int(x), int(y), int(w), int(h), float(t0), float(t1), rest[0] if rest else None))
+    fills = [n for n in norm if n[6]]
+    blurs = [n for n in norm if not n[6]]
+    parts, cur = [], base_in
+    if fills:                                                  # solid-colour covers: chain drawbox onto the stream
+        dbs = []
+        for (x, y, w, h, t0, t1, fill) in fills:
+            bx, by = max(0, x - 2), max(0, y - 2)
+            bw, bh = min(w + 4, W - bx), min(h + 4, H - by)
+            dbs.append(f"drawbox=x={bx}:y={by}:w={bw}:h={bh}:color={_ff_color(fill)}@1:t=fill:"
+                       f"{_enable(max(0.0, t0 - 0.6), t1 + 0.4)}")
+        parts.append(f"[{cur}]" + ",".join(dbs) + "[filled]")
+        cur = "filled"
+    if blurs:                                                  # blurred covers: ONE gblur, composited back per box
+        n = len(blurs)
+        parts.append(f"[{cur}]split=2[cbase][bsrc]")
+        parts.append(f"[bsrc]gblur=sigma={int(blur_sigma)}[blr]")
+        if n > 1:
+            parts.append("[blr]split=" + str(n) + "".join(f"[bs{i}]" for i in range(n)))
+            srcs = [f"bs{i}" for i in range(n)]
+        else:
+            srcs = ["blr"]
+        cur2 = "cbase"
+        for i, (x, y, w, h, t0, t1, _f) in enumerate(blurs):
+            bx, by = max(0, x - 2), max(0, y - 2)
+            bw, bh = min(w + 4, W - bx), min(h + 4, H - by)
+            parts.append(f"[{srcs[i]}]crop={bw}:{bh}:{bx}:{by}[c{i}]")
+            parts.append(f"[{cur2}][c{i}]overlay={bx}:{by}:{_enable(max(0.0, t0 - 0.6), t1 + 0.4)}[v{i}]")
+            cur2 = f"v{i}"
+        cur = cur2
+    return parts, cur
+
+
 def burn(video, ass_path, out, blur_boxes=None, frame_size=None, blur=True,
          gpu_encode=True, gpu_decode=True, cq=24, src_codec=None, blur_sigma=60):
     """Blur each original text box (primitive gblur, slightly grown) then overlay the ASS plate+text.
@@ -621,29 +672,9 @@ def burn(video, ass_path, out, blur_boxes=None, frame_size=None, blur=True,
     nv = ["-c:v", "hevc_nvenc" if hevc else "h264_nvenc", "-preset", "p4", "-cq", str(cq)]
     sw = ["-c:v", "libx265" if hevc else "libx264", "-preset", "medium", "-crf", str(max(0, cq - 2))]
 
-    def _en(t0, t1):
-        return f"enable='between(t\\,{float(t0):.2f}\\,{float(t1):.2f})'"
-
     if blur_boxes and blur:
-        # ONE full-frame blur, reused; composited back ONLY inside each (tight) text box. Far fewer heavy
-        # ops than a gblur+split per box (that chain was the burn bottleneck) and the blur stays tight.
-        n = len(blur_boxes)
-        parts = ["[0:v]split=2[base][bsrc]", f"[bsrc]gblur=sigma={int(blur_sigma)}[blr]"]
-        if n > 1:
-            parts.append("[blr]split=" + str(n) + "".join(f"[s{i}]" for i in range(n)))
-            srcs = [f"s{i}" for i in range(n)]
-        else:
-            srcs = ["blr"]
-        cur = "base"
-        for i, (x, y, w, h, t0, t1) in enumerate(blur_boxes):
-            dx, dy = 2, 2   # blur EXACTLY level with the text — no spreading
-            bx, by = max(0, int(x - dx)), max(0, int(y - dy))
-            bw, bh = min(int(w + 2 * dx), W - bx), min(int(h + 2 * dy), H - by)
-            t0b, t1b = max(0.0, float(t0) - 0.6), float(t1) + 0.4   # PRE-ROLL: blur before text appears
-            parts.append(f"[{srcs[i]}]crop={bw}:{bh}:{bx}:{by}[c{i}]")
-            parts.append(f"[{cur}][c{i}]overlay={bx}:{by}:{_en(t0b, t1b)}[v{i}]")
-            cur = f"v{i}"
-        graph = ";".join(parts) + f";[{cur}]{ass_f}[outv]"
+        cparts, cur = _cover_parts(blur_boxes, blur_sigma, W, H, "0:v")
+        graph = ";".join(cparts) + f";[{cur}]{ass_f}[outv]"
         vargs = ["-filter_complex", graph, "-map", "[outv]"]
     else:
         vargs = ["-vf", ass_f]
@@ -677,27 +708,9 @@ def burn_frame(video, ass_path, out_png, t, blur_boxes=None, frame_size=None, bl
     W, H = frame_size or (10 ** 9, 10 ** 9)
     sel = f"select='gte(t\\,{t:.3f})'"
 
-    def _en(t0, t1):
-        return f"enable='between(t\\,{float(t0):.2f}\\,{float(t1):.2f})'"
-
     if blur_boxes and blur:
-        n = len(blur_boxes)
-        parts = [f"[0:v]{sel}[sel]", "[sel]split=2[base][bsrc]", f"[bsrc]gblur=sigma={int(blur_sigma)}[blr]"]
-        if n > 1:
-            parts.append("[blr]split=" + str(n) + "".join(f"[s{i}]" for i in range(n)))
-            srcs = [f"s{i}" for i in range(n)]
-        else:
-            srcs = ["blr"]
-        cur = "base"
-        for i, (x, y, w, h, t0, t1) in enumerate(blur_boxes):
-            dx, dy = 2, 2
-            bx, by = max(0, int(x - dx)), max(0, int(y - dy))
-            bw, bh = min(int(w + 2 * dx), W - bx), min(int(h + 2 * dy), H - by)
-            t0b, t1b = max(0.0, float(t0) - 0.6), float(t1) + 0.4
-            parts.append(f"[{srcs[i]}]crop={bw}:{bh}:{bx}:{by}[c{i}]")
-            parts.append(f"[{cur}][c{i}]overlay={bx}:{by}:{_en(t0b, t1b)}[v{i}]")
-            cur = f"v{i}"
-        graph = ";".join(parts) + f";[{cur}]{ass_f}[outv]"
+        cparts, cur = _cover_parts(blur_boxes, blur_sigma, W, H, "sel")
+        graph = f"[0:v]{sel}[sel];" + ";".join(cparts) + f";[{cur}]{ass_f}[outv]"
         vargs = ["-filter_complex", graph, "-map", "[outv]"]
     else:
         vargs = ["-vf", f"{sel},{ass_f}"]

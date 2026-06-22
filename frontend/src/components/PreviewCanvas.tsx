@@ -68,12 +68,12 @@ export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged
                  onMouseDown={(e) => { if (e.target === e.target.getStage()) setSel(null); }}>
             <Layer>
               {/* subtitle band — draggable vertically; drop -> PATCH sub_y */}
-              <Rect x={0} y={subY * sy - 14} width={disp.w} height={28} fill="rgba(198,242,78,0.14)"
-                    stroke="#c6f24e" dash={[6, 4]} draggable
+              <Rect x={0} y={subY * sy - 14} width={disp.w} height={28} fill="rgba(198,242,78,0.05)"
+                    stroke="rgba(198,242,78,0.32)" dash={[6, 4]} draggable
                     dragBoundFunc={(p) => ({ x: 0, y: p.y })}
                     onDragEnd={(e) => { if (!sy) return; patch({ op: "subpos", sub_y: Math.round((e.target.y() + 14) / sy) }); }} />
-              {/* blur zones — always draggable on the frame (any lane); those active on THIS frame; red = on,
-                  cyan = selected, dashed/dim = hidden (blur off). Click selects (synced with the left list). */}
+              {/* cover zones — ONLY the selected zone is outlined (cyan); the rest stay invisible but clickable
+                  (select via canvas-click or the left list). Active on THIS frame; draggable unless hidden. */}
               {blurs.map((b, i) => ({ b, i }))
                 .filter(({ b }) => scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4)
                 .map(({ b, i }) => {
@@ -81,9 +81,9 @@ export default function PreviewCanvas({ pid, project, scrub, rendered, onChanged
                   return (
                     <Rect key={i} ref={(n) => { if (n) boxRefs.current[i] = n; }}
                           x={b.x * sx} y={b.y * sy} width={b.w * sx} height={b.h * sy}
-                          fill={hid ? "rgba(255,255,255,0.001)" : on ? "rgba(91,224,200,0.18)" : "rgba(255,86,86,0.16)"}
-                          stroke={on ? "#5be0c8" : hid ? "#ffffff66" : "#ff5656"} strokeWidth={on ? 2.5 : 2}
-                          dash={hid ? [6, 4] : undefined} draggable={!hid}
+                          fill={on ? (hid ? "rgba(255,255,255,0.06)" : "rgba(91,224,200,0.18)") : "rgba(255,255,255,0.001)"}
+                          stroke={on ? "#5be0c8" : undefined} strokeWidth={on ? 2.5 : 0}
+                          dash={on && hid ? [6, 4] : undefined} draggable={!hid}
                           onClick={() => setSel(i)} onTap={() => setSel(i)}
                           onDragMove={(e) => setGuide(Math.abs(e.target.x() + (b.w * sx) / 2 - disp.w / 2) < 8 ? disp.w / 2 : null)}
                           onDragEnd={(e) => { setGuide(null); if (!sx || !sy) return; patch({ op: "blur", idx: i, x: Math.round(e.target.x() / sx), y: Math.round(e.target.y() / sy) }); }}
