@@ -19,7 +19,7 @@
   "editor": { "transcript": "字幕文本", "style": "样式", "voice": "声音", "preview": "预览", "timeline": "时间轴" },
   "mode": { "subtitles": "字幕", "dub": "配音", "funny": "搞笑", "subtitles_desc": "原声 + 翻译字幕", "dub_desc": "用目标语言重新配音", "funny_desc": "Gemma 改写脚本后重新配音" },
   "actions": { "translate": "翻译", "dub": "完整配音", "funny": "搞笑改编", "dubFile": "为文件配音" },
-  "style": { "font": "字体", "size": "字号", "color": "颜色", "outline": "描边", "outlineW": "描边", "outlineWFull": "描边宽度 (px)，0 = 无", "bold": "粗体", "italic": "斜体", "caps": "全部大写", "plate": "底板", "resetAuto": "重置为自动", "resetGlobal": "重置为全局" },
+  "style": { "font": "字体", "size": "字号", "color": "颜色", "outline": "描边", "outlineDir": "描边方向", "outlineW": "描边", "outlineWFull": "描边宽度 (px)，0 = 无", "bold": "粗体", "italic": "斜体", "caps": "全部大写", "plate": "底板", "resetAuto": "重置为自动", "resetGlobal": "重置为全局" },
   "voice": { "clone": "克隆原声", "autocast": "按说话人自动分配", "pack": "声音包", "funny": "搞笑声音", "fixed": "固定时长", "dynamic": "自然时长", "regenAll": "重新生成全部配音" },
   "remix": { "title": "\u6539\u7f16", "placeholder": "\u4e3b\u9898 \u2014 \u4f8b\u5982\u300c\u6d77\u76d7\u4e3b\u9898\u300d\u300c\u50cf\u65b0\u95fb\u62a5\u9053\u300d\u300c\u8bbd\u523a\u300d", "apply": "\u5e94\u7528\u6539\u7f16", "hint": "Gemma \u6309\u4e3b\u9898\u6539\u5199\u6574\u6bb5\u811a\u672c\u5e76\u4fdd\u6301\u65f6\u957f\uff0c\u5bfc\u51fa\u65f6\u91cd\u65b0\u914d\u97f3\u3002" },
   "export": { "title": "导出", "summary": "{{segments}} 段 · {{speakers}} 位说话人 · {{lang}} 字幕", "proceed": "导出", "tweak": "继续编辑", "beforeAfter": "原版 ↔ 配音" },

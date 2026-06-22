@@ -358,6 +358,17 @@ def _emit_styled(out, look, a, b, screen, cx, cy, fs, width, bold=True):
     out.append(f"Dialogue: 1,{_ts(a)},{_ts(b)},KT,,0,0,0,,{{{lead}\\1c{base6}}}{body}")
 
 
+def _dir_shadow_tags(outline_dir, dist, color_ass):
+    """Directional outline = a hard colour offset (shadow) of `dist` px toward `outline_dir` degrees, in
+    `color_ass`. None -> '' (keep the uniform outline). Screen-y-down: 0=right, 45=down-right, 90=down, 270=up."""
+    if outline_dir is None:
+        return ""
+    import math
+    r = math.radians(float(outline_dir))
+    d = max(1, int(dist))
+    return f"\\shad{d}\\xshad{round(d * math.cos(r))}\\yshad{round(d * math.sin(r))}\\4c{color_ass}"
+
+
 def _emit_title(out, b, width, height):
     """Render ONE title like the original: a TIGHT single rounded plate (original box colour, hugging the
     text — no empty bubble) + clean centered text (original colour/font, thin outline). Same quality as subs."""
@@ -447,6 +458,9 @@ def _emit_title(out, b, width, height):
         _oc = _c6(_hex_ass(b.get("outline") or ("#000000" if _lum(txt_hex) > 0.5 else "#FFFFFF")))
         _bw = max(0, int(_ow)) if _ow is not None else max(2, int(fs * 0.09))
         out_tags += f"\\bord{_bw}\\3c{_oc}\\4c{_oc}"
+    out_tags += _dir_shadow_tags(b.get("outline_dir"),
+                                 (_ow if _ow is not None else max(2, int(fs * 0.10))),
+                                 _c6(_hex_ass(b.get("outline"))) if b.get("outline") else "&H000000&")
     out.append(f"Dialogue: 1,{_ts(b['start'])},{_ts(b['end'])},KT,,0,0,0,,"
                f"{{\\an{anc}\\pos({ax},{cy})\\fn{fnt}\\fs{fs}{bld}{itl}{out_tags}\\1c{_c6(_hex_ass(txt_hex))}}}{body}")
 
@@ -571,6 +585,9 @@ def build(width, height, out_ass, preset=None, titles=None, subs=None, max_lines
     _bold = _FONTS_DIR / f"{fontname.replace(' ', '')}-Bold.ttf"   # MEASURE with the heavy weight we render (\b1 -> the bundled Bold)
     sub_fp = _bold if _bold.exists() else _font_path_for(fontname)
     up = bool((sub_style or {}).get("uppercase"))   # match ALL-CAPS original captions
+    _subdir = _dir_shadow_tags(_ss.get("outline_dir"),   # directional outline (editor) for the match-original S style
+                               (_ss.get("outline_w") if _ss.get("outline_w") is not None else max(2, int(sub_fs * 0.06))),
+                               _c6(_hex_ass(_ss.get("outline"))) if _ss.get("outline") else "&H000000&")
     for idx, (st, en, tgt, sy) in enumerate(vis):
         en = min(en, vis[idx + 1][0]) if idx + 1 < len(vis) else en   # never overlap the next subtitle
         if en - st < 0.08:                                            # fully swallowed by the next line -> skip
@@ -601,7 +618,7 @@ def build(width, height, out_ass, preset=None, titles=None, subs=None, max_lines
                     rr = max(4, int((y1 - y0) * 0.14))
                     lines.append(f"Dialogue: 0,{_ts(a)},{_ts(b)},KP,,0,0,0,,"
                                  f"{{\\an7\\pos(0,0)\\1c{_c6(_hex_ass(cover_c))}\\bord0\\shad0\\p1}}{_round_rect(x0, y0, x1, y1, rr)}")
-                lines.append(f"Dialogue: 1,{_ts(a)},{_ts(b)},S,,0,0,0,,{ptag}{body}")
+                lines.append(f"Dialogue: 1,{_ts(a)},{_ts(b)},S,,0,0,0,,{ptag}{('{' + _subdir + '}') if _subdir else ''}{body}")
     Path(out_ass).write_text("\n".join(lines), encoding="utf-8")
     return out_ass
 

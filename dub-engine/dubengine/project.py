@@ -67,6 +67,7 @@ class SubStyle(BaseModel):
     align: str = "center"
     size_px: Optional[int] = None
     outline_w: Optional[int] = None   # explicit outline WIDTH (px) override; symmetric with Title
+    outline_dir: Optional[int] = None # outline DIRECTION (degrees, screen-y-down: 0=right, 90=down); None = uniform outline
 
 
 class CaptionOverride(BaseModel):
@@ -99,6 +100,7 @@ class Title(BaseModel):
     size_px: Optional[int] = None   # explicit font size override (else auto-fit to bbox)
     outline: Optional[str] = None   # explicit outline colour (#hex) override
     outline_w: Optional[int] = None # explicit outline WIDTH (px) override; 0 = no outline (else auto ~fs*0.09)
+    outline_dir: Optional[int] = None # outline DIRECTION (degrees, screen-y-down: 0=right, 90=down); None = uniform outline
     uppercase: bool = False         # draw the title text ALL-CAPS (symmetric with the subtitle style)
 
 
