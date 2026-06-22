@@ -592,8 +592,8 @@ function Editor() {
                   <input key={`ow${i}-${ti.outline_w ?? "a"}`} type="number" min={0} max={20} defaultValue={ti.outline_w ?? undefined} placeholder={t("style.outlineW")} title={t("style.outlineWFull")}
                     onBlur={(e) => branch("title", { idx: i, outline_w: e.target.value === "" ? null : parseInt(e.target.value) })}
                     className="w-12 bg-[var(--color-surface-2)] border border-dashed border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none" />
-                  <select value={ti.outline_dir ?? ""} title={t("style.outlineDir")}
-                    onChange={(e) => branch("title", { idx: i, outline_dir: e.target.value === "" ? null : parseInt(e.target.value) })}
+                  <select value={ti.shadow_dir ?? ""} title={t("style.shadow")}
+                    onChange={(e) => branch("title", { idx: i, shadow_dir: e.target.value === "" ? null : parseInt(e.target.value) })}
                     className="bg-[var(--color-surface-2)] border border-dashed border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none">
                     <option value="">—</option><option value="270">↑</option><option value="315">↗</option><option value="0">→</option><option value="45">↘</option><option value="90">↓</option><option value="135">↙</option><option value="180">←</option><option value="225">↖</option>
                   </select>
@@ -706,8 +706,8 @@ function Editor() {
                   placeholder={t("style.outlineW")} title={t("style.outlineWFull")}
                   onBlur={(e) => branch("caption", { outline_w: e.target.value === "" ? null : parseInt(e.target.value) })}
                   className="w-12 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none" />
-                <select value={ss.outline_dir ?? ""} title={t("style.outlineDir")}
-                  onChange={(e) => branch("caption", { outline_dir: e.target.value === "" ? null : parseInt(e.target.value) })}
+                <select value={ss.shadow_dir ?? ""} title={t("style.shadow")}
+                  onChange={(e) => branch("caption", { shadow_dir: e.target.value === "" ? null : parseInt(e.target.value) })}
                   className="bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded px-1 py-0.5 text-[11px] focus:border-[var(--color-accent)] focus:outline-none">
                   <option value="">—</option><option value="270">↑</option><option value="315">↗</option><option value="0">→</option><option value="45">↘</option><option value="90">↓</option><option value="135">↙</option><option value="180">←</option><option value="225">↖</option>
                 </select>
