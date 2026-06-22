@@ -213,7 +213,8 @@ const ANALYZE_STEPS: { key: string; stages: string[] }[] = [
   { key: "diarizing",   stages: ["diarize"] },
   { key: "recognizing", stages: ["asr"] },
   { key: "translating", stages: ["translate", "translate_ctx", "rewrite", "rewrite_ctx"] },
-  { key: "locating",    stages: ["ocr_detect", "translate_titles", "translate_tagline", "build", "burn"] },
+  { key: "voicing",     stages: ["tts", "mix"] },        // TTS synthesis + mix — runs BETWEEN translate and OCR; without this the stepper blanks (cur=-1) during voice gen
+  { key: "locating",    stages: ["ocr_detect", "translate_titles", "translate_tagline", "build", "burn", "mux"] },
 ];
 
 function AnalyzeProgress() {

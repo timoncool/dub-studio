@@ -13,7 +13,7 @@
   "analyze": {
     "title": "Analyzing your video",
     "download": "Downloading models", "firstRunNote": "First run: models download once (several GB) — fast after that", "separating": "Separating audio", "recognizing": "Recognizing speech", "diarizing": "Diarizing speakers",
-    "translating": "Translating", "style": "Detecting caption style", "locating": "Locating on-screen text",
+    "translating": "Translating", "voicing": "Generating voiceover", "style": "Detecting caption style", "locating": "Locating on-screen text",
     "cancel": "Cancel"
   },
   "editor": { "transcript": "Transcript", "style": "Style", "voice": "Voice", "preview": "Preview", "timeline": "Timeline" },

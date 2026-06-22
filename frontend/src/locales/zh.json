@@ -13,7 +13,7 @@
   "analyze": {
     "title": "正在分析视频",
     "download": "下载模型", "firstRunNote": "首次运行：模型只下载一次（数 GB），之后会很快", "separating": "分离音频", "recognizing": "识别语音", "diarizing": "区分说话人",
-    "translating": "翻译中", "style": "检测字幕样式", "locating": "定位画面文字",
+    "translating": "翻译中", "voicing": "生成配音", "style": "检测字幕样式", "locating": "定位画面文字",
     "cancel": "取消"
   },
   "editor": { "transcript": "字幕文本", "style": "样式", "voice": "声音", "preview": "预览", "timeline": "时间轴" },

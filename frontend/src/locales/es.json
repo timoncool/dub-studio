@@ -13,7 +13,7 @@
   "analyze": {
     "title": "Analizando tu video",
     "download": "Descargando modelos", "firstRunNote": "Primera vez: los modelos se descargan una vez (varios GB) — luego es rápido", "separating": "Separando audio", "recognizing": "Reconociendo voz", "diarizing": "Identificando hablantes",
-    "translating": "Traduciendo", "style": "Detectando estilo de subtítulos", "locating": "Localizando texto en pantalla",
+    "translating": "Traduciendo", "voicing": "Generando la voz", "style": "Detectando estilo de subtítulos", "locating": "Localizando texto en pantalla",
     "cancel": "Cancelar"
   },
   "editor": { "transcript": "Transcripción", "style": "Estilo", "voice": "Voz", "preview": "Vista previa", "timeline": "Línea de tiempo" },
