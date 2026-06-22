@@ -41,35 +41,44 @@ echo Invalid choice!
 pause
 exit /b 1
 
+REM  INSTALL_FLASH: Flash-Attention 2 prebuilt wheel is cu128+torch2.8+cp311 and
+REM  needs Ampere+ (SM 8.0+). So it is ON for RTX 30xx/40xx/50xx (cu128) and OFF for
+REM  Turing/Pascal (cu126, no matching wheel) and CPU.
 :gpu_10xx
 set "CUDA_VERSION=cu126"
 set "LLAMA_CUDA=cu126"
 set "CUDA_NAME=CUDA 12.6 (GTX 10xx, experimental)"
+set "INSTALL_FLASH=0"
 goto :gpu_done
 :gpu_20xx
 set "CUDA_VERSION=cu126"
 set "LLAMA_CUDA=cu126"
 set "CUDA_NAME=CUDA 12.6 (RTX 20xx)"
+set "INSTALL_FLASH=0"
 goto :gpu_done
 :gpu_30xx
 set "CUDA_VERSION=cu128"
 set "LLAMA_CUDA=cu128"
 set "CUDA_NAME=CUDA 12.8 (RTX 30xx)"
+set "INSTALL_FLASH=1"
 goto :gpu_done
 :gpu_40xx
 set "CUDA_VERSION=cu128"
 set "LLAMA_CUDA=cu128"
 set "CUDA_NAME=CUDA 12.8 (RTX 40xx)"
+set "INSTALL_FLASH=1"
 goto :gpu_done
 :gpu_50xx
 set "CUDA_VERSION=cu128"
 set "LLAMA_CUDA=cu128"
 set "CUDA_NAME=CUDA 12.8 (RTX 50xx)"
+set "INSTALL_FLASH=1"
 goto :gpu_done
 :gpu_cpu
 set "CUDA_VERSION=cpu"
 set "LLAMA_CUDA=cpu"
 set "CUDA_NAME=CPU only (experimental)"
+set "INSTALL_FLASH=0"
 goto :gpu_done
 
 :gpu_done
@@ -155,6 +164,13 @@ if not exist "python\Include\Python.h" (
         rmdir /s /q "downloads\pydev_extract"
     )
 )
+
+REM Flash Attention 2 — prebuilt wheel (kingbri1), Ampere+ / cu128 only. qwen-tts
+REM uses it for faster TTS inference; Turing/Pascal/CPU have no matching wheel and
+REM skip it (the engine falls back to standard attention — correct, just slower).
+if not "%INSTALL_FLASH%"=="1" goto :after_triton
+echo   Installing Flash Attention 2 (prebuilt wheel, Ampere+)...
+python\python.exe -m pip install "https://github.com/kingbri1/flash-attention/releases/download/v2.8.3/flash_attn-2.8.3+cu128torch2.8.0cxx11abiFALSE-cp311-cp311-win_amd64.whl" --no-warn-script-location
 :after_triton
 
 REM ============================================================
