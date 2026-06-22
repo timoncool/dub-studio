@@ -84,20 +84,40 @@ Russian original (left) → dubbed into English by Dub Studio (right) — voice 
 | On‑screen text blur + re‑caption | ✅ | ❌ | ⚠️ few, cloud |
 | Portable (one folder) | ✅ | ⚠️ | — |
 
-## Quickstart (Windows, NVIDIA GPU)
+## Install (Windows, NVIDIA GPU)
 
-Install straight from the repo - one clone, one double-click. You need [Git](https://git-scm.com/download/win) and an NVIDIA GPU; everything else (Python, CUDA, Node, ffmpeg) is fetched for you.
+**You need:** [Git](https://git-scm.com/download/win) · an NVIDIA GPU (RTX 20xx–50xx, CUDA 12.8, ~12 GB VRAM) · several GB of free disk for the wheels and models. You do **not** need Python, CUDA, Node or ffmpeg pre-installed — the installer fetches them all into the app folder, nothing system-wide.
+
+**1 — Clone the repo**
 
 ```bash
 git clone https://github.com/timoncool/dub-studio.git
 cd dub-studio
 ```
 
-Now double-click **`run.bat`** (or run it from a terminal). **The first run installs everything into this folder by itself** - embeddable Python 3.11, the CUDA 12.8 wheels, the engine, ffmpeg & Node, the base voice pack and the prebuilt UI (it calls `install.bat` for you) - then opens the editor at **http://127.0.0.1:8765**. Drop a video; the models (Gemma-4 GGUF, Parakeet, Qwen3-TTS, Sortformer) download automatically on first use.
+**2 — Install:** double-click **`install.bat`** (or run it from the folder). One-time setup, entirely inside the folder — it installs:
 
-That's it - no manual Python/CUDA/Node setup. Targets NVIDIA RTX 20xx-50xx (CUDA 12.8), ~12 GB VRAM. Everything lives inside the cloned folder; nothing is installed system-wide. **Update later** with `git pull` then **`update.bat`**. Build & packaging internals: [PACKAGING.md](PACKAGING.md).
+- embeddable **Python 3.11** + pip
+- **PyTorch 2.8** (CUDA 12.8) + the engine requirements
+- **llama-cpp-python** (Gemma GGUF, cu128) + **Triton** kernels
+- the **`dub-engine`** package (editable install)
+- **ffmpeg** (NVENC) + **Node**, then builds the web UI
+- the base **voice pack**
+- *optional:* a NeMo sub-venv for multi-speaker diarization (skips cleanly if it can't build)
 
-> **Want a no-git, one-click `.zip`?** A portable `DubStudio_*.zip` will be attached to [Releases](https://github.com/timoncool/dub-studio/releases) once the first build is tagged - not published yet, so clone the repo for now.
+**3 — Run:** double-click **`run.bat`**. It launches the local server and opens the editor at **http://127.0.0.1:8765**. Drop a video → the AI models (Gemma‑4 GGUF + mmproj, Parakeet, Qwen3‑TTS, Sortformer) download on first use, then it dubs. Close the window to stop.
+
+> **Shortcut:** you can skip step 2 — on a fresh clone, **`run.bat`** auto-runs `install.bat` for you if the app isn't set up yet. Minimum path: clone → double-click `run.bat`.
+
+**Updating:** `git pull`, then double-click **`update.bat`** (re-pulls, reinstalls the engine, rebuilds the UI).
+
+| Script | What it does |
+|---|---|
+| **`install.bat`** | one-time setup — Python, CUDA wheels, engine, llama-cpp/Triton, ffmpeg, Node, UI build, voice pack |
+| **`run.bat`** | start the app at `http://127.0.0.1:8765` (auto-runs `install.bat` on first launch) |
+| **`update.bat`** | `git pull` → reinstall the engine → rebuild the UI |
+
+Build & packaging internals: [PACKAGING.md](PACKAGING.md). A no-git, one-click portable **`DubStudio_*.zip`** will appear in [Releases](https://github.com/timoncool/dub-studio/releases) once the first build is tagged — not published yet, so clone for now.
 
 ## How it works
 
