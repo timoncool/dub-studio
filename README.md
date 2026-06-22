@@ -162,8 +162,6 @@ I build open-source software and do AI research. Most of what I create is free a
 
 ## Star History
 
-## Star History
-
 <a href="https://www.star-history.com/?repos=timoncool%2Fdub-studio&type=date&legend=top-left">
  <picture>
    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=timoncool/dub-studio&type=date&theme=dark&legend=top-left" />
