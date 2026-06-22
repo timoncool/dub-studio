@@ -32,10 +32,12 @@ def _to_wav(src, out_wav, max_s=None):
     return out_wav
 
 
-def load_voice(pack_dir, name, work_dir, max_ref_s=12.0, max_ref_words=35):
-    """name -> (ref_wav, ref_text). Accepts a bare pack name or a direct path to an mp3/wav. The reference is
-    CAPPED (first ~max_ref_s of audio + first ~max_ref_words of transcript): a pack .txt holds the WHOLE
-    sample's transcript, and feeding all of it + full audio overflows Qwen3-TTS prefill (max_seq_len 2048)."""
+def load_voice(pack_dir, name, work_dir, max_ref_s=12.0, max_ref_words=35, asr=None):
+    """name -> (ref_wav, ref_text). Accepts a bare pack name or a direct path to an mp3/wav. The reference
+    AUDIO is capped to ~max_ref_s; the ref_text MUST be the transcript of THAT cropped clip (1:1). A pack .txt
+    holds the WHOLE sample's transcript, so its first words describe MORE than the short clip's audio — the
+    surplus text has no acoustic anchor and bleeds into the synth (over-long, garbled). So we transcribe the
+    crop with the built-in ASR (cached); the pack .txt first-words is only a fallback when no ASR is given."""
     p = Path(name)
     if p.exists() and p.suffix.lower() in (".mp3", ".wav"):
         mp3, txt = p, p.with_suffix(".txt")
@@ -46,8 +48,18 @@ def load_voice(pack_dir, name, work_dir, max_ref_s=12.0, max_ref_words=35):
     if not mp3.exists():
         raise FileNotFoundError(f"voice '{name}' not found in {pack_dir}")
     wav = _to_wav(mp3, Path(work_dir) / f"voice_{Path(name).stem}.wav", max_s=max_ref_s)
-    full = txt.read_text(encoding="utf-8-sig").strip().replace("\n", " ") if txt.exists() else ""  # -sig drops BOM
-    text = " ".join(full.split()[:max_ref_words])
+    cache = Path(work_dir) / f"voice_{Path(name).stem}.reftext"   # ASR transcript of the CROP, matched 1:1 (cached)
+    text = cache.read_text(encoding="utf-8").strip() if cache.exists() else ""
+    if not text and asr is not None:
+        try:
+            text = (asr(wav) or "").strip()
+            if text:
+                cache.write_text(text, encoding="utf-8")
+        except Exception:
+            text = ""
+    if not text:                                                 # fallback: first words of the pack .txt (approximate, legacy)
+        full = txt.read_text(encoding="utf-8-sig").strip().replace("\n", " ") if txt.exists() else ""  # -sig drops BOM
+        text = " ".join(full.split()[:max_ref_words])
     return wav, text
 
 
@@ -59,7 +71,7 @@ def _median_f0(wav):
     return float(np.median(f0)) if len(f0) else 0.0
 
 
-def auto_select(pack_dir, source_wav, work_dir, tgt_lang="ru"):
+def auto_select(pack_dir, source_wav, work_dir, tgt_lang="ru", asr=None):
     """Pick a pack voice in the target language matching the source speaker's gender (median F0)."""
     voices = list_voices(pack_dir)
     if not voices:
@@ -77,7 +89,7 @@ def auto_select(pack_dir, source_wav, work_dir, tgt_lang="ru"):
     else:                                          # 'male' substring also matches 'female' -> exclude it
         by_gender = [v for v in cands if "male" in v.lower() and "female" not in v.lower()] or cands
     name = by_gender[0]
-    wav, text = load_voice(pack_dir, name, work_dir)
+    wav, text = load_voice(pack_dir, name, work_dir, asr=asr)
     return name, wav, text
 
 
@@ -86,6 +98,13 @@ def resolve(cfg, segs, vocals16, work_dir, pick_reference, ref_windows=None):
     so a multi-speaker clip dubs each diarized speaker (s['speaker']) in their own cloned timbre.
     ref_windows {speaker: (start, end)} = each speaker's longest clean diarization turn for the clone ref."""
     mode = getattr(cfg, "voice_mode", "auto")
+
+    def _asr_text(ref_wav):                     # transcribe the CROPPED pack clip -> ref_text matched 1:1 to the audio
+        from . import asr as _asr
+        ss, _ = _asr.transcribe(str(ref_wav), model_name=cfg.asr_model, device=cfg.device,
+                                src_lang=cfg.tgt_lang, quantization=cfg.asr_quant)
+        return " ".join((x.get("text") or "") for x in ss).strip()
+
     if mode == "clone":
         windows = ref_windows or {}
         refs = {}
@@ -124,7 +143,7 @@ def resolve(cfg, segs, vocals16, work_dir, pick_reference, ref_windows=None):
             gpool = (females if _median_f0(src) >= 165 else males) or males or females or pool
             choice = next((v for v in gpool if v not in used), gpool[0])   # distinct until pool exhausted
             used.append(choice)
-            wav, text = load_voice(cfg.voice_pack, choice, work_dir)
+            wav, text = load_voice(cfg.voice_pack, choice, work_dir, asr=_asr_text)
             refs[spk] = (wav, text)
             print(f"[voices] autocast spk{spk} -> {choice}", flush=True)
         first = next(iter(refs.values()))
@@ -133,7 +152,7 @@ def resolve(cfg, segs, vocals16, work_dir, pick_reference, ref_windows=None):
         if not getattr(cfg, "voice_name", None):
             raise RuntimeError("voice_mode=voice requires --voice NAME")
         names = [n.strip() for n in str(cfg.voice_name).split(",") if n.strip()]
-        loaded = [load_voice(cfg.voice_pack, n, work_dir) for n in names]
+        loaded = [load_voice(cfg.voice_pack, n, work_dir, asr=_asr_text) for n in names]
         if len(loaded) == 1:
             rv, rt = loaded[0]
             return (lambda s: (rv, rt)), False, f"voice:{names[0]}"
@@ -144,5 +163,5 @@ def resolve(cfg, segs, vocals16, work_dir, pick_reference, ref_windows=None):
         return (lambda s: m.get(s.get("speaker", 0), first)), False, f"voice:{len(loaded)}v/{len(speakers)}spk"
     # auto
     src_ref, _ = pick_reference(segs, vocals16, work_dir)
-    name, ref_wav, ref_text = auto_select(cfg.voice_pack, src_ref, work_dir, cfg.tgt_lang)
+    name, ref_wav, ref_text = auto_select(cfg.voice_pack, src_ref, work_dir, cfg.tgt_lang, asr=_asr_text)
     return (lambda s: (ref_wav, ref_text)), False, f"auto:{name}"
