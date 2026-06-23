@@ -60,8 +60,8 @@ export const api = {
     const fd = new FormData(); fd.append("file", file);
     return fetch(`${BASE}/projects`, { method: "POST", body: fd }).then(j<{ project_id: string }>);
   },
-  analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto") =>
-    fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}`, { method: "POST" }).then(j<{ job_id: string }>),
+  analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto", subs = "auto", rewrite = "") =>
+    fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}&subs=${subs}&rewrite=${encodeURIComponent(rewrite)}`, { method: "POST" }).then(j<{ job_id: string }>),
   getProject: (pid: string) => fetch(`${BASE}/projects/${pid}`).then(j<Project>),
   putProject: (pid: string, project: Project) => {   // undo/redo: serialize through the SAME chain as patch() (no race)
     const run = () => fetch(`${BASE}/projects/${pid}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(project) }).then(j<Project>);

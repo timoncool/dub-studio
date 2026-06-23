@@ -216,14 +216,21 @@ function DropZone() {
   const [over, setOver] = useState(false);
   const [tgt, setTgt] = useState<string>((i18n.language as string) || "ru");   // translate TO (default = UI lang)
   const [src, setSrc] = useState("auto");                                       // translate FROM (auto-detect)
+  const [file, setFile] = useState<File | null>(null);                          // staged video — analyzed on Start, not on drop
+  const [mode, setMode] = useState<"dub" | "subtitles" | "funny">("dub");       // output mode chosen up front
+  const [funny, setFunny] = useState("");                                       // Gemma rewrite instruction (funny mode)
 
-  async function start(file: File) {
+  async function run() {
+    if (!file) return;
     s.setStage("analyzing");
     s.setProgress("", "", null);             // fresh stepper for this run
     try {
       const { project_id } = await api.createProject(file);
       s.setPid(project_id);
-      const { job_id } = await api.analyze(project_id, tgt, "auto", src);
+      const eMode = mode === "subtitles" ? "nodub" : "dub";       // subtitles = keep original audio + translated subs
+      const eSubs = mode === "subtitles" ? "translate" : "auto";
+      const eRewrite = mode === "funny" ? funny.trim() : "";       // funny = rewrite the script + dub, in this pass
+      const { job_id } = await api.analyze(project_id, tgt, eMode, src, eSubs, eRewrite);
       await api.watchJob(job_id, (e) => { if (e.type === "progress") s.setProgress(e.stage || "", e.msg || "", e.pct ?? null); });
       s.setProject(await api.getProject(project_id));
       s.setStage("editor");
@@ -261,7 +268,7 @@ function DropZone() {
           <div
             onDragOver={(e) => { e.preventDefault(); setOver(true); }}
             onDragLeave={() => setOver(false)}
-            onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) start(f); }}
+            onDrop={(e) => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files?.[0]; if (f) setFile(f); }}
             onClick={() => inputRef.current?.click()}
             className={`group relative aspect-[4/3] rounded-2xl border grid place-items-center cursor-pointer overflow-hidden transition-all duration-200
               ${over ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_9%,var(--color-surface))] shadow-[0_0_0_4px_color-mix(in_oklab,var(--color-accent)_18%,transparent)]"
@@ -274,13 +281,21 @@ function DropZone() {
             <div className="text-center px-6">
               <div className={`mx-auto grid place-items-center w-16 h-16 rounded-2xl border transition-all duration-200
                 ${over ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] border-transparent" : "bg-[var(--color-surface-2)] text-[var(--color-accent)] border-[var(--color-border)] group-hover:scale-105"}`}>
-                <Upload size={26} strokeWidth={2} />
+                {file ? <Check size={26} strokeWidth={2.5} /> : <Upload size={26} strokeWidth={2} />}
               </div>
-              <div className="mt-5 text-lg font-semibold">{t("drop.title")}</div>
-              <div className="mt-1.5 text-sm text-[var(--color-muted)]">{t("drop.hint")}</div>
-              <span className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold">
-                {t("drop.browse")} <ArrowRight size={16} />
-              </span>
+              {file ? (
+                <>
+                  <div className="mt-5 text-lg font-semibold break-all px-2">{file.name}</div>
+                  <div className="mt-1.5 text-sm text-[var(--color-muted)]">{(file.size / 1048576).toFixed(1)} MB · {t("drop.change")}</div>
+                </>
+              ) : (
+                <>
+                  <div className="mt-5 text-lg font-semibold">{t("drop.title")}</div>
+                  <div className="mt-1.5 text-sm text-[var(--color-muted)]">{t("drop.hint")}</div>
+                  <span className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold">
+                    {t("drop.browse")} <ArrowRight size={16} /></span>
+                </>
+              )}
             </div>
           </div>
           <div className="mt-3.5 flex items-center justify-center gap-2 text-[12px]">
@@ -296,13 +311,27 @@ function DropZone() {
               {LANGS.map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
             </select>
           </div>
+          <div className="mt-3 grid grid-cols-3 gap-1.5">
+            {([["dub", AudioLines], ["subtitles", Captions], ["funny", Sparkles]] as const).map(([m, Icon]) => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg border text-[12px] font-medium transition-colors ${mode === m ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_12%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>
+                <Icon size={14} />{t(`mode.${m}`)}</button>
+            ))}
+          </div>
+          {mode === "funny" && (
+            <textarea value={funny} onChange={(e) => setFunny(e.target.value)} rows={2} placeholder={t("remix.placeholder")}
+              className="mt-2 w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 text-[12px] focus:border-[var(--color-accent)] focus:outline-none resize-none" />
+          )}
+          <button onClick={run} disabled={!file || (mode === "funny" && !funny.trim())}
+            className="mt-2.5 w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-40 hover:brightness-105 transition">
+            {t("drop.start")} <ArrowRight size={16} /></button>
           <div className="mt-2 flex items-center justify-center gap-2 text-[12px] text-[var(--color-muted)]">
             <ShieldCheck size={14} className="text-[var(--color-accent-2)]" /> {t("hero.formats")}
           </div>
         </motion.div>
       </motion.div>
       <input ref={inputRef} type="file" accept="video/mp4,video/quicktime" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) start(f); }} />
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) setFile(f); }} />
     </div>
   );
 }

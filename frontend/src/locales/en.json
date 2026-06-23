@@ -1,6 +1,6 @@
 {
   "app": { "name": "Dub Studio", "tagline": "Dub & translate any short video — locally." },
-  "drop": { "title": "Drop a video to dub", "hint": "MP4 or MOV — everything runs on your machine", "browse": "Browse", "recent": "Recent", "demo": "Try a demo" },
+  "drop": { "title": "Drop a video to dub", "hint": "MP4 or MOV — everything runs on your machine", "start": "Start processing", "change": "click to change", "browse": "Browse", "recent": "Recent", "demo": "Try a demo" },
   "hero": {
     "eyebrow": "LOCAL · OFFLINE · 6 LANGUAGES",
     "headline": "Dub any short video like it was made that way.",

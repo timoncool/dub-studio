@@ -1,6 +1,6 @@
 {
   "app": { "name": "Dub Studio", "tagline": "在本地为任何短视频配音和翻译。" },
-  "drop": { "title": "拖入视频开始配音", "hint": "MP4 或 MOV — 全部在本机运行", "browse": "浏览", "recent": "最近", "demo": "试用示例" },
+  "drop": { "title": "拖入视频开始配音", "hint": "MP4 或 MOV — 全部在本机运行", "start": "开始处理", "change": "点击更换", "browse": "浏览", "recent": "最近", "demo": "试用示例" },
   "hero": {
     "eyebrow": "本地 · 离线 · 6 种语言",
     "headline": "为任何短视频配音，宛如原生拍摄。",

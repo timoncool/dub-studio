@@ -88,14 +88,18 @@ def _meta(video: str) -> Meta:
 # ---------- stages ----------
 def analyze(video: str, opts: Optional[EngineOpts] = None, tgt_lang: str = "en",
             work_dir: Optional[str] = None, *, mode: str = "auto", captions: bool = True,
-            subs: str = "auto", src_lang: Optional[str] = None, progress: Progress = default_logger) -> Tuple[Project, str]:
-    """Fixed first stage -> (Project, rendered_output_path). Translates src_lang(auto)->tgt_lang."""
+            subs: str = "auto", src_lang: Optional[str] = None, rewrite: Optional[str] = None,
+            progress: Progress = default_logger) -> Tuple[Project, str]:
+    """Fixed first stage -> (Project, rendered_output_path). Translates src_lang(auto)->tgt_lang.
+    rewrite = a creative re-voice instruction ('funny' mode chosen upfront) applied in this same pass."""
     opts = opts or EngineOpts()
     meta = _meta(video)
     wd = Path(work_dir) if work_dir else Path(video).with_suffix("").parent / (Path(video).stem + "_work")
     wd.mkdir(parents=True, exist_ok=True)
     out = str(wd / "analyzed.mp4")
     proj = Project(meta=meta, tgt_lang=tgt_lang, work_dir=str(wd), audio=Audio(voice=Voice()))
+    if rewrite:
+        proj.audio.rewrite = rewrite                  # 'funny' chosen on the drop screen -> rewrite+dub in this pass
     cfg = _to_config(proj, opts, out, mode=mode, captions=captions, subs=subs, src_lang=src_lang)
     _run(cfg, progress)
     full = Project.from_artifacts(wd, meta=meta)

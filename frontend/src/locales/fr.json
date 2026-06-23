@@ -1,6 +1,6 @@
 {
   "app": { "name": "Dub Studio", "tagline": "Doublez et traduisez n'importe quelle vidéo courte — en local." },
-  "drop": { "title": "Déposez une vidéo à doubler", "hint": "MP4 ou MOV — tout tourne sur votre machine", "browse": "Parcourir", "recent": "Récents", "demo": "Essayer la démo" },
+  "drop": { "title": "Déposez une vidéo à doubler", "hint": "MP4 ou MOV — tout tourne sur votre machine", "start": "Lancer le traitement", "change": "cliquer pour changer", "browse": "Parcourir", "recent": "Récents", "demo": "Essayer la démo" },
   "hero": {
     "eyebrow": "LOCAL · HORS LIGNE · 6 LANGUES",
     "headline": "Doublez n'importe quelle vidéo courte comme si elle avait été tournée ainsi.",

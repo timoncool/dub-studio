@@ -199,13 +199,15 @@ async def create_project(file: UploadFile):
 
 
 @app.post("/projects/{pid}/analyze")
-async def analyze_project(pid: str, tgt_lang: str = "en", mode: str = "auto", src_lang: str = "auto"):
+async def analyze_project(pid: str, tgt_lang: str = "en", mode: str = "auto", src_lang: str = "auto",
+                          subs: str = "auto", rewrite: str = ""):
     src = (_proj_dir(pid) / "source.txt").read_text(encoding="utf-8").strip()
     wd = str(_proj_dir(pid))
     opts = _snap_opts()                                    # capture model stack now; immune to a mid-job PATCH /engine/opts
 
     def job(progress):
-        proj, out = analyze(src, opts, tgt_lang=tgt_lang, work_dir=wd, mode=mode, src_lang=src_lang, progress=progress)
+        proj, out = analyze(src, opts, tgt_lang=tgt_lang, work_dir=wd, mode=mode, subs=subs,
+                            rewrite=(rewrite or None), src_lang=src_lang, progress=progress)
         proj.save(Path(wd) / "project.json")
         return {"project_id": pid, "output": out}
     return {"job_id": _enqueue(job)}
