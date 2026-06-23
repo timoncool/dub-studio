@@ -280,6 +280,30 @@ async def patch_project(pid: str, edit: dict = Body(...)):
         if s is None:
             raise HTTPException(404, f"segment {edit.get('id')!r} not found")
         edit_segment(p, s.id, hidden=(not getattr(s, "hidden", False) if edit.get("hidden") is None else bool(edit.get("hidden"))))
+    elif op == "del_segments":                             # bulk: delete several lines at once
+        for sid in (edit.get("ids") or []):
+            try:
+                del_segment(p, sid)
+            except KeyError:
+                pass
+    elif op == "hide_segments":                            # bulk: hide/show several lines (explicit flag)
+        hid = bool(edit.get("hidden", True))
+        for sid in (edit.get("ids") or []):
+            s = next((x for x in p.segments if x.id == sid), None)
+            if s is not None:
+                edit_segment(p, s.id, hidden=hid)
+    elif op == "del_titles":                               # bulk: delete several titles (high->low index)
+        for i in sorted({int(x) for x in (edit.get("idxs") or [])}, reverse=True):
+            try:
+                del_title(p, i)
+            except IndexError:
+                pass
+    elif op == "del_blurs":                                # bulk: delete several mask boxes (high->low index)
+        for i in sorted({int(x) for x in (edit.get("idxs") or [])}, reverse=True):
+            try:
+                del_blur(p, i)
+            except IndexError:
+                pass
     elif op == "blur":
         if "idx" not in edit:
             raise HTTPException(400, "missing blur idx")

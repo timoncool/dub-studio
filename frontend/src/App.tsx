@@ -488,6 +488,9 @@ function Editor() {
   const canUndo = useStore((s) => s.past.length > 0);
   const canRedo = useStore((s) => s.future.length > 0);
   const [scrub, setScrub] = useState(1.0);
+  const [selSegs, setSelSegs] = useState<Set<string>>(new Set());     // multi-select for bulk hide/delete
+  const [selBlurs, setSelBlurs] = useState<Set<number>>(new Set());   // multi-select: mask boxes
+  const [selTitles, setSelTitles] = useState<Set<number>>(new Set()); // multi-select: titles
   const [fonts, setFonts] = useState<Record<string, string>>({});
   const [voiceList, setVoiceList] = useState<string[]>([]);
   const [presets, setPresets] = useState<Record<string, Record<string, unknown>>>({});
@@ -578,6 +581,23 @@ function Editor() {
       await api.watchJob(job_id, () => {});
       setProject(await api.getProject(pid)); bump(); setDubRev(Date.now());
     } catch (e) { console.error("delete segment failed", e); }
+    finally { setRegenId(null); }
+  }
+  async function bulkDelIdx(op: "del_titles" | "del_blurs", idxs: Set<number>, clear: () => void) {
+    if (!idxs.size) return;                                           // bulk-delete several titles / mask boxes by index
+    pushHistory(p); setRendered(false);
+    try { setProject(await api.patch(pid, { op, idxs: [...idxs] })); bump(); clear(); }
+    catch (e) { console.error("bulk delete failed", e); }
+  }
+  async function bulkSeg(op: "del_segments" | "hide_segments", extra: Record<string, unknown> = {}) {
+    if (!selSegs.size || regenId) return;                            // bulk hide/delete the selected lines, ONE re-render
+    pushHistory(p); setRegenId("__bulk__"); setRendered(false);
+    try {
+      await api.patch(pid, { op, ids: [...selSegs], ...extra });
+      const { job_id } = await api.render(pid);
+      await api.watchJob(job_id, () => {});
+      setProject(await api.getProject(pid)); bump(); setDubRev(Date.now()); setSelSegs(new Set());
+    } catch (e) { console.error("bulk segment op failed", e); }
     finally { setRegenId(null); }
   }
   async function doRegenAll() {                                      // re-synthesize the WHOLE dub (after switching the pack voice/speaker, or to re-roll)
@@ -677,13 +697,45 @@ function Editor() {
         </div>
         {lane === "subs" && (
         <div className="space-y-2">
+          {(() => {
+            const spks = [...new Set(p.segments.map((x) => x.speaker ?? "0"))].sort();
+            const idsOf = (spk: string | null) => p.segments.filter((x) => spk === null || (x.speaker ?? "0") === spk).map((x) => x.id);
+            const toggleMany = (ids: string[]) => setSelSegs((prev) => {
+              const next = new Set(prev), all = ids.length > 0 && ids.every((i) => next.has(i));
+              ids.forEach((i) => (all ? next.delete(i) : next.add(i)));
+              return next;
+            });
+            const chip = "px-2 py-0.5 rounded-md text-[11px] border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)] transition-colors";
+            return (
+              <div className="space-y-1.5 mb-1">
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] uppercase tracking-wider text-[var(--color-muted)] mr-0.5">{t("sel.pick")}</span>
+                  <button onClick={() => toggleMany(idsOf(null))} className={chip}>{t("sel.all")}</button>
+                  {spks.length > 1 && spks.map((spk) => <button key={spk} onClick={() => toggleMany(idsOf(spk))} className={chip}>SPK {spk}</button>)}
+                </div>
+                {selSegs.size > 0 && (
+                  <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-accent)]/50 bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)] px-2 py-1.5">
+                    <span className="text-[12px] font-medium">{selSegs.size} {t("sel.count")}</span>
+                    <button onClick={() => bulkSeg("hide_segments", { hidden: true })} disabled={regenId !== null}
+                      className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] text-[12px] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors"><EyeOff size={13} />{t("sel.hide")}</button>
+                    <button onClick={() => bulkSeg("del_segments")} disabled={regenId !== null}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] text-[12px] hover:text-[#ef4444] disabled:opacity-40 transition-colors"><Trash2 size={13} />{t("sel.del")}</button>
+                    <button onClick={() => setSelSegs(new Set())} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={14} /></button>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {p.segments.map((seg) => {
             const on = isActive(seg);
             return (
               <div key={seg.id} ref={on ? activeRef : undefined}
                 onClick={() => { setRendered(false); setScrub(seg.start); }}   // click a phrase -> seek the playhead to it
-                className={`rounded-xl p-2.5 border-l-2 transition-colors cursor-pointer ${seg.hidden ? "opacity-50" : ""} ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
+                className={`rounded-xl p-2.5 border-l-2 transition-colors cursor-pointer ${seg.hidden ? "opacity-50" : ""} ${selSegs.has(seg.id) ? "ring-1 ring-[var(--color-accent)]/60" : ""} ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
                 <div className="flex items-center gap-2">
+                  <button onClick={(e) => { e.stopPropagation(); setSelSegs((prev) => { const n = new Set(prev); n.has(seg.id) ? n.delete(seg.id) : n.add(seg.id); return n; }); }}
+                    className={`grid place-items-center w-4 h-4 rounded shrink-0 border transition-colors ${selSegs.has(seg.id) ? "bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-on-accent)]" : "border-[var(--color-border)] hover:border-[var(--color-accent)]"}`}>
+                    {selSegs.has(seg.id) && <Check size={11} />}</button>
                   <span className={`mono text-[11px] px-1.5 py-0.5 rounded tabnum ${on ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "bg-[var(--color-overlay)] text-[var(--color-muted)]"}`}>{fmtT(seg.start)}</span>
                   <span className="mono text-[10px] text-[var(--color-muted)]/60 tabnum">→ {fmtT(seg.end)}</span>
                   {seg.speaker != null && <span className="mono px-1.5 py-px rounded bg-[var(--color-overlay)] text-[9px] text-[var(--color-muted)]">SPK {seg.speaker}</span>}
@@ -724,12 +776,25 @@ function Editor() {
                   {blurAll ? t("blur.frame") : `${t("blur.all")} (${(p.captions.blur_boxes || []).length})`}
                 </button>
               </div>
+              {(p.captions.blur_boxes || []).length > 0 && (
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <button onClick={() => setSelBlurs((prev) => prev.size === (p.captions.blur_boxes || []).length ? new Set() : new Set((p.captions.blur_boxes || []).map((_, i) => i)))}
+                    className="px-2 py-0.5 rounded-md text-[11px] border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)] transition-colors">{t("sel.all")}</button>
+                  {selBlurs.size > 0 && (<>
+                    <span className="text-[11px] text-[var(--color-muted)]">{selBlurs.size} {t("sel.count")}</span>
+                    <button onClick={() => bulkDelIdx("del_blurs", selBlurs, () => setSelBlurs(new Set()))}
+                      className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-[var(--color-surface-2)] hover:text-[#ef4444] transition-colors"><Trash2 size={12} />{t("sel.del")}</button>
+                  </>)}
+                </div>
+              )}
               <div className="space-y-1 max-h-[46vh] overflow-y-auto pr-1">
                 {(p.captions.blur_boxes || []).map((b, i) => ({ b, i }))
                   .filter(({ b }) => blurAll || (scrub >= b.t0 - 0.6 && scrub <= b.t1 + 0.4))
                   .map(({ b, i }) => (
                     <div key={i} onClick={() => setSelBlur(i)}
-                      className={`flex items-center gap-2 mono text-[10px] rounded px-2 py-1 cursor-pointer transition-colors ${selBlur === i ? "bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-[var(--color-text)] ring-1 ring-[var(--color-accent)]" : "text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 hover:text-[var(--color-text)]"} ${b.hidden ? "opacity-50" : ""}`}>
+                      className={`flex items-center gap-2 mono text-[10px] rounded px-2 py-1 cursor-pointer transition-colors ${selBlur === i ? "bg-[color-mix(in_oklab,var(--color-accent)_18%,transparent)] text-[var(--color-text)] ring-1 ring-[var(--color-accent)]" : "text-[var(--color-muted)] bg-[var(--color-surface-2)]/40 hover:text-[var(--color-text)]"} ${b.hidden ? "opacity-50" : ""} ${selBlurs.has(i) ? "ring-1 ring-[var(--color-accent)]" : ""}`}>
+                      <button onClick={(e) => { e.stopPropagation(); setSelBlurs((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; }); }}
+                        className={`grid place-items-center w-3.5 h-3.5 rounded-sm shrink-0 border transition-colors ${selBlurs.has(i) ? "bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-on-accent)]" : "border-[var(--color-border)] hover:border-[var(--color-accent)]"}`}>{selBlurs.has(i) && <Check size={9} />}</button>
                       <button onClick={(e) => { e.stopPropagation(); branch("blur", { idx: i, hidden: !b.hidden }); }}
                         title={b.hidden ? t("blur.show") : t("blur.hide")}
                         className="shrink-0 hover:text-[var(--color-accent)] transition-colors">{b.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
@@ -758,9 +823,22 @@ function Editor() {
         {lane === "titles" && (
           <div className="space-y-2">
             {!(p.captions.titles || []).length && <div className="text-[11px] text-[var(--color-muted)]/50 py-3 text-center">—</div>}
+            {(p.captions.titles || []).length > 0 && (
+              <div className="flex items-center gap-1.5 mb-1">
+                <button onClick={() => setSelTitles((prev) => prev.size === (p.captions.titles || []).length ? new Set() : new Set((p.captions.titles || []).map((_, i) => i)))}
+                  className="px-2 py-0.5 rounded-md text-[11px] border border-[var(--color-border)] bg-[var(--color-surface-2)] text-[var(--color-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-accent)] transition-colors">{t("sel.all")}</button>
+                {selTitles.size > 0 && (<>
+                  <span className="text-[11px] text-[var(--color-muted)]">{selTitles.size} {t("sel.count")}</span>
+                  <button onClick={() => bulkDelIdx("del_titles", selTitles, () => setSelTitles(new Set()))}
+                    className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] bg-[var(--color-surface-2)] hover:text-[#ef4444] transition-colors"><Trash2 size={12} />{t("sel.del")}</button>
+                </>)}
+              </div>
+            )}
             {(p.captions.titles || []).map((ti, i) => (
               <div key={`${ti.start}_${ti.end}_${i}`} className="rounded-xl p-2.5 bg-[var(--color-surface-2)]/50">
                 <div className="flex items-center gap-2 mono text-[10px] text-[var(--color-muted)] mb-1.5">
+                  <button onClick={() => setSelTitles((prev) => { const n = new Set(prev); n.has(i) ? n.delete(i) : n.add(i); return n; })}
+                    className={`grid place-items-center w-3.5 h-3.5 rounded-sm shrink-0 border transition-colors ${selTitles.has(i) ? "bg-[var(--color-accent)] border-[var(--color-accent)] text-[var(--color-on-accent)]" : "border-[var(--color-border)] hover:border-[var(--color-accent)]"}`}>{selTitles.has(i) && <Check size={9} />}</button>
                   <span className="tabnum">{fmtT(ti.start)} → {fmtT(ti.end)}</span>
                   <button onClick={() => branch("title_del", { idx: i })} className="ml-auto hover:text-[var(--color-warn)] transition-colors" title="delete"><Trash2 size={12} /></button>
                 </div>

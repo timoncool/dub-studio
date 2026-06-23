@@ -49,5 +49,6 @@
     "madeBy": "Réalisé par",
     "founder": "fondateur de"
   },
+  "sel": { "pick": "Sélection :", "all": "Tout", "count": "sélectionnés", "hide": "Masquer", "del": "Supprimer" },
   "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
 }

@@ -49,5 +49,6 @@
     "madeBy": "作者",
     "founder": "创始人"
   },
+  "sel": { "pick": "选择：", "all": "全部", "count": "已选", "hide": "隐藏", "del": "删除" },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }
