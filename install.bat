@@ -134,6 +134,13 @@ REM  5) Engine main-env deps (proven pins)
 REM ============================================================
 echo [4/8] Installing engine deps...
 python\python.exe -m pip install -r requirements-engine.txt --no-warn-script-location
+if errorlevel 1 (
+    echo.
+    echo   ERROR: engine deps failed to install ^(likely a network hiccup during pip^).
+    echo   Just run install.bat AGAIN — pip resumes and installs what's missing.
+    pause
+    exit /b 1
+)
 REM backend (thin) deps
 python\python.exe -m pip install -r requirements.txt --no-warn-script-location
 
@@ -268,6 +275,26 @@ if exist "voices\*.mp3" (
         echo   [OK] voice pack installed
     )
 )
+
+REM ============================================================
+REM  Verify the core stack actually imports — a SILENT pip hiccup must NOT pass as "done".
+REM  `import dubengine.pipeline` triggers the real startup chain (onnx_asr, audio_separator, rapidocr,
+REM  soundfile, onnxruntime...); the rest covers the lazily-imported engines.
+REM ============================================================
+echo [verify] Checking the core stack...
+python\python.exe -c "import dubengine.pipeline, qwen_tts, faster_qwen3_tts, llama_cpp, torch" 2>nul
+if errorlevel 1 (
+    echo.
+    echo ========================================
+    echo   ERROR: install is INCOMPLETE ^(a network hiccup left a package out^).
+    echo   The missing module is printed below. Just run install.bat AGAIN to fix it:
+    echo ========================================
+    python\python.exe -c "import dubengine.pipeline, qwen_tts, faster_qwen3_tts, llama_cpp, torch"
+    echo.
+    pause
+    exit /b 1
+)
+echo   [OK] core stack verified
 
 REM Save the chosen CUDA build so run.bat (and a re-install) can show/reuse it
 echo %CUDA_VERSION%> cuda_version.txt
