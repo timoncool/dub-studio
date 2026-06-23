@@ -304,6 +304,17 @@ async def patch_project(pid: str, edit: dict = Body(...)):
                 del_blur(p, i)
             except IndexError:
                 pass
+    elif op == "keep_segment":                             # toggle 'keep original audio' (no dub, no translated sub)
+        s = next((x for x in p.segments if x.id == edit.get("id")), None)
+        if s is None:
+            raise HTTPException(404, f"segment {edit.get('id')!r} not found")
+        edit_segment(p, s.id, keep_original=(not getattr(s, "keep_original", False) if edit.get("keep") is None else bool(edit.get("keep"))))
+    elif op == "keep_segments":                            # bulk 'keep original' (explicit flag)
+        kp = bool(edit.get("keep", True))
+        for sid in (edit.get("ids") or []):
+            s = next((x for x in p.segments if x.id == sid), None)
+            if s is not None:
+                edit_segment(p, s.id, keep_original=kp)
     elif op == "blur":
         if "idx" not in edit:
             raise HTTPException(400, "missing blur idx")

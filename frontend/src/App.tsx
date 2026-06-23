@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star, Music } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -583,13 +583,24 @@ function Editor() {
     } catch (e) { console.error("delete segment failed", e); }
     finally { setRegenId(null); }
   }
+  async function doKeepSeg(segId: string) {                          // toggle 'keep original audio' — source plays, no dub, no sub
+    if (regenId) return;
+    pushHistory(p); setRegenId(segId); setRendered(false);
+    try {
+      await api.patch(pid, { op: "keep_segment", id: segId });
+      const { job_id } = await api.render(pid);
+      await api.watchJob(job_id, () => {});
+      setProject(await api.getProject(pid)); bump(); setDubRev(Date.now());
+    } catch (e) { console.error("keep-original toggle failed", e); }
+    finally { setRegenId(null); }
+  }
   async function bulkDelIdx(op: "del_titles" | "del_blurs", idxs: Set<number>, clear: () => void) {
     if (!idxs.size) return;                                           // bulk-delete several titles / mask boxes by index
     pushHistory(p); setRendered(false);
     try { setProject(await api.patch(pid, { op, idxs: [...idxs] })); bump(); clear(); }
     catch (e) { console.error("bulk delete failed", e); }
   }
-  async function bulkSeg(op: "del_segments" | "hide_segments", extra: Record<string, unknown> = {}) {
+  async function bulkSeg(op: "del_segments" | "hide_segments" | "keep_segments", extra: Record<string, unknown> = {}) {
     if (!selSegs.size || regenId) return;                            // bulk hide/delete the selected lines, ONE re-render
     pushHistory(p); setRegenId("__bulk__"); setRendered(false);
     try {
@@ -716,8 +727,10 @@ function Editor() {
                 {selSegs.size > 0 && (
                   <div className="flex items-center gap-1.5 rounded-lg border border-[var(--color-accent)]/50 bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)] px-2 py-1.5">
                     <span className="text-[12px] font-medium">{selSegs.size} {t("sel.count")}</span>
+                    <button onClick={() => bulkSeg("keep_segments", { keep: true })} disabled={regenId !== null}
+                      className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] text-[12px] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors"><Music size={13} />{t("sel.keep")}</button>
                     <button onClick={() => bulkSeg("hide_segments", { hidden: true })} disabled={regenId !== null}
-                      className="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] text-[12px] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors"><EyeOff size={13} />{t("sel.hide")}</button>
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] text-[12px] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors"><EyeOff size={13} />{t("sel.hide")}</button>
                     <button onClick={() => bulkSeg("del_segments")} disabled={regenId !== null}
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] text-[12px] hover:text-[#ef4444] disabled:opacity-40 transition-colors"><Trash2 size={13} />{t("sel.del")}</button>
                     <button onClick={() => setSelSegs(new Set())} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={14} /></button>
@@ -749,6 +762,8 @@ function Editor() {
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); forceSeg(seg); }} title={t("seg.refreshHint")}
                       className="text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"><RefreshCw size={12} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); doKeepSeg(seg.id); }} disabled={regenId !== null} title={seg.keep_original ? t("seg.unkeep") : t("seg.keep")}
+                      className={`disabled:opacity-40 transition-colors ${seg.keep_original ? "text-[var(--color-accent)]" : "text-[var(--color-muted)] hover:text-[var(--color-accent)]"}`}><Music size={12} /></button>
                     <button onClick={(e) => { e.stopPropagation(); doHideSeg(seg.id); }} disabled={regenId !== null} title={seg.hidden ? t("seg.show") : t("seg.hide")}
                       className="text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors">
                       {seg.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>

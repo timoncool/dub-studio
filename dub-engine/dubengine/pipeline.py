@@ -262,6 +262,13 @@ def _build_dub(cfg, wd, total, bench, vh):
         engine = tts.make(cfg)
         cursor = 0.0
         for i, s in enumerate(segs):
+            if s.get("keep"):                                  # 'keep original' -> splice the source audio here, no TTS / no atempo
+                raw = wd / f"seg_{i:03d}.wav"
+                media.trim(vocals, raw, float(s["start"]), float(s["end"]), sr=24000)
+                at = max(float(s["start"]), cursor)
+                placed.append((at, raw))
+                cursor = at + media.duration(raw)
+                continue
             tgt = s.get("tgt", "").strip()
             if not tgt:
                 continue
@@ -325,6 +332,13 @@ def _regen_dub(cfg, wd, total, bench, vh):
     with _timed("tts", bench):
         placed, engine, cursor = [], tts.make(cfg), 0.0
         for i, s in enumerate(segs):
+            if s.get("keep"):                                  # 'keep original' -> splice the source audio here, no TTS / no atempo
+                raw = wd / f"seg_{i:03d}.wav"
+                media.trim(vocals, raw, float(s["start"]), float(s["end"]), sr=24000)
+                at = max(float(s["start"]), cursor)
+                placed.append((at, raw))
+                cursor = at + media.duration(raw)
+                continue
             tgt = s.get("tgt", "").strip()
             if not tgt:
                 continue

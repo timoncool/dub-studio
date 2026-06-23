@@ -30,7 +30,7 @@
   "files": { "title": "文件", "download": "下载", "open": "打开" },
   "nav": { "new": "新建", "newHint": "用新视频开始" },
   "play": { "dub": "播放配音（画面 + 配音）" },
-  "seg": { "regen": "重新生成该句配音", "play": "播放该句配音", "hide": "隐藏该句", "show": "显示该句", "del": "删除该句", "refresh": "刷新", "refreshHint": "强制刷新预览/字幕（如卡顿或卡住）" },
+  "seg": { "regen": "重新生成该句配音", "play": "播放该句配音", "keep": "保留原声", "unkeep": "重新配音", "hide": "隐藏该句", "show": "显示该句", "del": "删除该句", "refresh": "刷新", "refreshHint": "强制刷新预览/字幕（如卡顿或卡住）" },
   "settings": { "title": "模型", "asr": "语音识别", "llm": "翻译", "vision": "视觉", "tts": "语音合成" },
   "help": {
     "title": "关于 Dub Studio",
@@ -49,6 +49,6 @@
     "madeBy": "作者",
     "founder": "创始人"
   },
-  "sel": { "pick": "选择：", "all": "全部", "count": "已选", "hide": "隐藏", "del": "删除" },
+  "sel": { "pick": "选择：", "all": "全部", "count": "已选", "keep": "原声", "hide": "隐藏", "del": "删除" },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }

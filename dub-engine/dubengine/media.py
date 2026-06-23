@@ -61,6 +61,6 @@ def mux(video, audio, out):
           "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy", "-c:a", "aac", str(out)])
 
 
-def trim(src, dst, start: float, end: float):
+def trim(src, dst, start: float, end: float, sr: int = 16000):
     _run(["ffmpeg", "-y", "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", str(src),
-          "-ac", "1", "-ar", "16000", str(dst)])
+          "-ac", "1", "-ar", str(sr), str(dst)])

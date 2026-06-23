@@ -248,9 +248,9 @@ def edit_caption(project: Project, seg_id: Optional[str] = None, **overrides) ->
 
 def edit_segment(project: Project, seg_id: str, *, tgt_text: Optional[str] = None,
                  src_text: Optional[str] = None, voice: Optional[str] = None,
-                 hidden: Optional[bool] = None) -> Project:
-    """Edit one transcript segment's text/voice, or HIDE it (hidden=True drops its subtitle AND its dub
-    audio from the render, reversibly). Marks it dirty so render re-gens that line / re-assembles the dub."""
+                 hidden: Optional[bool] = None, keep_original: Optional[bool] = None) -> Project:
+    """Edit one transcript segment's text/voice, HIDE it (drops subtitle + dub audio), or KEEP ORIGINAL
+    (keep_original=True: no dub/translation here, the source audio plays, no subtitle). Marks it dirty."""
     s = next((x for x in project.segments if x.id == seg_id), None)
     if s is None:
         raise KeyError(f"segment {seg_id!r} not found")
@@ -262,6 +262,8 @@ def edit_segment(project: Project, seg_id: str, *, tgt_text: Optional[str] = Non
         s.voice = voice
     if hidden is not None:
         s.hidden = bool(hidden)
+    if keep_original is not None:
+        s.keep_original = bool(keep_original)
     s.dirty = True
     return project
 

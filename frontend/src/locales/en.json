@@ -30,7 +30,7 @@
   "files": { "title": "Files", "download": "Download", "open": "Open" },
   "nav": { "new": "New", "newHint": "Start with a new video" },
   "play": { "dub": "Play the dub (video + voiceover)" },
-  "seg": { "regen": "Regenerate this line's voiceover", "play": "Play this line's voiceover", "hide": "Hide line", "show": "Show line", "del": "Delete line", "refresh": "Refresh", "refreshHint": "Force-refresh the preview / subtitles (if it lags or hangs)" },
+  "seg": { "regen": "Regenerate this line's voiceover", "play": "Play this line's voiceover", "keep": "Keep original", "unkeep": "Re-dub", "hide": "Hide line", "show": "Show line", "del": "Delete line", "refresh": "Refresh", "refreshHint": "Force-refresh the preview / subtitles (if it lags or hangs)" },
   "settings": { "title": "Models", "asr": "Speech recognition", "llm": "Translation", "vision": "Vision", "tts": "Voice synthesis" },
   "help": {
     "title": "About Dub Studio",
@@ -49,6 +49,6 @@
     "madeBy": "Built by",
     "founder": "founder of"
   },
-  "sel": { "pick": "Select:", "all": "All", "count": "selected", "hide": "Hide", "del": "Delete" },
+  "sel": { "pick": "Select:", "all": "All", "count": "selected", "keep": "Keep orig.", "hide": "Hide", "del": "Delete" },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }

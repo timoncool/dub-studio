@@ -30,7 +30,7 @@
   "files": { "title": "Arquivos", "download": "Baixar", "open": "Abrir" },
   "nav": { "new": "Novo", "newHint": "Começar com um novo vídeo" },
   "play": { "dub": "Reproduzir a dublagem (vídeo + voz)" },
-  "seg": { "regen": "Regenerar a voz desta frase", "play": "Reproduzir a voz desta frase", "hide": "Ocultar linha", "show": "Mostrar linha", "del": "Excluir linha", "refresh": "Atualizar", "refreshHint": "Forçar a atualização da prévia / legendas" },
+  "seg": { "regen": "Regenerar a voz desta frase", "play": "Reproduzir a voz desta frase", "keep": "Manter original", "unkeep": "Redublar", "hide": "Ocultar linha", "show": "Mostrar linha", "del": "Excluir linha", "refresh": "Atualizar", "refreshHint": "Forçar a atualização da prévia / legendas" },
   "settings": { "title": "Modelos", "asr": "Reconhecimento de fala", "llm": "Tradução", "vision": "Visão", "tts": "Síntese de voz" },
   "help": {
     "title": "Sobre o Dub Studio",
@@ -49,6 +49,6 @@
     "madeBy": "Feito por",
     "founder": "fundador da"
   },
-  "sel": { "pick": "Selecionar:", "all": "Todos", "count": "selecionados", "hide": "Ocultar", "del": "Excluir" },
+  "sel": { "pick": "Selecionar:", "all": "Todos", "count": "selecionados", "keep": "Original", "hide": "Ocultar", "del": "Excluir" },
   "common": { "undo": "Desfazer", "redo": "Refazer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Concluído", "error": "Erro" }
 }
