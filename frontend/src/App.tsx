@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Heart, Copy, Star } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -56,9 +56,102 @@ function SettingsModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+const DONATE = {
+  boosty: "https://boosty.to/neuro_art",
+  dalink: "https://dalink.to/nerual_dreming",
+  github: "https://github.com/timoncool/dub-studio",
+  telegram: "https://t.me/nerual_dreming",
+  crypto: [["BTC", "1E7dHL22RpyhJGVpcvKdbyZgksSYkYeEBC"],
+           ["ETH · ERC20", "0xb5db65adf478983186d4897ba92fe2c25c594a0c"],
+           ["USDT · TRC20", "TQST9Lp2TjK6FiVkn4fwfGUee7NmkxEE7C"]] as const,
+};
+
+function HelpSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mt-4">
+      <div className="text-[11px] uppercase tracking-[0.16em] text-[var(--color-muted)] mb-1.5">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function CryptoRow({ coin, addr }: { coin: string; addr: string }) {
+  const { t } = useTranslation();
+  const [done, setDone] = useState(false);
+  return (
+    <button title={t("help.copy")}
+      onClick={async () => { try { await navigator.clipboard.writeText(addr); setDone(true); setTimeout(() => setDone(false), 1200); } catch { /* clipboard blocked */ } }}
+      className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] hover:border-[var(--color-accent)] transition-colors text-left">
+      <span className="text-[11px] uppercase tracking-[0.1em] text-[var(--color-muted)] w-[92px] shrink-0">{coin}</span>
+      <span className="mono text-[11px] truncate flex-1">{addr}</span>
+      {done ? <Check size={13} className="text-[var(--color-accent)] shrink-0" /> : <Copy size={13} className="text-[var(--color-muted)] shrink-0" />}
+    </button>
+  );
+}
+
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const how = t("help.how", { returnObjects: true }) as unknown as string[];
+  const features = t("help.features", { returnObjects: true }) as unknown as string[];
+  const sections = t("help.sections", { returnObjects: true }) as unknown as string[];
+  const link = "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors";
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center glass-scrim anim-fade" onClick={onClose}>
+      <div className="w-[min(92vw,640px)] max-h-[86vh] overflow-y-auto rounded-xl glass-panel anim-pop p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <span className="flex items-center gap-2 font-semibold"><HelpCircle size={17} className="text-[var(--color-accent)]" />{t("help.title")}</span>
+          <button onClick={onClose} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={16} /></button>
+        </div>
+        <p className="text-[13px] leading-relaxed text-[var(--color-muted)]">{t("help.intro")}</p>
+
+        <HelpSection title={t("help.howTitle")}>
+          <ol className="space-y-1.5">
+            {how.map((s, i) => (
+              <li key={i} className="flex gap-2.5 text-[13px]">
+                <span className="grid place-items-center w-5 h-5 shrink-0 rounded-full bg-[var(--color-surface-2)] text-[var(--color-accent)] text-[11px] font-semibold">{i + 1}</span>
+                <span className="leading-relaxed">{s}</span>
+              </li>
+            ))}
+          </ol>
+        </HelpSection>
+
+        <HelpSection title={t("help.featuresTitle")}>
+          <ul className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+            {features.map((f, i) => (
+              <li key={i} className="flex gap-2 text-[13px] leading-relaxed"><Check size={14} className="text-[var(--color-accent)] shrink-0 mt-[3px]" /><span>{f}</span></li>
+            ))}
+          </ul>
+        </HelpSection>
+
+        <HelpSection title={t("help.sectionsTitle")}>
+          <ul className="space-y-1">
+            {sections.map((s, i) => <li key={i} className="text-[13px] leading-relaxed text-[var(--color-muted)]">· {s}</li>)}
+          </ul>
+        </HelpSection>
+
+        <HelpSection title={t("help.donateTitle")}>
+          <p className="text-[13px] leading-relaxed text-[var(--color-muted)] mb-2.5">{t("help.donateIntro")}</p>
+          <div className="flex flex-wrap gap-2 mb-2.5">
+            <a href={DONATE.boosty} target="_blank" rel="noreferrer" className={link}><Heart size={13} />Boosty</a>
+            <a href={DONATE.dalink} target="_blank" rel="noreferrer" className={link}><ExternalLink size={13} />{t("help.allLinks")}</a>
+            <a href={DONATE.github} target="_blank" rel="noreferrer" className={link}><Star size={13} />GitHub</a>
+            <a href={DONATE.telegram} target="_blank" rel="noreferrer" className={link}><ExternalLink size={13} />Telegram</a>
+          </div>
+          <div className="space-y-1.5">
+            {DONATE.crypto.map(([c, a]) => <CryptoRow key={c} coin={c} addr={a} />)}
+          </div>
+        </HelpSection>
+
+        <div className="mt-4 text-[11px] text-[var(--color-muted)] text-center">Nerual Dreming · neuro-cartel.com</div>
+      </div>
+    </div>
+  );
+}
+
 function TopBar() {
   const { t } = useTranslation();
   const [settings, setSettings] = useState(false);
+  const [help, setHelp] = useState(false);
   const stage = useStore((s) => s.stage);
   const setStage = useStore((s) => s.setStage);
   const setPid = useStore((s) => s.setPid);
@@ -84,10 +177,13 @@ function TopBar() {
             <Plus size={16} /><span className="hidden sm:inline">{t("nav.new")}</span>
           </button>
         )}
+        <button onClick={() => setHelp(true)} title={t("help.title")}
+          className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"><HelpCircle size={18} /></button>
         <button onClick={() => setSettings(true)} title={t("settings.title")}
           className="p-1.5 rounded-md text-[var(--color-muted)] hover:text-[var(--color-text)] transition-colors"><Settings size={18} /></button>
         <LanguageSwitcher />
       </div>
+      {help && <HelpModal onClose={() => setHelp(false)} />}
       {settings && <SettingsModal onClose={() => setSettings(false)} />}
     </header>
   );

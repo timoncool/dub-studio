@@ -32,5 +32,19 @@
   "play": { "dub": "Lire le doublage (vidéo + voix)" },
   "seg": { "regen": "Régénérer la voix de cette phrase", "play": "Écouter la voix de cette phrase", "refresh": "Actualiser", "refreshHint": "Forcer le rafraîchissement de l'aperçu / sous-titres" },
   "settings": { "title": "Modèles", "asr": "Reconnaissance vocale", "llm": "Traduction", "vision": "Vision", "tts": "Synthèse vocale" },
+  "help": {
+    "title": "À propos de Dub Studio",
+    "intro": "Dub Studio double et traduit n'importe quelle vidéo courte entièrement sur votre machine — rien ne quitte votre ordinateur. Déposez un clip : il l'analyse une fois, puis vous réglez chaque détail avec un aperçu en direct.",
+    "howTitle": "Comment ça marche",
+    "how": ["Déposez un MP4/MOV — il sépare l'audio, reconnaît la parole, distingue les locuteurs, traduit et lit le texte à l'écran.", "Choisissez un mode : sous-titres, doublage complet ou remix amusant.", "Modifiez tout — transcription, voix, style des sous-titres, masques — avec aperçu instantané.", "Exportez la vidéo finie. Tout tourne localement sur votre GPU."],
+    "featuresTitle": "Fonctions",
+    "features": ["Clonage de voix, distribution auto par locuteur ou un pack de voix", "Texte à l'écran localisé sur place", "Réécrivez le script et redoublez (mode amusant)", "Style des sous-titres : police, couleur, contour, ombre, plaque", "Masques : flou ou un rectangle uni sur l'original", "6 langues, entièrement hors ligne, jusqu'à 4K"],
+    "sectionsTitle": "Sections",
+    "sections": ["Transcription — modifiez chaque ligne et sa traduction", "Voix — choisissez le doublage et régénérez", "Style et Masque — sous-titres, titres, caches", "Paramètres (⚙) — la pile de modèles (ASR / LLM / Vision / TTS)"],
+    "donateTitle": "Soutenir l'auteur",
+    "donateIntro": "Dub Studio est gratuit et open source. Les dons m'aident à continuer à créer et à chercher =)",
+    "allLinks": "Tous les liens",
+    "copy": "Copier l'adresse"
+  },
   "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
 }

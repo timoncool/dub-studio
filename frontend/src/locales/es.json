@@ -32,5 +32,19 @@
   "play": { "dub": "Reproducir el doblaje (vídeo + voz)" },
   "seg": { "regen": "Regenerar la voz de esta frase", "play": "Reproducir la voz de esta frase", "refresh": "Actualizar", "refreshHint": "Forzar el refresco de la vista previa / subtítulos" },
   "settings": { "title": "Modelos", "asr": "Reconocimiento de voz", "llm": "Traducción", "vision": "Visión", "tts": "Síntesis de voz" },
+  "help": {
+    "title": "Acerca de Dub Studio",
+    "intro": "Dub Studio dobla y traduce cualquier vídeo corto íntegramente en tu equipo — nada sale de tu ordenador. Suelta un clip: lo analiza una vez y luego ajustas cada detalle con vista previa en vivo.",
+    "howTitle": "Cómo funciona",
+    "how": ["Suelta un MP4/MOV — separa el audio, reconoce el habla, distingue a los hablantes, traduce y lee el texto en pantalla.", "Elige un modo: subtítulos, doblaje completo o un remix divertido.", "Edita lo que quieras — transcripción, voces, estilo de subtítulos, máscaras — con vista previa instantánea.", "Exporta el vídeo terminado. Todo se ejecuta localmente en tu GPU."],
+    "featuresTitle": "Funciones",
+    "features": ["Clonación de voz, reparto automático por hablante o un pack de voces", "Texto en pantalla localizado en su sitio", "Reescribe el guion y vuelve a doblar (modo divertido)", "Estilo de subtítulos: fuente, color, contorno, sombra, placa", "Máscaras: desenfoque o un rectángulo sólido sobre el original", "6 idiomas, totalmente sin conexión, hasta 4K"],
+    "sectionsTitle": "Secciones",
+    "sections": ["Transcripción — edita cada línea y su traducción", "Voz — elige cómo se dobla y regenera", "Estilo y Máscara — subtítulos, títulos, cubiertas", "Ajustes (⚙) — el conjunto de modelos (ASR / LLM / Vision / TTS)"],
+    "donateTitle": "Apoya al autor",
+    "donateIntro": "Dub Studio es gratuito y de código abierto. Las donaciones me ayudan a seguir creando e investigando =)",
+    "allLinks": "Todos los enlaces",
+    "copy": "Copiar dirección"
+  },
   "common": { "undo": "Deshacer", "redo": "Rehacer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Listo", "error": "Error" }
 }

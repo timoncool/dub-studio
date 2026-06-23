@@ -32,5 +32,19 @@
   "play": { "dub": "Reproduzir a dublagem (vídeo + voz)" },
   "seg": { "regen": "Regenerar a voz desta frase", "play": "Reproduzir a voz desta frase", "refresh": "Atualizar", "refreshHint": "Forçar a atualização da prévia / legendas" },
   "settings": { "title": "Modelos", "asr": "Reconhecimento de fala", "llm": "Tradução", "vision": "Visão", "tts": "Síntese de voz" },
+  "help": {
+    "title": "Sobre o Dub Studio",
+    "intro": "O Dub Studio dubla e traduz qualquer vídeo curto inteiramente na sua máquina — nada sai do seu computador. Solte um clipe: ele analisa uma vez e depois você ajusta cada detalhe com pré-visualização ao vivo.",
+    "howTitle": "Como funciona",
+    "how": ["Solte um MP4/MOV — separa o áudio, reconhece a fala, distingue os falantes, traduz e lê o texto na tela.", "Escolha um modo: legendas, dublagem completa ou um remix engraçado.", "Edite o que quiser — transcrição, vozes, estilo das legendas, máscaras — com pré-visualização instantânea.", "Exporte o vídeo pronto. Tudo roda localmente na sua GPU."],
+    "featuresTitle": "Recursos",
+    "features": ["Clonagem de voz, elenco automático por falante ou um pack de vozes", "Texto na tela localizado no lugar", "Reescreva o roteiro e reduble (modo engraçado)", "Estilo das legendas: fonte, cor, contorno, sombra, placa", "Máscaras: desfoque ou um retângulo sólido sobre o original", "6 idiomas, totalmente offline, até 4K"],
+    "sectionsTitle": "Seções",
+    "sections": ["Transcrição — edite cada linha e sua tradução", "Voz — escolha a dublagem e regenere", "Estilo e Máscara — legendas, títulos, coberturas", "Configurações (⚙) — o conjunto de modelos (ASR / LLM / Vision / TTS)"],
+    "donateTitle": "Apoie o autor",
+    "donateIntro": "O Dub Studio é gratuito e de código aberto. Doações me ajudam a continuar criando e pesquisando =)",
+    "allLinks": "Todos os links",
+    "copy": "Copiar endereço"
+  },
   "common": { "undo": "Desfazer", "redo": "Refazer", "cancel": "Cancelar", "language": "Idioma", "theme": "Tema", "rendering": "Renderizando", "done": "Concluído", "error": "Erro" }
 }

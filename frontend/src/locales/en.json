@@ -32,5 +32,19 @@
   "play": { "dub": "Play the dub (video + voiceover)" },
   "seg": { "regen": "Regenerate this line's voiceover", "play": "Play this line's voiceover", "refresh": "Refresh", "refreshHint": "Force-refresh the preview / subtitles (if it lags or hangs)" },
   "settings": { "title": "Models", "asr": "Speech recognition", "llm": "Translation", "vision": "Vision", "tts": "Voice synthesis" },
+  "help": {
+    "title": "About Dub Studio",
+    "intro": "Dub Studio dubs and translates any short video entirely on your machine — nothing leaves your computer. Drop a clip; it auto-analyzes once, then you fine-tune every detail with a live preview.",
+    "howTitle": "How it works",
+    "how": ["Drop an MP4/MOV — it splits the audio, recognizes speech, tells speakers apart, translates, and reads on-screen text.", "Pick a mode: subtitles, a full dub, or a funny remix.", "Edit anything — transcript, voices, subtitle style, masks — with instant preview.", "Export the finished video. Everything runs locally on your GPU."],
+    "featuresTitle": "Features",
+    "features": ["Voice cloning, auto-cast per speaker, or a voice pack", "On-screen text localized in place", "Rewrite the script and re-dub (funny mode)", "Subtitle styling: font, color, outline, shadow, plate", "Mask covers: blur or a solid rectangle over the original", "6 languages, fully offline, up to 4K"],
+    "sectionsTitle": "Sections",
+    "sections": ["Transcript — edit each line and its translation", "Voice — pick how it's voiced and regenerate", "Style & Mask — subtitles, titles, covers", "Settings (⚙) — the model stack (ASR / LLM / Vision / TTS)"],
+    "donateTitle": "Support the author",
+    "donateIntro": "Dub Studio is free and open-source. Donations help me keep building and researching =)",
+    "allLinks": "All links",
+    "copy": "Copy address"
+  },
   "common": { "undo": "Undo", "redo": "Redo", "cancel": "Cancel", "language": "Language", "theme": "Theme", "rendering": "Rendering", "done": "Done", "error": "Error" }
 }
