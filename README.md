@@ -125,8 +125,6 @@ cd dub-studio
 | **`run.bat`** | start the app at `http://127.0.0.1:8765` (auto-runs `install.bat` on first launch) |
 | **`update.bat`** | `git pull` → reinstall the engine → rebuild the UI |
 
-Build & packaging internals: [PACKAGING.md](PACKAGING.md). A no-git, one-click portable **`DubStudio_*.zip`** will appear in [Releases](https://github.com/timoncool/dub-studio/releases) once the first build is tagged — not published yet, so clone for now.
-
 ## How it works
 
 `analyze()` is the fixed first stage: separate → ASR (word timings) → diarize → context‑translate +
