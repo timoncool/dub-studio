@@ -84,7 +84,15 @@ Russian original (left) → dubbed into English by Dub Studio (right) — voice 
 | On‑screen text blur + re‑caption | ✅ | ❌ | ⚠️ few, cloud |
 | Portable (one folder) | ✅ | ⚠️ | — |
 
-## Install (Windows, NVIDIA GPU)
+## Install
+
+> 🚀 **One-click, cross-platform install via [Pinokio](https://pinokio.co)** — Windows / Linux / macOS · NVIDIA / AMD / CPU:
+>
+> [![Install on Pinokio](https://img.shields.io/badge/🚀_Install_on-Pinokio-7c3aed?style=for-the-badge)](https://pinokio.co/item?uri=https://github.com/timoncool/dub-studio-pinokio) [![Open in Pinokio](https://img.shields.io/badge/📂_Open_in-Pinokio-6d28d9?style=for-the-badge)](https://beta.pinokio.co/apps/github-com-timoncool-dub-studio-pinokio)
+>
+> No `install.bat`, no manual CUDA wheels — Pinokio installs the right stack for your machine and the engine falls back gracefully off-NVIDIA. Launcher repo: **[timoncool/dub-studio-pinokio](https://github.com/timoncool/dub-studio-pinokio)**.
+
+### Windows portable (manual)
 
 **You need:** [Git](https://git-scm.com/download/win) · an NVIDIA GPU (RTX 20xx–50xx, CUDA 12.8, ~12 GB VRAM) · several GB of free disk for the wheels and models. You do **not** need Python, CUDA, Node or ffmpeg pre-installed — the installer fetches them all into the app folder, nothing system-wide.
 
