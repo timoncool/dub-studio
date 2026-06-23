@@ -78,10 +78,12 @@ def _auto_fill_boxes(video, boxes, scene_hint=None):
                         vals, counts = np.unique(keys, return_counts=True)
                         j = int(counts.argmax())
                         frac = float(counts[j]) / float(len(keys))
-                        if frac >= 0.72 or (g_flat and frac >= 0.55):           # bg dominates the box -> flat
-                            mb, mg, mr = roi[keys == vals[j]].mean(axis=0)
-                            fill = (g_col if (g_flat and g_col and frac < 0.72)
-                                    else f"#{int(mr):02x}{int(mg):02x}{int(mb):02x}")
+                        mb, mg, mr = roi[keys == vals[j]].mean(axis=0)
+                        dom = f"#{int(mr):02x}{int(mg):02x}{int(mb):02x}"        # box's dominant colour = the background (text is a minority)
+                        if g_flat:                                              # Gemma flagged a FLAT card behind the text -> ALWAYS a solid
+                            fill = g_col or dom                                 # rectangle, NEVER a blur: prefer the scene colour, else the bg
+                        elif frac >= 0.72:                                      # no hint, but the box is overwhelmingly one colour -> solid
+                            fill = dom
             except Exception:
                 fill = None
             out.append((*b, fill))
