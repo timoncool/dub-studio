@@ -46,6 +46,7 @@ class Segment(BaseModel):
     tgt_text: str = ""
     voice: Optional[str] = None    # per-segment voice override
     dirty: bool = False            # needs re-TTS at render
+    hidden: bool = False           # editor: drop this line — NO subtitle AND no dub audio (kept in the Project, un-hideable)
 
 
 class Subs(BaseModel):
@@ -182,8 +183,9 @@ class Project(BaseModel):
     # ---- back-compat with the engine's resume artifacts (transcript/ctx_extra/caption_plan) ----
     def write_artifacts(self, work_dir) -> None:
         wd = Path(work_dir); wd.mkdir(parents=True, exist_ok=True)
+        # hidden lines are dropped from the engine artifact -> skipped EVERYWHERE (TTS, caption burn, preview)
         segs = [{"id": s.id, "start": s.start, "end": s.end, "speaker": s.speaker,
-                 "text": s.src_text, "tgt": s.tgt_text} for s in self.segments]
+                 "text": s.src_text, "tgt": s.tgt_text} for s in self.segments if not getattr(s, "hidden", False)]
         (wd / "transcript.json").write_text(json.dumps(segs, ensure_ascii=False), encoding="utf-8")
         cap = self.captions
         sub_style = cap.sub_style.model_dump() if cap.sub_style else None

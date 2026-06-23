@@ -30,7 +30,7 @@
   "files": { "title": "Files", "download": "Download", "open": "Open" },
   "nav": { "new": "New", "newHint": "Start with a new video" },
   "play": { "dub": "Play the dub (video + voiceover)" },
-  "seg": { "regen": "Regenerate this line's voiceover", "play": "Play this line's voiceover", "refresh": "Refresh", "refreshHint": "Force-refresh the preview / subtitles (if it lags or hangs)" },
+  "seg": { "regen": "Regenerate this line's voiceover", "play": "Play this line's voiceover", "hide": "Hide line", "show": "Show line", "del": "Delete line", "refresh": "Refresh", "refreshHint": "Force-refresh the preview / subtitles (if it lags or hangs)" },
   "settings": { "title": "Models", "asr": "Speech recognition", "llm": "Translation", "vision": "Vision", "tts": "Voice synthesis" },
   "help": {
     "title": "About Dub Studio",

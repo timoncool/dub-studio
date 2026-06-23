@@ -10,7 +10,7 @@ export type SubStyle = {
 };
 export type Segment = {
   id: string; start: number; end: number; speaker?: string | null;
-  src_text: string; tgt_text: string; voice?: string | null; dirty: boolean;
+  src_text: string; tgt_text: string; voice?: string | null; dirty: boolean; hidden?: boolean;
 };
 export type BlurBox = { x: number; y: number; w: number; h: number; t0: number; t1: number; hidden?: boolean; fill?: string | null };
 export type Title = {

@@ -22,7 +22,7 @@ import torch  # noqa: F401,E402  before llama_cpp (engine loads it lazily)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "dub-engine"))  # engine vendored in-repo
 from dubengine import (EngineOpts, Project, add_blur, add_title, analyze, del_blur, del_title,  # noqa: E402
-                       edit_blur, edit_caption, edit_segment, edit_title, preview_frame, recast, render,
+                       edit_blur, edit_caption, edit_segment, del_segment, edit_title, preview_frame, recast, render,
                        rewrite, set_mode, source_frame, translate)
 from dubengine import captions as _captions  # noqa: E402  (font catalog for the editor)
 from dubengine import voices as _voices  # noqa: E402  (voice-pack catalog for the editor)
@@ -268,6 +268,16 @@ async def patch_project(pid: str, edit: dict = Body(...)):
                          src_text=edit.get("src_text"), voice=edit.get("voice"))
         except KeyError as e:
             raise HTTPException(404, str(e))               # stale/unknown seg id -> clean 404, not 500
+    elif op == "del_segment":                              # remove a line entirely -> its subtitle AND dub audio go
+        try:
+            del_segment(p, edit.get("id"))
+        except KeyError as e:
+            raise HTTPException(404, str(e))
+    elif op == "hide_segment":                             # toggle a line off/on -> excluded from subtitle + dub
+        s = next((x for x in p.segments if x.id == edit.get("id")), None)
+        if s is None:
+            raise HTTPException(404, f"segment {edit.get('id')!r} not found")
+        edit_segment(p, s.id, hidden=(not getattr(s, "hidden", False) if edit.get("hidden") is None else bool(edit.get("hidden"))))
     elif op == "blur":
         if "idx" not in edit:
             raise HTTPException(400, "missing blur idx")

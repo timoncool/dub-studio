@@ -243,9 +243,10 @@ def edit_caption(project: Project, seg_id: Optional[str] = None, **overrides) ->
 
 
 def edit_segment(project: Project, seg_id: str, *, tgt_text: Optional[str] = None,
-                 src_text: Optional[str] = None, voice: Optional[str] = None) -> Project:
-    """Edit one transcript segment's text/voice. Marks it dirty so render re-gens just that line
-    (new caption text always; new TTS when the dub is (re)built)."""
+                 src_text: Optional[str] = None, voice: Optional[str] = None,
+                 hidden: Optional[bool] = None) -> Project:
+    """Edit one transcript segment's text/voice, or HIDE it (hidden=True drops its subtitle AND its dub
+    audio from the render, reversibly). Marks it dirty so render re-gens that line / re-assembles the dub."""
     s = next((x for x in project.segments if x.id == seg_id), None)
     if s is None:
         raise KeyError(f"segment {seg_id!r} not found")
@@ -255,7 +256,21 @@ def edit_segment(project: Project, seg_id: str, *, tgt_text: Optional[str] = Non
         s.src_text = src_text
     if voice is not None:
         s.voice = voice
+    if hidden is not None:
+        s.hidden = bool(hidden)
     s.dirty = True
+    return project
+
+
+def del_segment(project: Project, seg_id: str) -> Project:
+    """Delete a transcript line entirely — its subtitle AND its dubbed audio vanish from the render.
+    A remaining line is marked dirty so the dub re-assembles without it (and the captions re-burn)."""
+    n = len(project.segments)
+    project.segments = [s for s in project.segments if s.id != seg_id]
+    if len(project.segments) == n:
+        raise KeyError(f"segment {seg_id!r} not found")
+    if project.segments:
+        project.segments[0].dirty = True       # force a re-render so the dub drops the deleted line's audio
     return project
 
 

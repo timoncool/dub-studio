@@ -529,6 +529,28 @@ function Editor() {
     } catch (e) { console.error("regen TTS failed", e); }
     finally { setRegenId(null); }
   }
+  async function doHideSeg(segId: string) {                          // toggle a line off/on — drops its subtitle AND its dub audio
+    if (regenId) return;
+    pushHistory(p); setRegenId(segId); setRendered(false);
+    try {
+      await api.patch(pid, { op: "hide_segment", id: segId });
+      const { job_id } = await api.render(pid);
+      await api.watchJob(job_id, () => {});
+      setProject(await api.getProject(pid)); bump(); setDubRev(Date.now());
+    } catch (e) { console.error("hide segment failed", e); }
+    finally { setRegenId(null); }
+  }
+  async function doDelSeg(segId: string) {                           // delete a line entirely — subtitle + dub audio gone (undoable)
+    if (regenId) return;
+    pushHistory(p); setRegenId(segId); setRendered(false);
+    try {
+      await api.patch(pid, { op: "del_segment", id: segId });
+      const { job_id } = await api.render(pid);
+      await api.watchJob(job_id, () => {});
+      setProject(await api.getProject(pid)); bump(); setDubRev(Date.now());
+    } catch (e) { console.error("delete segment failed", e); }
+    finally { setRegenId(null); }
+  }
   async function doRegenAll() {                                      // re-synthesize the WHOLE dub (after switching the pack voice/speaker, or to re-roll)
     if (regenId) return;
     setRegenId("__all__");                                          // sentinel: disables per-seg regen buttons, no per-seg spinner
@@ -631,7 +653,7 @@ function Editor() {
             return (
               <div key={seg.id} ref={on ? activeRef : undefined}
                 onClick={() => { setRendered(false); setScrub(seg.start); }}   // click a phrase -> seek the playhead to it
-                className={`rounded-xl p-2.5 border-l-2 transition-colors cursor-pointer ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
+                className={`rounded-xl p-2.5 border-l-2 transition-colors cursor-pointer ${seg.hidden ? "opacity-50" : ""} ${on ? "bg-[var(--color-surface-2)] border-[var(--color-accent)]" : "bg-[var(--color-surface-2)]/40 border-transparent hover:bg-[var(--color-surface-2)]/70"}`}>
                 <div className="flex items-center gap-2">
                   <span className={`mono text-[11px] px-1.5 py-0.5 rounded tabnum ${on ? "bg-[var(--color-accent)] text-[var(--color-on-accent)] font-semibold" : "bg-[var(--color-overlay)] text-[var(--color-muted)]"}`}>{fmtT(seg.start)}</span>
                   <span className="mono text-[10px] text-[var(--color-muted)]/60 tabnum">→ {fmtT(seg.end)}</span>
@@ -646,6 +668,11 @@ function Editor() {
                     </button>
                     <button onClick={(e) => { e.stopPropagation(); forceSeg(seg); }} title={t("seg.refreshHint")}
                       className="text-[var(--color-muted)] hover:text-[var(--color-accent)] transition-colors"><RefreshCw size={12} /></button>
+                    <button onClick={(e) => { e.stopPropagation(); doHideSeg(seg.id); }} disabled={regenId !== null} title={seg.hidden ? t("seg.show") : t("seg.hide")}
+                      className="text-[var(--color-muted)] hover:text-[var(--color-accent)] disabled:opacity-40 transition-colors">
+                      {seg.hidden ? <EyeOff size={12} /> : <Eye size={12} />}</button>
+                    <button onClick={(e) => { e.stopPropagation(); doDelSeg(seg.id); }} disabled={regenId !== null} title={t("seg.del")}
+                      className="text-[var(--color-muted)] hover:text-[#ef4444] disabled:opacity-40 transition-colors"><Trash2 size={12} /></button>
                   </span>
                 </div>
                 <div className="text-[11px] text-[var(--color-muted)]/80 mt-1.5 leading-snug">{seg.src_text}</div>
