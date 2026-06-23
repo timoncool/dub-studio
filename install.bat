@@ -133,7 +133,8 @@ REM ============================================================
 REM  5) Engine main-env deps (proven pins)
 REM ============================================================
 echo [4/8] Installing engine deps...
-python\python.exe -m pip install -r requirements-engine.txt --no-warn-script-location
+REM --retries/--timeout: survive flaky / VPN connections so the bulk install doesn't drop a package
+python\python.exe -m pip install -r requirements-engine.txt --retries 8 --timeout 120 --no-warn-script-location
 if errorlevel 1 (
     echo.
     echo   ERROR: engine deps failed to install ^(likely a network hiccup during pip^).
