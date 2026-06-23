@@ -116,8 +116,12 @@ def analyze_layout(ocr, frame_h, raw=None, band_frac=0.10, lower_from=0.45, min_
     # carry text that is never spoken -> both excluded, so we blur ONLY real subtitle lines. Captions can ride
     # TWO lines as the shot cuts -> keep EVERY qualifying line (by its median cy) and blur all of them.
     def _is_sub_line(b):
+        # CHANGING text (>=3 distinct lines) that is SPOKEN = a real subtitle band. A static watermark has
+        # nt<3; scene graphics fail _spoken_frac. The old extra `nt >= 0.3*len(bands[b])` ratio was fps-fragile:
+        # at caption_fps=4 a held caption repeats ~6x per line, so distinct/detections falls well below 0.3 and
+        # a genuine 30-line sub band (246 dets / ~34 distinct = 0.14) was misread as static -> ZERO coverage.
         nt = _distinct_texts(bands[b])
-        return nt >= 3 and nt >= 0.3 * len(bands[b]) and _spoken_frac(bands[b]) >= 0.5
+        return nt >= 3 and _spoken_frac(bands[b]) >= 0.5
     lines = [b for b in bands if _cy(b) >= lower_from * frame_h and _is_sub_line(b)]
     if not lines:
         return list(ocr or []), [], None
