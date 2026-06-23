@@ -42,9 +42,12 @@
     "sectionsTitle": "区域",
     "sections": ["字幕文本——编辑每一行及其翻译", "声音——选择配音方式并重新生成", "样式与遮罩——字幕、标题、遮盖", "设置 (⚙)——模型组合 (ASR / LLM / Vision / TTS)"],
     "donateTitle": "支持作者",
-    "donateIntro": "Dub Studio 免费且开源。捐助能帮助我继续创作和研究 =)",
-    "allLinks": "全部链接",
-    "copy": "复制地址"
+    "donateIntro": "我免费打造在本地运行的 AI 工具——无云端、无订阅。捐助帮助我持续改进并开发新工具。谢谢！🙏",
+    "card": "银行卡 / PayPal",
+    "boostySub": "Boosty 订阅",
+    "copy": "复制地址",
+    "madeBy": "作者",
+    "founder": "创始人"
   },
   "common": { "undo": "撤销", "redo": "重做", "cancel": "取消", "language": "语言", "theme": "主题", "rendering": "渲染中", "done": "完成", "error": "错误" }
 }

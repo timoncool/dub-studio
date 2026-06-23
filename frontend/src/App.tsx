@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Heart, Copy, Star } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star } from "lucide-react";
 import { api, type Project, type Capabilities, type ModelStack } from "./lib/api";
 import { LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore } from "./store";
@@ -94,7 +94,8 @@ function HelpModal({ onClose }: { onClose: () => void }) {
   const how = t("help.how", { returnObjects: true }) as unknown as string[];
   const features = t("help.features", { returnObjects: true }) as unknown as string[];
   const sections = t("help.sections", { returnObjects: true }) as unknown as string[];
-  const link = "inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors";
+  const pay = "flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[13px] font-medium text-[var(--color-text)] hover:border-[var(--color-accent)] transition-colors";
+  const chip = "inline-flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[11px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors";
   return (
     <div className="fixed inset-0 z-50 grid place-items-center glass-scrim anim-fade" onClick={onClose}>
       <div className="w-[min(92vw,640px)] max-h-[86vh] overflow-y-auto rounded-xl glass-panel anim-pop p-5" onClick={(e) => e.stopPropagation()}>
@@ -130,19 +131,23 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         </HelpSection>
 
         <HelpSection title={t("help.donateTitle")}>
-          <p className="text-[13px] leading-relaxed text-[var(--color-muted)] mb-2.5">{t("help.donateIntro")}</p>
-          <div className="flex flex-wrap gap-2 mb-2.5">
-            <a href={DONATE.boosty} target="_blank" rel="noreferrer" className={link}><Heart size={13} />Boosty</a>
-            <a href={DONATE.dalink} target="_blank" rel="noreferrer" className={link}><ExternalLink size={13} />{t("help.allLinks")}</a>
-            <a href={DONATE.github} target="_blank" rel="noreferrer" className={link}><Star size={13} />GitHub</a>
-            <a href={DONATE.telegram} target="_blank" rel="noreferrer" className={link}><ExternalLink size={13} />Telegram</a>
+          <p className="text-[13px] leading-relaxed text-[var(--color-muted)] mb-3">{t("help.donateIntro")}</p>
+          <div className="grid sm:grid-cols-2 gap-2 mb-2.5">
+            <a href={DONATE.dalink} target="_blank" rel="noreferrer" className={pay}>💳 {t("help.card")}</a>
+            <a href={DONATE.boosty} target="_blank" rel="noreferrer" className={pay}>🚀 {t("help.boostySub")}</a>
           </div>
           <div className="space-y-1.5">
             {DONATE.crypto.map(([c, a]) => <CryptoRow key={c} coin={c} addr={a} />)}
           </div>
+          <div className="mt-4 pt-3 border-t border-[var(--color-border)] text-[12px] leading-relaxed text-[var(--color-muted)]">
+            {t("help.madeBy")} <a className="text-[var(--color-text)] hover:text-[var(--color-accent)] transition-colors" href={DONATE.telegram} target="_blank" rel="noreferrer">Nerual Dreming</a> — {t("help.founder")} <a className="text-[var(--color-text)] hover:text-[var(--color-accent)] transition-colors" href="https://artgeneration.me" target="_blank" rel="noreferrer">ArtGeneration.me</a>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <a href="https://t.me/neuroport" target="_blank" rel="noreferrer" className={chip}>Нейро-Софт</a>
+              <a href={DONATE.github} target="_blank" rel="noreferrer" className={chip}><Star size={11} />GitHub</a>
+              <a href={DONATE.telegram} target="_blank" rel="noreferrer" className={chip}>Telegram</a>
+            </div>
+          </div>
         </HelpSection>
-
-        <div className="mt-4 text-[11px] text-[var(--color-muted)] text-center">Nerual Dreming · neuro-cartel.com</div>
       </div>
     </div>
   );

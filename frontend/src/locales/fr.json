@@ -42,9 +42,12 @@
     "sectionsTitle": "Sections",
     "sections": ["Transcription — modifiez chaque ligne et sa traduction", "Voix — choisissez le doublage et régénérez", "Style et Masque — sous-titres, titres, caches", "Paramètres (⚙) — la pile de modèles (ASR / LLM / Vision / TTS)"],
     "donateTitle": "Soutenir l'auteur",
-    "donateIntro": "Dub Studio est gratuit et open source. Les dons m'aident à continuer à créer et à chercher =)",
-    "allLinks": "Tous les liens",
-    "copy": "Copier l'adresse"
+    "donateIntro": "Je crée des outils d'IA locaux gratuitement — sans cloud ni abonnement. Les dons m'aident à les améliorer et à en créer de nouveaux. Merci ! 🙏",
+    "card": "Carte / PayPal",
+    "boostySub": "Abonnement Boosty",
+    "copy": "Copier l'adresse",
+    "madeBy": "Réalisé par",
+    "founder": "fondateur de"
   },
   "common": { "undo": "Annuler", "redo": "Rétablir", "cancel": "Annuler", "language": "Langue", "theme": "Thème", "rendering": "Rendu", "done": "Terminé", "error": "Erreur" }
 }
