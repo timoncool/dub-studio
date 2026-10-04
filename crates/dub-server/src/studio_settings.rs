@@ -86,6 +86,7 @@ pub struct LaunchDefaults {
     pub burn: bool,
     pub detect_text: bool,
     pub src_lang: String,
+    pub speaker_count: usize,
     pub tgt_lang: Option<String>,
     pub casting: bool,
     pub casting_ref: String,
@@ -109,6 +110,7 @@ impl Default for LaunchDefaults {
             burn: true,
             detect_text: false,
             src_lang: "auto".to_string(),
+            speaker_count: 0,
             tgt_lang: None,
             casting: false,
             casting_ref: String::new(),
@@ -132,6 +134,9 @@ fn is_content_lang(code: &str) -> bool {
 
 impl LaunchDefaults {
     pub fn validate(&self) -> Result<(), String> {
+        if self.speaker_count > dub_asr::MAX_SPEAKERS {
+            return Err("speaker_count: ожидается целое число от 0 до 8 (0 — автоматически)".into());
+        }
         if !self.vo_gain_db.is_finite() || !(VO_GAIN_MIN_DB..=VO_GAIN_MAX_DB).contains(&self.vo_gain_db) {
             return Err(format!(
                 "vo_gain_db={}: ожидается число от {VO_GAIN_MIN_DB} до {VO_GAIN_MAX_DB} дБ",
@@ -277,10 +282,11 @@ mod tests {
     #[test]
     fn patch_merges_and_persists() {
         let root = temp_root("merge");
-        apply_patch(&root, &obj(json!({ "audio": "voiceover", "vo_gain_db": -6.5 }))).unwrap();
+        apply_patch(&root, &obj(json!({ "audio": "voiceover", "vo_gain_db": -6.5, "speaker_count": 8 }))).unwrap();
         let d = apply_patch(&root, &obj(json!({ "tr_style": "", "voice_slots_m": ["RU_Male_A"] }))).unwrap();
         assert_eq!(d.audio, AudioMode::Voiceover);
         assert_eq!(d.vo_gain_db, -6.5);
+        assert_eq!(d.speaker_count, 8);
         assert_eq!(d.tr_style, TrStyle::Normal);
         assert_eq!(d.voice_slots_m, vec!["RU_Male_A".to_string()]);
         let d = apply_patch(&root, &obj(json!({ "subs": "bilingual" }))).unwrap();
@@ -299,6 +305,9 @@ mod tests {
         assert!(apply_patch(&root, &obj(json!({ "vo_gain_db": 3.0 }))).is_err());
         assert!(apply_patch(&root, &obj(json!({ "tgt_lang": "xx" }))).is_err());
         assert!(apply_patch(&root, &obj(json!({ "src_lang": "" }))).is_err());
+        for count in [json!(-1), json!(9), json!(1.5), json!("8")] {
+            assert!(apply_patch(&root, &obj(json!({ "speaker_count": count }))).is_err());
+        }
         assert!(apply_patch(&root, &obj(json!({ "casting_ref": "../x" }))).is_err());
         assert!(!launch_path(&root).exists());
         let _ = std::fs::remove_dir_all(&root);
@@ -323,6 +332,7 @@ mod tests {
         assert_eq!(d.audio, AudioMode::Nodub);
         assert!(!d.burn);
         assert_eq!(d.container, Container::Mp4);
+        assert_eq!(d.speaker_count, 0);
         let _ = std::fs::remove_dir_all(&root);
     }
 

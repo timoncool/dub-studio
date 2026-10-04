@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "Dobla y traduce cualquier video — en local."
   },
+  "speakers": {
+    "count": "Número de hablantes",
+    "countHint": "Si sabes cuántas personas hablan, indica ese número. Se identificarán las mismas voces entre los fragmentos de la grabación."
+  },
   "drop": {
     "title": "Suelta un video para doblar",
     "hint": "MP4 o MOV — todo se ejecuta en tu equipo",

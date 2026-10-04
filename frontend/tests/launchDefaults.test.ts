@@ -3,6 +3,7 @@ import type { LaunchDefaults, LaunchDefaultsState } from "../src/lib/api";
 import { createLaunchSaver, legacyPatch, loadWithMigration, type LaunchClient } from "../src/lib/launchDefaults";
 
 const BUILTIN: LaunchDefaults = {
+  speaker_count: 0,
   audio: "dub", subs: "translate", burn: true, detect_text: false, src_lang: "auto", tgt_lang: null,
   casting: false, casting_ref: "", content_type: "auto", vo_gain_db: -12, tr_style: "", tr_style_custom: "",
   sub_blur: true, keep_orig: false, container: "mp4", voice_src: "clone", voice_slots_m: [], voice_slots_f: [],
@@ -78,11 +79,12 @@ describe("saving the form", () => {
     const saver = createLaunchSaver(async (p) => { sent.push(p); return { defaults: BUILTIN, saved: true }; }, () => { throw new Error("unexpected"); }, 300);
     saver.queue({ audio: "voiceover" });
     saver.queue({ vo_gain_db: -6 });
+    saver.queue({ speaker_count: 8 });
     saver.queue({ audio: "nodub" });
     await vi.advanceTimersByTimeAsync(300);
     saver.queue({ burn: false });
     await saver.flush();
-    expect(sent).toEqual([{ audio: "nodub", vo_gain_db: -6 }, { burn: false }]);
+    expect(sent).toEqual([{ audio: "nodub", vo_gain_db: -6, speaker_count: 8 }, { burn: false }]);
     vi.useRealTimers();
   });
 

@@ -77,6 +77,7 @@ pub(super) fn tools() -> Vec<Tool> {
                         "path": path_arg(),
                         "src_lang": language_arg("the spoken language, a code of studio://languages; auto by default"),
                         "diarize": { "type": "boolean", "description": "tell the speakers apart (default true)" },
+                        "speaker_count": { "type": "integer", "minimum": 0, "maximum": 8, "description": "Ожидаемое число спикеров на всю запись; 0 — автоматически." },
                         "format": { "type": "string", "enum": ["text", "srt", "vtt", "json"] },
                         "seconds": seconds_arg(),
                     }),
@@ -415,6 +416,7 @@ impl Analysis {
             && project["subs"]["mode"] == self.get("subs")
             && project["tgt_lang"] == self.get("tgt_lang")
             && project["meta"]["src_lang"] == self.get("src_lang")
+            && project["meta"]["speaker_count"].as_u64().unwrap_or(0) == self.get("speaker_count").parse::<u64>().unwrap_or(0)
     }
 }
 
@@ -484,9 +486,17 @@ async fn transcribe(args: &Value, until: Instant) -> Result<Value, String> {
     let format = choice(args, "format", &["text", "srt", "vtt", "json"], "text")?;
     let src = language(args, "src_lang", true)?;
     let diarize = switch(args, "diarize", true)?;
+    let count = match args.get("speaker_count") {
+        None => 0,
+        Some(value) => value.as_u64().filter(|n| *n <= 8)
+            .ok_or_else(|| "speaker_count: ожидается целое число от 0 до 8".to_string())?,
+    };
+    if !diarize && count > 1 {
+        return Err("speaker_count больше 1 несовместим с diarize=false".into());
+    }
     // A transcript with speakers is the studio's transcribe mode; without them it is the
     // subtitles mode in the original language, which neither separates nor tells speakers apart.
-    let analysis = Analysis {
+    let mut analysis = Analysis {
         pairs: vec![
             ("tgt_lang", if src == "auto" { "en".to_string() } else { src.clone() }),
             ("mode", if diarize { "transcribe" } else { "nodub" }.to_string()),
@@ -496,6 +506,9 @@ async fn transcribe(args: &Value, until: Instant) -> Result<Value, String> {
             ("casting", "0".into()),
         ],
     };
+    if args.get("speaker_count").is_some() {
+        analysis.pairs.push(("speaker_count", count.to_string()));
+    }
     let pid = project_of(&path, &analysis.key("transcribe_file", &[]), "transcribe_file").await?;
     let project = match analyze(&pid, &analysis, until).await? {
         Analyzed::Waiting(job) => return Ok(pending("transcribe_file", &pid, &job)),

@@ -4,6 +4,12 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## Unreleased
+
+### Added
+
+- **Число спикеров в записи.** В форме запуска можно оставить автоматическое определение или указать от 1 до 8 участников. При заданном числе голоса сопоставляются между фрагментами длинной записи через WeSpeaker; выбор сохраняется и доступен через MCP.
+
 ## 2026-10-01 — 4.0.0
 
 ### Added

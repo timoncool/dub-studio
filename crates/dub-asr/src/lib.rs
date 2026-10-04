@@ -9,6 +9,7 @@
 //! dubengine/asr.py и dubengine/diarize.py: паузы >0.6с, конец предложения .!?…, макс 8.0с.
 
 mod hallucination;
+mod known_speakers;
 mod reconcile;
 mod resample;
 mod segment;
@@ -593,6 +594,37 @@ pub fn turns(
 ) -> Result<DiarTurns, AsrError> {
     let raw = diarize(wav, diar_onnx)?;
     Ok(merge_turns(&raw, merge_gap, min_speaker_dur))
+}
+
+pub fn turns_with_speaker_count(
+    wav: impl AsRef<Path>,
+    diar_onnx: impl AsRef<Path>,
+    count: usize,
+    embed: &mut impl FnMut(&[f32]) -> Result<Vec<f32>, String>,
+) -> Result<DiarTurns, AsrError> {
+    if !(1..=MAX_SPEAKERS).contains(&count) {
+        return Err(AsrError::Parakeet(format!("число спикеров должно быть от 1 до {MAX_SPEAKERS}")));
+    }
+    if count == 1 {
+        return Ok(DiarTurns { turns: Vec::new(), n_speakers: 1, ref_windows: Default::default() });
+    }
+    ensure_ort_dylib();
+    let (audio, sr) = load_wav_16k_mono(wav.as_ref())?;
+    let mut sf = Sortformer::with_config(diar_onnx.as_ref(), Some(exec_config()), DiarizationConfig::default())
+        .map_err(|e| AsrError::Parakeet(e.to_string()))?;
+    sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+    let total = audio.len() as f64 / sr as f64;
+    let window = if total > DIAR_WINDOW_GATE_SECS { DIAR_WIN_SECS } else { total.max(1.0) };
+    let mut tracker = known_speakers::VoiceTracker::new(count);
+    let mut out = Vec::new();
+    for range in known_speakers::diar_windows(total, window, DIAR_OVERLAP_SECS) {
+        let a0 = (range.start * sr as f64) as usize;
+        let a1 = ((range.end * sr as f64) as usize).min(audio.len());
+        let segs = sf.diarize(audio[a0..a1].to_vec(), sr, 1).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+        let local = segments_to_turns(&segs, range.start);
+        out.extend(tracker.process_window(&local, &audio[a0..a1], sr, range, embed).map_err(AsrError::Parakeet)?);
+    }
+    Ok(known_speakers::finish_turns(out))
 }
 
 /// Порог «настоящего» спикера: 10% всей речи ролика, не меньше 1.5 с и не больше `cap`. Ложные спикеры

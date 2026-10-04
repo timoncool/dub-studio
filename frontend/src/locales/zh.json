@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "在本地为任何视频配音和翻译。"
   },
+  "speakers": {
+    "count": "说话人数",
+    "countHint": "如果已知参与者人数，请指定人数。系统会在录音的不同片段之间匹配同一个人的声音。"
+  },
   "drop": {
     "title": "拖入视频开始配音",
     "hint": "MP4 或 MOV — 全部在本机运行",

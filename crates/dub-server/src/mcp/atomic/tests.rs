@@ -57,6 +57,42 @@ async fn a_transcript_without_speakers_is_the_subtitles_mode_in_its_own_language
 }
 
 #[tokio::test]
+async fn expected_speaker_count_reaches_analysis_and_changes_the_saved_result_key() {
+    studio::plan("spk8", Plan::default());
+    let args = json!({ "path": media("spk8"), "src_lang": "ru", "speaker_count": 8 });
+    let first = answer("transcribe_file", args.clone()).await.unwrap();
+    assert_eq!(first["done"], true);
+    assert!(studio::log("spk8").iter().any(|line| line.contains("/analyze?") && line.contains("speaker_count=8")));
+    let first_key = studio::log("spk8").into_iter().find(|line| line.starts_with("POST /projects/from-path key=")).unwrap();
+    assert!(first_key.contains("speaker_count=8"));
+    studio::forget_log("spk8");
+    answer("transcribe_file", args).await.unwrap();
+    assert_eq!(asked("spk8", "POST /projects/spk8/analyze"), 0);
+    answer("transcribe_file", json!({ "path": media("spk8"), "src_lang": "ru", "speaker_count": 4 })).await.unwrap();
+    assert!(studio::log("spk8").iter().any(|line| line.contains("/analyze?") && line.contains("speaker_count=4")));
+    let changed_key = studio::log("spk8").into_iter().rev().find(|line| line.starts_with("POST /projects/from-path key=")).unwrap();
+    assert!(changed_key.contains("speaker_count=4"));
+    assert_ne!(first_key, changed_key);
+    for count in [json!(-1), json!(9), json!(1.5), json!("8")] {
+        let error = answer("transcribe_file", json!({ "path": media("spk8"), "speaker_count": count })).await.unwrap_err();
+        assert!(error.contains("speaker_count"));
+    }
+    let error = answer("transcribe_file", json!({ "path": media("spk8"), "diarize": false, "speaker_count": 8 })).await.unwrap_err();
+    assert!(error.contains("несовместим"));
+}
+
+#[test]
+fn completed_transcription_with_another_speaker_count_is_not_reused() {
+    let mut analysis = super::Analysis { pairs: vec![("mode", "transcribe".into()), ("subs", "transcribe".into()), ("tgt_lang", "ru".into()), ("src_lang", "ru".into()), ("speaker_count", "8".into())] };
+    let project = json!({ "stage_ckpts": { "asr": "ready" }, "mode": "transcribe", "subs": { "mode": "transcribe" }, "tgt_lang": "ru", "meta": { "src_lang": "ru", "speaker_count": 8 } });
+    assert!(analysis.done(&project));
+    analysis.pairs.last_mut().unwrap().1 = "4".into();
+    assert!(!analysis.done(&project));
+    analysis.pairs.pop();
+    assert!(!analysis.done(&project));
+}
+
+#[tokio::test]
 async fn translated_subtitles_carry_the_tone_asked_for() {
     studio::plan("tl1", Plan::default());
     let found = answer("translate_file", json!({ "path": media("tl1"), "tgt_lang": "es", "style": "very formal", "format": "vtt" })).await.unwrap();
