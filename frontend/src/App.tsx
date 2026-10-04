@@ -23,6 +23,7 @@ import { playSfx } from "./lib/sfx";
 import ResourceMonitor from "./components/ResourceMonitor";
 import { GENDER_LABEL_KEY, genderKey } from "./lib/gender";
 import OpenRouterKey from "./components/OpenRouterKey";
+import GoogleTts, { GoogleKey } from "./components/GoogleTts";
 import ProxySection from "./components/ProxySection";
 import { ANALYZE_STEPS, STAGE_TO_STEPKEY } from "./lib/stages";
 import { enqueueWhenFree, finishAnalyze, reportVoiceSlots, watchLocal, watchTracked, watchWithResume } from "./lib/jobs";
@@ -164,10 +165,13 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const hasOrKey = cap?.selection?.or_key_set === true;
   const setSel = (k: string, v: string) => api.setSelection(k, v).then(loadCap).catch(() => {});
   // Голоса выбранной облачной TTS-модели (пол/возраст/русский) для дропдауна + предупреждения о русском.
-  const orTtsModel = slot(cap?.selection, "or_tts_model") ?? "";
+  const ttsProvider = slot(cap?.selection, "tts_provider") ?? (selv("or_tts_on") === "1" ? "openrouter" : "local");
+  const orTtsModel = slot(cap?.selection, ttsProvider === "google" ? "google_tts_model" : "or_tts_model") ?? "";
   useEffect(() => {
-    if (!orTtsModel) { setOrVoices([]); setTtsRu(null); return; }
-    api.openrouterVoices(orTtsModel).then((r) => { setOrVoices(r.voices); setTtsRu(r.supportsRussian); }).catch(() => {});
+    let active = true;
+    const voices = orTtsModel ? api.openrouterVoices(orTtsModel) : Promise.resolve({voices:[],supportsRussian:null});
+    voices.then((r) => { if (active) { setOrVoices(r.voices); setTtsRu(r.supportsRussian); } }).catch((e:unknown)=>{ if (active) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { active = false; };
   }, [orTtsModel]);
   const setupErr = (e: unknown) => setErr(e instanceof SetupError ? `${errText(e.code)} · ${e.detail}` : e instanceof Error ? e.message : String(e));
   const dl = async (ids: string[]) => {
@@ -194,6 +198,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   if (part === "cloud") return (
     <div className="max-w-2xl space-y-2">
       <div data-settings-part="key"><OpenRouterKey onSaved={loadCap} /></div>
+      <GoogleKey onSaved={loadCap} />
       {hasOrKey && <OpenRouterCatalogRow />}
       {hasOrKey && (
         <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
@@ -308,13 +313,6 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
 
   // Тумблер движка «локально | OpenRouter» — тот же вид, что переключатель Parakeet|Whisper в группе ASR.
   const orRowCls = "px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]";
-  const EngineTabs = ({ cloud, onLocal, onCloud, localLabel }: { cloud: boolean; onLocal: () => void; onCloud: () => void; localLabel: string }) => (
-    <div className="flex gap-1 mb-1.5">
-      <button onClick={onLocal} className={`flex-1 px-2 py-1.5 rounded-md text-[12px] font-medium border transition-colors ${!cloud ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>{localLabel}</button>
-      <button onClick={hasOrKey ? onCloud : () => openSettings("cloud:key")} title={hasOrKey ? "" : t("cloud.needKey")}
-        className={`flex-1 px-2 py-1.5 rounded-md text-[12px] font-medium border transition-colors ${cloud ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"} ${hasOrKey ? "" : "opacity-50"}`}>OpenRouter</button>
-    </div>
-  );
   // На чём считать стадию (устройство): Авто / GPU (CUDA) / CPU — свои табы в каждом разделе, по
   // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
   const BackendTabs = ({ k }: { k: string }) => {
@@ -367,10 +365,13 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         </div>
       )}
       <Group label={t("settings.roleTts")}>
-        <EngineTabs cloud={selv("or_tts_on") === "1"} localLabel="Higgs Audio v3" onLocal={() => setSel("or_tts_on", "0")} onCloud={() => setSel("or_tts_on", "1")} />
-        {selv("or_tts_on") === "1" ? (
+        <div className="flex gap-1 mb-2">
+          {(["local", "openrouter", "google"] as const).map(provider => <button key={provider} onClick={() => api.setSelection("tts_provider",provider).then(loadCap).catch(e=>setErr(String(e)))}
+            className={`flex-1 px-2 py-1.5 rounded-md border text-[12px] ${ttsProvider === provider ? "border-[var(--color-accent)]" : "border-[var(--color-border)]"}`}>{t(`google.provider_${provider}`)}</button>)}
+        </div>
+        {ttsProvider !== "local" ? (
           <div className={`${orRowCls} space-y-2`}>
-            {orModelSelect("tts", "or_tts_model", t("providers.pickTtsModel"))}
+            {ttsProvider === "google" ? <GoogleTts model={selv("google_tts_model")} mode={selv("google_tts_mode")} onChange={(key,value)=>{ api.setSelection(key,value).then(loadCap).catch(e=>setErr(String(e))); }} /> : orModelSelect("tts", "or_tts_model", t("providers.pickTtsModel"))}
             {ttsRu === false && <div className="text-[11px] text-[var(--color-warn)]">{t("cloud.ttsNoRussian")}</div>}
             <div className="flex items-center gap-2">
               <button onClick={() => setSel("or_tts_autocast", (selv("or_tts_autocast") || "1") !== "0" ? "0" : "1")}
@@ -1857,9 +1858,10 @@ function CastingPanel({ pid, characters, voices, onChange }: {
   const [cloudVoices, setCloudVoices] = useState<{ name: string; gender: string }[]>([]);
   useEffect(() => {
     api.capabilities().then((cap) => {
-      const on = (cap.selection?.or_tts_on ?? "") === "1";
+      const provider = slot(cap.selection,"tts_provider") ?? ((cap.selection?.or_tts_on ?? "") === "1" ? "openrouter" : "local");
+      const on = provider !== "local";
       setCloudOn(on);
-      const model = slot(cap.selection, "or_tts_model") ?? "";
+      const model = slot(cap.selection, provider === "google" ? "google_tts_model" : "or_tts_model") ?? "";
       if (on && model) api.openrouterVoices(model).then((r) => setCloudVoices(r.voices.map((v) => ({ name: v.name, gender: v.gender })))).catch(() => {});
     }).catch(() => {});
   }, []);

@@ -996,7 +996,8 @@ fn write_record(repo_root: &Path, f: &FileSpec, written: &[PathBuf]) -> Result<(
             size: file_len(p),
         })
         .collect();
-    let rec = ArchiveRecord { sha256: f.sha256.to_string(), url: f.url.to_string(), files };
+    let rec = ArchiveRecord { sha256: f.sha256.to_string(), url: f.url.to_string(), files,
+    };
     let path = record_path(repo_root, f);
     let tmp = with_suffix(&path, ".tmp");
     let body = serde_json::to_vec_pretty(&rec).map_err(|e| DlError::new("io", format!("запись об установке: {e}")))?;
@@ -1029,7 +1030,8 @@ pub fn component_status(repo_root: &Path, c: &Component) -> ComponentStatus {
 }
 
 /// `system` — системный каталог, где засчитываются маркеры компонентов FOUND_IN_SYSTEM_DIR.
-fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>) -> ComponentStatus {
+fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>,
+) -> ComponentStatus {
     let mut missing: Vec<String> = Vec::new();
     let mut bytes_on_disk = 0u64;
     let mut space_needed = 0u64;
@@ -1067,7 +1069,8 @@ fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>
             space_needed = 0;
             (true, Some("PATH".to_string()))
         }
-        _ => (missing.is_empty(), from_system.then(|| "system".to_string())),
+        _ => (missing.is_empty(), from_system.then(|| "system".to_string()),
+        ),
     };
     ComponentStatus {
         id: c.id.to_string(),
@@ -1090,17 +1093,20 @@ fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>
 
 /// Рекурсивно собрать карту basename(lower) -> [(path, size)] под dir (лимит глубины/файлов, чтоб не уйти в
 /// бесконечность на большом диске). Скрытые каталоги (.git, .download, .cache) пропускаем.
-fn index_dir(dir: &Path, map: &mut std::collections::HashMap<String, Vec<(PathBuf, u64)>>, depth: usize, budget: &mut usize) {
+fn index_dir(dir: &Path, map: &mut std::collections::HashMap<String, Vec<(PathBuf, u64)>>, depth: usize, budget: &mut usize,
+) {
     if depth > 8 || *budget == 0 {
         return;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else { return;
+    };
     for e in rd.flatten() {
         if *budget == 0 {
             return;
         }
         let p = e.path();
-        let Some(name) = p.file_name().and_then(|s| s.to_str()).map(str::to_string) else { continue };
+        let Some(name) = p.file_name().and_then(|s| s.to_str()).map(str::to_string) else { continue;
+        };
         if p.is_dir() {
             if !name.starts_with('.') {
                 index_dir(&p, map, depth + 1, budget);
@@ -1176,7 +1182,9 @@ pub fn import_from_dir(repo_root: &Path, src_dir: &Path, only: Option<&str>) -> 
                     report.files += 1;
                     any = true;
                 }
-                Err(e) => report.errors.push(format!("{} -> {}: {e}", src.display(), dest.display())),
+                Err(e) => {
+                    report.errors.push(format!("{} -> {}: {e}", src.display(), dest.display()))
+                }
             }
         }
         if any && component_status(repo_root, &c).installed {
@@ -1196,13 +1204,15 @@ pub fn free_bytes(path: &Path) -> Option<u64> {
     let dir = path.ancestors().find(|p| p.is_dir())?;
     let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
     let mut avail = 0u64;
-    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, std::ptr::null_mut(), std::ptr::null_mut()) };
+    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, std::ptr::null_mut(), std::ptr::null_mut(),
+        ) };
     (ok != 0).then_some(avail)
 }
 
 #[cfg(windows)]
 extern "system" {
-    fn GetDiskFreeSpaceExW(dir: *const u16, free_to_caller: *mut u64, total: *mut u64, total_free: *mut u64) -> i32;
+    fn GetDiskFreeSpaceExW(dir: *const u16, free_to_caller: *mut u64, total: *mut u64, total_free: *mut u64,
+    ) -> i32;
     fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
 }
 
@@ -1253,7 +1263,9 @@ fn pick_import_source<'a>(
     m: &Marker,
     map: &'a std::collections::HashMap<String, Vec<(PathBuf, u64)>>,
 ) -> Option<&'a PathBuf> {
-    let base_of = |rel: &str| Path::new(rel).file_name().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+    let base_of = |rel: &str| {
+        Path::new(rel).file_name().and_then(|s| s.to_str()).map(|s| s.to_lowercase())
+    };
     let cands = map.get(&base_of(m.rel)?)?;
     let dest_dir = Path::new(m.rel).parent();
     let siblings: Vec<&Marker> = c
@@ -1265,7 +1277,9 @@ fn pick_import_source<'a>(
         siblings.iter().any(|s| {
             base_of(s.rel)
                 .and_then(|b| map.get(&b))
-                .is_some_and(|files| files.iter().any(|(p, sz)| p.parent() == dir && !import_size_fits(s, *sz)))
+                .is_some_and(|files| {
+                    files.iter().any(|(p, sz)| p.parent() == dir && !import_size_fits(s, *sz))
+                })
         })
     };
     let ok: Vec<&(PathBuf, u64)> = cands
@@ -1312,7 +1326,7 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
     // преселектится на первом запуске (юзер выбрал облако -> не тянет ненужные гигабайты Gemma/Higgs).
     let mroot = repo_root.join("models");
     let cloud_llm = !crate::models::local_gemma_needed(&mroot);
-    let cloud_tts = crate::models::openrouter_stage_on(&mroot, "tts");
+    let cloud_tts = crate::models::cloud_tts_on(&mroot);
     let cloud_asr = crate::models::openrouter_asr_on(&mroot);
     for c in comps.iter_mut() {
         if c.requirement != Requirement::Required {
@@ -1390,13 +1404,15 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
             .find(|c| c.id == id)
             .ok_or_else(|| DlError::new("unknown_component", format!("нет компонента {id}")))?;
         if c.delivery != Delivery::Download {
-            return Err(DlError::new("not_removable", format!("{id} ставится не приложением")));
+            return Err(DlError::new("not_removable", format!("{id} ставится не приложением"),
+            ));
         }
         targets.push(c);
     }
     let claim_ids: Vec<String> = targets.iter().map(|c| c.id.to_string()).collect();
     let Some(_claim) = try_claim(&claim_ids) else {
-        return Err(DlError::new("busy", "компонент сейчас качается — поставьте закачку на паузу"));
+        return Err(DlError::new("busy", "компонент сейчас качается — поставьте закачку на паузу",
+        ));
     };
     let mut report = RemovalReport::default();
     let mroot = crate::models_root(repo_root);
@@ -1404,7 +1420,8 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
         let before = report.freed_bytes;
         let mut touched: Vec<PathBuf> = Vec::new();
         let mut drop_file = |p: &Path, report: &mut RemovalReport| {
-            let Ok(meta) = std::fs::metadata(p) else { return };
+            let Ok(meta) = std::fs::metadata(p) else { return;
+            };
             if !meta.is_file() {
                 return;
             }
@@ -1452,7 +1469,8 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
 
 /// Снять опустевшие каталоги после удаления (вверх до models/ или tools/, сами они остаются).
 fn prune_empty_dirs(repo_root: &Path, removed: &[PathBuf]) {
-    let stops = [repo_root.join("models"), repo_root.join("tools"), repo_root.to_path_buf()];
+    let stops = [repo_root.join("models"), repo_root.join("tools"), repo_root.to_path_buf(),
+    ];
     for p in removed {
         let mut dir = p.parent();
         while let Some(d) = dir {
@@ -1483,7 +1501,8 @@ pub struct DlError {
 
 impl DlError {
     pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
-        DlError { code, detail: detail.into() }
+        DlError { code, detail: detail.into(),
+        }
     }
 }
 
@@ -1517,7 +1536,8 @@ struct Claims {
 
 fn claims() -> &'static Claims {
     static C: OnceLock<Claims> = OnceLock::new();
-    C.get_or_init(|| Claims { ids: Mutex::new(Default::default()), freed: Condvar::new() })
+    C.get_or_init(|| Claims { ids: Mutex::new(Default::default()), freed: Condvar::new(),
+    })
 }
 
 struct ClaimGuard {
@@ -1544,7 +1564,8 @@ fn try_claim(ids: &[String]) -> Option<ClaimGuard> {
     Some(ClaimGuard { ids: ids.to_vec() })
 }
 
-fn claim(ids: &[String], stop: &dyn Fn() -> bool, on_wait: &dyn Fn()) -> Result<ClaimGuard, DlError> {
+fn claim(ids: &[String], stop: &dyn Fn() -> bool, on_wait: &dyn Fn(),
+) -> Result<ClaimGuard, DlError> {
     let mut told = false;
     loop {
         if let Some(g) = try_claim(ids) {
@@ -1585,7 +1606,8 @@ struct Slots {
 
 fn slots() -> &'static Slots {
     static S: OnceLock<Slots> = OnceLock::new();
-    S.get_or_init(|| Slots { used: Mutex::new(0), freed: Condvar::new() })
+    S.get_or_init(|| Slots { used: Mutex::new(0), freed: Condvar::new(),
+    })
 }
 
 struct SlotGuard;
@@ -1684,7 +1706,9 @@ fn header_str<'a>(h: &'a ureq::http::HeaderMap, name: &str) -> Option<&'a str> {
 fn asked_to_wait(h: &ureq::http::HeaderMap) -> u64 {
     header_str(h, "retry-after")
         .and_then(|v| v.trim().parse::<u64>().ok())
-        .or_else(|| header_str(h, "ratelimit").and_then(parse_rate_limit).map(|w| w.1))
+        .or_else(|| {
+            header_str(h, "ratelimit").and_then(parse_rate_limit).map(|w| w.1)
+        })
         .unwrap_or(30)
         .clamp(1, 310)
 }
@@ -1693,7 +1717,8 @@ type Resp = ureq::http::Response<ureq::Body>;
 
 /// Один GET со слотом из общего бюджета. 429/5xx — не ошибка, а очередь: ждём, сколько попросил сервер, не
 /// тратя попыток; слот на время ожидания отпускается. Вернувшийся слот держать до конца чтения тела.
-fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn() -> bool) -> Result<(Resp, SlotGuard), DlError> {
+fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn() -> bool,
+) -> Result<(Resp, SlotGuard), DlError> {
     let mut waited = 0u64;
     loop {
         wait_for_server(stop)?;
@@ -1809,15 +1834,19 @@ fn probe(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool) -> Result<(u64
         }
         sleep_or_stop(Duration::from_millis(500 << attempt.min(7)), stop)?;
     }
-    Err(DlError::new("network", format!("{url}: не удалось начать за {RETRIES} попыток: {last}")))
+    Err(DlError::new("network", format!("{url}: не удалось начать за {RETRIES} попыток: {last}"),
+    ))
 }
 
-fn probe_once(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool) -> Result<(u64, bool), DlError> {
+fn probe_once(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool,
+) -> Result<(u64, bool), DlError> {
     let (resp, _slot) = send(agent, url, Some((0, 0)), stop)?;
     let status = resp.status().as_u16();
     let header_num = |name: &str, last_part: bool| {
         header_str(resp.headers(), name)
-            .map(|s| if last_part { s.rsplit('/').next().unwrap_or("") } else { s })
+            .map(|s| {
+                if last_part { s.rsplit('/').next().unwrap_or("") } else { s }
+            })
             .and_then(|s| s.trim().parse::<u64>().ok())
             .unwrap_or(0)
     };
@@ -1828,7 +1857,8 @@ fn probe_once(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool) -> Result
         }
     }
     if !(200..300).contains(&status) {
-        return Err(DlError::new("http_status", format!("{url}: статус {status}")));
+        return Err(DlError::new("http_status", format!("{url}: статус {status}"),
+        ));
     }
     Ok((header_num("content-length", false), false))
 }
@@ -1882,15 +1912,18 @@ fn download_range(
             }
             Ok(()) => last = format!("неполный range: {got}/{want} байт"),
             Err(e) if e.code != "network" => {
-                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed);
+                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed,
+                );
                 return Err(e);
             }
             Err(e) => last = e.detail,
         }
-        downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed);
+        downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed,
+        );
         sleep_or_stop(Duration::from_millis(500 << attempt.min(7)), &stop)?;
     }
-    Err(DlError::new("network", format!("range {start}-{end} после {RETRIES} попыток: {last}")))
+    Err(DlError::new("network", format!("range {start}-{end} после {RETRIES} попыток: {last}"),
+    ))
 }
 
 /// Одна попытка скачать диапазон. Пишет got = сколько байт реально записано (для отката прогресса).
@@ -1908,7 +1941,8 @@ fn download_range_once(
     let (resp, _slot) = send(agent, url, Some((start, end)), stop)?;
     let status = resp.status().as_u16();
     if status != 206 {
-        return Err(DlError::new("http_status", format!("range {start}-{end}: статус {status} (ждали 206)")));
+        return Err(DlError::new("http_status", format!("range {start}-{end}: статус {status} (ждали 206)"),
+        ));
     }
     let mut reader = resp.into_body().into_reader();
     let mut buf = vec![0u8; 262_144];
@@ -1953,7 +1987,8 @@ fn download_whole(
             let (resp, _slot) = send(agent, url, None, &stop)?;
             let status = resp.status().as_u16();
             if !(200..300).contains(&status) {
-                return Err(DlError::new("http_status", format!("{url}: статус {status}")));
+                return Err(DlError::new("http_status", format!("{url}: статус {status}"),
+                ));
             }
             let mut reader = resp.into_body().into_reader();
             let mut file = File::create(dest).map_err(|e| DlError::new("io", format!("создать {}: {e}", dest.display())))?;
@@ -1975,7 +2010,8 @@ fn download_whole(
         match res {
             Ok(()) => return Ok(()),
             Err(e) => {
-                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed);
+                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed,
+                );
                 if e.code != "network" {
                     return Err(e);
                 }
@@ -1984,7 +2020,8 @@ fn download_whole(
         }
         sleep_or_stop(Duration::from_millis(500 << attempt.min(7)), &stop)?;
     }
-    Err(DlError::new("network", format!("{url} после {RETRIES} попыток: {last}")))
+    Err(DlError::new("network", format!("{url} после {RETRIES} попыток: {last}"),
+    ))
 }
 
 /// Потоковый SHA-256 файла блоками по 1 МиБ. None — остановлено (stop): пауза не ждёт конца хэширования 12 ГБ.
@@ -2005,7 +2042,8 @@ pub(crate) fn sha256_file(path: &Path, stop: &dyn Fn() -> bool) -> std::io::Resu
             return Ok(None);
         }
     }
-    Ok(Some(digest.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+    Ok(Some(digest.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+    ))
 }
 
 fn discard_part(part: &Path) {
@@ -2015,7 +2053,8 @@ fn discard_part(part: &Path) {
 
 /// Проверить скачанный .part (размер и SHA-256 против закреплённых) и опубликовать: прямой файл — rename в
 /// финал, архив — распаковка + запись об установке. Несовпадение — .part удаляется, следующая попытка с нуля.
-fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> bool, progress: &ProgressCb) -> Result<(), DlError> {
+fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> bool, progress: &ProgressCb,
+) -> Result<(), DlError> {
     let size = file_len(part);
     if size != f.size {
         discard_part(part);
@@ -2024,9 +2063,11 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
             format!("{}: скачано {size} байт, закреплено {} — файл удалён, следующая попытка начнёт заново", f.dest_rel, f.size),
         ));
     }
-    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": format!("Проверяю SHA-256 {}…", f.dest_rel) }));
+    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": format!("Проверяю SHA-256 {}…", f.dest_rel) }),
+    );
     let hash = sha256_file(part, cancel).map_err(|e| DlError::new("io", format!("чтение {}: {e}", part.display())))?;
-    let Some(hash) = hash else { return Err(cancelled()) };
+    let Some(hash) = hash else { return Err(cancelled());
+    };
     if hash != f.sha256 {
         discard_part(part);
         return Err(DlError::new(
@@ -2037,11 +2078,14 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
     let dest = repo_root.join(f.dest_rel);
     let dir = dest.parent().unwrap_or(repo_root);
     if f.extract != Extract::None {
-        progress(json!({ "stage": "download", "phase": "extract", "file": f.dest_rel, "msg": format!("Распаковываю {}…", f.dest_rel) }));
+        progress(json!({ "stage": "download", "phase": "extract", "file": f.dest_rel, "msg": format!("Распаковываю {}…", f.dest_rel) }),
+        );
     }
     let written = match f.extract {
         Extract::None => {
-            std::fs::rename(part, &dest).map_err(|e| DlError::new("io", format!("переименовать {}: {e}", dest.display())))?;
+            std::fs::rename(part, &dest).map_err(|e| {
+                DlError::new("io", format!("переименовать {}: {e}", dest.display()))
+            })?;
             let _ = std::fs::remove_file(done_manifest_path(part));
             return Ok(());
         }
@@ -2091,11 +2135,13 @@ pub fn download_components(
         .filter(|c| ids.iter().any(|x| x == c.id) && c.delivery == Delivery::Download)
         .collect();
     if selected.is_empty() {
-        return Err(DlError::new("nothing_to_download", "нет скачиваемых компонентов среди выбранных id"));
+        return Err(DlError::new("nothing_to_download", "нет скачиваемых компонентов среди выбранных id",
+        ));
     }
     let selected_ids: Vec<String> = selected.iter().map(|c| c.id.to_string()).collect();
     let _claim = claim(&selected_ids, cancel, &|| {
-        progress(json!({ "stage": "download", "phase": "waiting", "msg": "Жду другую закачку этих же компонентов…" }))
+        progress(json!({ "stage": "download", "phase": "waiting", "msg": "Жду другую закачку этих же компонентов…" }),
+        )
     })?;
     let agent = dl_agent()?;
 
@@ -2114,21 +2160,27 @@ pub fn download_components(
             if f.extract == Extract::None {
                 let dest = repo_root.join(f.dest_rel);
                 if file_ok(&dest, f.size) {
-                    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": format!("Проверяю SHA-256 {}…", f.dest_rel) }));
-                    let hash = sha256_file(&dest, cancel).map_err(|e| DlError::new("io", format!("чтение {}: {e}", dest.display())))?;
+                    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": format!("Проверяю SHA-256 {}…", f.dest_rel) }),
+                    );
+                    let hash = sha256_file(&dest, cancel).map_err(|e| {
+                        DlError::new("io", format!("чтение {}: {e}", dest.display()))
+                    })?;
                     match hash {
                         None => return Err(cancelled()),
                         Some(h) if h == f.sha256 => continue,
                         Some(h) => {
                             tracing::warn!("{}: SHA-256 {h} не совпал с закреплённым — перекачиваю", dest.display());
-                            std::fs::remove_file(&dest).map_err(|e| DlError::new("io", format!("удалить {}: {e}", dest.display())))?;
+                            std::fs::remove_file(&dest).map_err(|e| {
+                                DlError::new("io", format!("удалить {}: {e}", dest.display()))
+                            })?;
                         }
                     }
                 }
             } else if archive_installed(repo_root, f) {
                 continue;
             }
-            planned.push(Planned { ci, f, part: part_path(repo_root, f) });
+            planned.push(Planned { ci, f, part: part_path(repo_root, f),
+            });
         }
     }
     if planned.is_empty() {
@@ -2137,15 +2189,20 @@ pub fn download_components(
     let need: u64 = planned.iter().map(|p| file_space_needed(repo_root, p.f)).sum();
     ensure_space(repo_root, need)?;
     std::fs::create_dir_all(download_dir(repo_root))
-        .map_err(|e| DlError::new("io", format!("создать {}: {e}", download_dir(repo_root).display())))?;
+        .map_err(|e| {
+        DlError::new("io", format!("создать {}: {e}", download_dir(repo_root).display()),
+        )
+    })?;
 
     progress(json!({ "msg": "Скачиваю модели…", "stage": "download", "phase": "download" }));
 
     // Чанки всех файлов в ОДНУ очередь; счётчик прогресса — на КАЖДЫЙ компонент (comp_done[ci]).
     enum Task {
         // done — манифест завершённых чанков (дозапись offset при успехе) для РЕЗЮМА при следующем запуске.
-        Range { file: Arc<File>, url: &'static str, start: u64, end: u64, ci: usize, done: Arc<Mutex<File>> },
-        Whole { url: &'static str, dest: PathBuf, ci: usize },
+        Range { file: Arc<File>, url: &'static str, start: u64, end: u64, ci: usize, done: Arc<Mutex<File>>,
+        },
+        Whole { url: &'static str, dest: PathBuf, ci: usize,
+        },
     }
     let ncomp = selected.len();
     let comp_done: Vec<Arc<AtomicU64>> = (0..ncomp).map(|_| Arc::new(AtomicU64::new(0))).collect();
@@ -2168,7 +2225,8 @@ pub fn download_components(
         }
         comp_total[p.ci] += p.f.size;
         if !(ranged && total > 0) {
-            tasks.push(Task::Whole { url: p.f.url, dest: p.part.clone(), ci: p.ci });
+            tasks.push(Task::Whole { url: p.f.url, dest: p.part.clone(), ci: p.ci,
+            });
             continue;
         }
         // Докачка: .part нужного размера и манифест рядом -> дочитываем только недостающие чанки.
@@ -2196,7 +2254,9 @@ pub fn download_components(
                 .create(true)
                 .append(true)
                 .open(&done_path)
-                .map_err(|e| DlError::new("io", format!("манифест {}: {e}", done_path.display())))?,
+                .map_err(|e| {
+                    DlError::new("io", format!("манифест {}: {e}", done_path.display()))
+                })?,
         ));
         let mut start = 0u64;
         while start < total {
@@ -2204,7 +2264,8 @@ pub fn download_components(
             if completed.contains(&start) {
                 comp_done[p.ci].fetch_add(end - start + 1, Ordering::Relaxed);
             } else {
-                tasks.push(Task::Range { file: file.clone(), url: p.f.url, start, end, ci: p.ci, done: done.clone() });
+                tasks.push(Task::Range { file: file.clone(), url: p.f.url, start, end, ci: p.ci, done: done.clone(),
+                });
             }
             start += CHUNK;
         }
@@ -2221,18 +2282,22 @@ pub fn download_components(
     std::thread::scope(|sc| {
         for _ in 0..n {
             let (queue, comp_done, finished, abort, error, agent) =
-                (queue.clone(), comp_done.clone(), finished.clone(), abort.clone(), error.clone(), agent.clone());
+                (queue.clone(), comp_done.clone(), finished.clone(), abort.clone(), error.clone(), agent.clone(),
+            );
             sc.spawn(move || {
                 loop {
                     if abort.load(Ordering::Relaxed) {
                         break;
                     }
-                    let Some(task) = lock(&queue).pop_front() else { break };
+                    let Some(task) = lock(&queue).pop_front() else { break;
+                    };
                     let res = match &task {
-                        Task::Range { file, url, start, end, ci, done } => {
-                            download_range(&agent, url, file, *start, *end, &comp_done[*ci], &abort, done)
+                        Task::Range { file, url, start, end, ci, done,
+                        } => download_range(&agent, url, file, *start, *end, &comp_done[*ci], &abort, done,
+                        ),
+                        Task::Whole { url, dest, ci } => {
+                            download_whole(&agent, url, dest, &comp_done[*ci], &abort)
                         }
-                        Task::Whole { url, dest, ci } => download_whole(&agent, url, dest, &comp_done[*ci], &abort),
                     };
                     if let Err(e) = res {
                         if e.code != CANCELLED {
@@ -2430,7 +2495,8 @@ fn extract_wheel_dlls(wheel_path: &Path, dir: &Path) -> Result<Vec<PathBuf>, Str
 }
 
 /// Записать элемент архива в файл через .part+rename (атомарно).
-fn write_entry(entry: &mut zip::read::ZipFile<impl std::io::Read>, out: &Path) -> Result<(), String> {
+fn write_entry(entry: &mut zip::read::ZipFile<impl std::io::Read>, out: &Path,
+) -> Result<(), String> {
     let tmp = with_suffix(out, ".part");
     {
         let mut fout = std::fs::File::create(&tmp).map_err(|e| format!("создать {}: {e}", tmp.display()))?;
@@ -2454,10 +2520,14 @@ mod tests {
         use dub_llm::net::ProxyKind;
         use ureq::ProxyProtocol;
         for (address, kind, protocol) in [
-            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Socks5, ProxyProtocol::Socks5h),
-            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Http, ProxyProtocol::Http),
-            ("socks5://bob:p%40ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Socks5),
-            ("http://bob:p@ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Http),
+            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Socks5, ProxyProtocol::Socks5h,
+            ),
+            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Http, ProxyProtocol::Http,
+            ),
+            ("socks5://bob:p%40ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Socks5,
+            ),
+            ("http://bob:p@ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Http,
+            ),
         ] {
             let proxy = download_proxy(address, kind).unwrap();
             assert_eq!((proxy.protocol(), proxy.username(), proxy.password()), (protocol, Some("bob"), Some("p@ss")), "{address}");
@@ -2466,7 +2536,8 @@ mod tests {
         let seller = download_proxy("1.2.3.4:8000:b@b:p;=!$&'()*+,ss", ProxyKind::Socks5).unwrap();
         assert_eq!((seller.username(), seller.password()), (Some("b@b"), Some("p;=!$&'()*+,ss")));
 
-        let colon = download_proxy(&format!("http://bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo("p@ss:1")), ProxyKind::Http).unwrap();
+        let colon = download_proxy(&format!("http://bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo("p@ss:1")), ProxyKind::Http,
+        ).unwrap();
         assert_eq!(format!("{}:{}", colon.username().unwrap(), colon.password().unwrap()), "bob:p@ss:1", "CONNECT sends user:password whole");
 
         let plain = download_proxy("proxy.example:3128", ProxyKind::Http).unwrap();
@@ -2474,7 +2545,8 @@ mod tests {
         let v6 = download_proxy("[::1]:1080", ProxyKind::Socks5).unwrap();
         assert_eq!((v6.protocol(), v6.port()), (ProxyProtocol::Socks5h, 1080));
 
-        for (password, kind) in [("p@ss:1/x", ProxyKind::Http), ("p@ss:1/x", ProxyKind::Socks5), ("pa:ss", ProxyKind::Socks5), ("pa ss", ProxyKind::Http), ("p\u{e4}ss", ProxyKind::Http)] {
+        for (password, kind) in [("p@ss:1/x", ProxyKind::Http), ("p@ss:1/x", ProxyKind::Socks5), ("pa:ss", ProxyKind::Socks5), ("pa ss", ProxyKind::Http), ("p\u{e4}ss", ProxyKind::Http),
+        ] {
             let address = format!("bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo(password));
             let refused = download_proxy(&address, kind).expect_err(password);
             assert!(refused.contains("ureq") && !refused.contains(password) && !refused.contains(&dub_llm::net::encode_userinfo(password)), "{refused}");
@@ -2634,7 +2706,8 @@ mod tests {
         ("src/ultra/vocab.txt", 93_939),
     ];
 
-    fn picks(id: &str, map: &std::collections::HashMap<String, Vec<(PathBuf, u64)>>) -> Vec<Option<String>> {
+    fn picks(id: &str, map: &std::collections::HashMap<String, Vec<(PathBuf, u64)>>,
+    ) -> Vec<Option<String>> {
         let c = comp(id);
         c.markers
             .iter()
@@ -2660,7 +2733,8 @@ mod tests {
     fn import_takes_each_variant_from_its_own_folder() {
         let both: Vec<(&str, u64)> = FP32_DIR.iter().chain(ULTRA_DIR).copied().collect();
         let map = index(&both);
-        for (id, dir) in [("parakeet-ultra", "src/ultra/"), ("parakeet-fp32", "src/fp32/")] {
+        for (id, dir) in [("parakeet-ultra", "src/ultra/"), ("parakeet-fp32", "src/fp32/"),
+        ] {
             for p in picks(id, &map) {
                 assert!(p.as_deref().is_some_and(|p| p.starts_with(dir)), "{id}: {p:?}");
             }
@@ -2756,7 +2830,8 @@ mod tests {
     #[test]
     #[ignore]
     fn the_release_staging_carries_every_bundled_file() {
-        let stage = PathBuf::from(std::env::var("DUB_RELEASE_STAGING").expect("DUB_RELEASE_STAGING = каталог staging или портатива"));
+        let stage = PathBuf::from(std::env::var("DUB_RELEASE_STAGING").expect("DUB_RELEASE_STAGING = каталог staging или портатива"),
+        );
         let absent: Vec<String> = manifest()
             .iter()
             .filter(|c| c.delivery == Delivery::Bundled)
@@ -2801,11 +2876,13 @@ mod tests {
         for f in tiny.files {
             sized(&root.join(f.dest_rel), f.size);
         }
-        let leftover = part_path(&root, &all.iter().find(|c| c.id == "whisper-base").unwrap().files[0]);
+        let leftover = part_path(&root, &all.iter().find(|c| c.id == "whisper-base").unwrap().files[0],
+        );
         sized(&leftover, 1000);
         assert!(component_status(&root, tiny).installed);
 
-        let r = remove_components(&root, &["whisper-tiny".to_string(), "whisper-base".to_string()]).unwrap();
+        let r = remove_components(&root, &["whisper-tiny".to_string(), "whisper-base".to_string()],
+        ).unwrap();
         assert_eq!(r.removed, vec!["whisper-tiny".to_string(), "whisper-base".to_string()]);
         assert_eq!(r.freed_bytes, tiny.size + 1000);
         assert!(r.errors.is_empty(), "{:?}", r.errors);
@@ -2894,7 +2971,9 @@ mod tests {
         // CARGO_MANIFEST_DIR/../..; без models/ тест пропускается.
         let repo_root = std::env::var("DUB_STUDIO_ROOT")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(".."));
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+            });
         if !repo_root.join("models").is_dir() {
             eprintln!("skip: нет {}/models (не приёмочная машина)", repo_root.display());
             return;

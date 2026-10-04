@@ -32,20 +32,32 @@ fn db() -> &'static HashMap<String, ModelVoices> {
     DB.get_or_init(|| serde_json::from_str(include_str!("voice_db.json")).unwrap_or_default())
 }
 
+fn catalog_model(model: &str) -> &str {
+    match model
+        .trim_start_matches("models/")
+        .trim_start_matches("google/")
+    {
+        "gemini-3.8-flash-lite-tts" | "gemini-3.8-flash-tts" => {
+            "google/gemini-3.1-flash-tts-preview"
+        }
+        _ => model,
+    }
+}
+
 /// Метаданные конкретного голоса модели (пол/возраст/русский). None -> нет в справочнике.
 #[allow(dead_code)] // используется в тестах
 pub fn voice_meta(model: &str, voice: &str) -> Option<&'static VoiceMeta> {
-    db().get(model)?.voices.iter().find(|v| v.name.eq_ignore_ascii_case(voice))
+    db().get(catalog_model(model))?.voices.iter().find(|v| v.name.eq_ignore_ascii_case(voice))
 }
 
 /// Тянет ли модель русский (для предупреждения в UI при русском дубляже несовместимой моделью).
 pub fn model_supports_russian(model: &str) -> Option<bool> {
-    db().get(model).map(|m| m.supports_russian)
+    db().get(catalog_model(model)).map(|m| m.supports_russian)
 }
 
 /// Список голосов модели с метаданными (для дропдауна в UI). Нет в справочнике -> None.
 pub fn list(model: &str) -> Option<&'static Vec<VoiceMeta>> {
-    db().get(model).map(|m| &m.voices)
+    db().get(catalog_model(model)).map(|m| &m.voices)
 }
 
 /// Голоса модели «взрослого» звучания (age adult/unknown/elderly) — не teen/child. Для обычного кастинга,
@@ -57,10 +69,11 @@ fn is_adultish(v: &VoiceMeta) -> bool {
 /// speaker_id -> голос выбранной облачной TTS-модели по полу спикера и языку дубляжа. `genders`: speaker ->
 /// "male"/"female" (F0-замер). `tgt_lang` — код языка дубляжа ("ru" и пр.): для русского фильтруем на ru=true.
 /// Пусто -> облачный TTS уйдёт на дефолтный голос настроек. Детерминизм: спикеры отсортированы, ротация.
-pub fn assign(models_root: &Path, genders: &HashMap<String, String>, tgt_lang: &str) -> HashMap<String, String> {
+pub fn assign(models_root: &Path, genders: &HashMap<String, String>, tgt_lang: &str,
+) -> HashMap<String, String> {
     let mut out = HashMap::new();
-    let model = crate::models::openrouter_model(models_root, "tts");
-    let Some(mv) = db().get(&model) else {
+    let model = crate::models::tts_model(models_root);
+    let Some(mv) = db().get(catalog_model(&model)) else {
         return out; // модель не в справочнике -> без автокастинга (дефолтный голос настроек)
     };
     let want_ru = tgt_lang.eq_ignore_ascii_case("ru");

@@ -1325,5 +1325,25 @@
       "failed": "Последнее обновление: {{error}}"
     },
     "pickQuality": "Выбрать другое качество"
+  },
+  "google": {
+    "keyTitle": "Ключ Google Gemini API",
+    "keyHint": "Прямой Google TTS и Batch; ключ хранится отдельно от настроек.",
+    "envKey": "Задан через {{name}}",
+    "savedKey": "Ключ сохранён; введите новый для замены",
+    "keyPlaceholder": "API-ключ Google AI Studio",
+    "verifySave": "Проверить и сохранить",
+    "deleteKey": "Удалить ключ Google",
+    "error": "Ошибка Google: {{detail}}",
+    "model": "Модель Google TTS",
+    "pickModel": "Выберите модель",
+    "mode": "Режим запросов",
+    "standard": "Обычный — запросы сразу",
+    "batch": "Batch — тариф API ниже на 50%",
+    "batchHint": "Google ставит пакет в очередь (ориентир: 24 часа). Отмена локальной задачи приостанавливает опрос; пакет в Google продолжает работать. Продолжение получает его результат без повторной оплаты. Расход и расчёт стоимости: project_google_tts_report в MCP.",
+    "standardHint": "Параллельные прямые запросы; число потоков задаётся в настройках облака. Расход и расчёт стоимости: project_google_tts_report в MCP.",
+    "provider_local": "Локально · Higgs",
+    "provider_openrouter": "Через OpenRouter",
+    "provider_google": "Google · напрямую"
   }
 }

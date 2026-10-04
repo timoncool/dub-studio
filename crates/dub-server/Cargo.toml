@@ -55,6 +55,7 @@ blake3 = "1"
 sha2 = "0.11"
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
+rust-genai = { version = "=0.3.1", default-features = false }
 
 # job object с kill-on-close: сайдкары не переживают студию (process_group.rs).
 [target.'cfg(windows)'.dependencies]

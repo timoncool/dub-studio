@@ -247,7 +247,9 @@ impl CapabilityCatalog {
     pub fn selected(&self, capability: Capability, model_id: &str) -> Result<&CatalogModel> {
         let model = self
             .find(model_id)
-            .with_context(|| format!("OpenRouter model '{model_id}' is not present in the refreshed catalog"))?;
+            .with_context(|| {
+            format!("OpenRouter model '{model_id}' is not present in the refreshed catalog")
+        })?;
         if !model.supports(capability) {
             bail!("OpenRouter model '{model_id}' does not declare support for {capability:?}");
         }
@@ -345,7 +347,8 @@ impl OpenRouter {
         self.decorate(self.http.get(url))
     }
 
-    fn decorate(&self, request: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {
+    fn decorate(&self, request: reqwest::blocking::RequestBuilder,
+    ) -> reqwest::blocking::RequestBuilder {
         let request = request.header("HTTP-Referer", REFERER).header("X-Title", TITLE);
         match &self.key {
             Some(key) => request.bearer_auth(key),
@@ -380,7 +383,9 @@ impl OpenRouter {
                 Some(next) if next.contains("://") && !next.starts_with(&format!("{origin}/")) => {
                     bail!("OpenRouter models listing names its next page on another host: {next}")
                 }
-                Some(next) if next.starts_with('/') && !next.starts_with("/models") => Some(format!("{origin}{next}")),
+                Some(next) if next.starts_with('/') && !next.starts_with("/models") => {
+                    Some(format!("{origin}{next}"))
+                }
                 other => other,
             };
             catalog.merge(page.data);
@@ -401,7 +406,8 @@ impl OpenRouter {
             bail!("OpenRouter key check answered {status}: {}", snippet(&body));
         }
         let value: Value = serde_json::from_str(&body).context("OpenRouter key check did not return JSON")?;
-        Ok(KeyCheck::Accepted(value.get("data").cloned().unwrap_or(value)))
+        Ok(KeyCheck::Accepted(value.get("data").cloned().unwrap_or(value),
+        ))
     }
 
     /// Потрачено этим ключом, USD (поле `usage` из `GET /key`).
@@ -413,7 +419,8 @@ impl OpenRouter {
     }
 
     /// POST с ретраями на сетевых ошибках, 429 и 5xx; 4xx — сразу ошибка с телом ответа.
-    fn post(&self, path: &str, body: &Value, timeout: Duration) -> Result<reqwest::blocking::Response> {
+    fn post(&self, path: &str, body: &Value, timeout: Duration,
+    ) -> Result<reqwest::blocking::Response> {
         self.key()?;
         let url = format!("{}{path}", self.base);
         let mut last = String::new();
@@ -440,10 +447,27 @@ impl OpenRouter {
     /// Синтез речи (`/audio/speech`, формат pcm). PCM оборачивается в WAV с частотой и числом каналов из
     /// Content-Type (`audio/pcm;rate=24000;channels=1`); WAV отдаётся как есть; сжатый формат — как есть с mime.
     pub fn speech(&self, model: &str, input: &str, voice: &str) -> Result<SpeechAudio> {
+        self.speech_with_style(model, input, voice, "")
+    }
+
+    pub fn speech_with_style(
+        &self,
+        model: &str,
+        input: &str,
+        voice: &str,
+        style: &str,
+    ) -> Result<SpeechAudio> {
         if model.trim().is_empty() {
             bail!("OpenRouter speech needs a model id");
         }
-        let body = json!({ "model": model, "input": input, "voice": voice, "response_format": "pcm" });
+        let mut body = json!({ "model": model, "input": input, "voice": voice, "response_format": "pcm" });
+        if !style.trim().is_empty() {
+            if !model.starts_with("google/gemini-") {
+                bail!("speech style metadata is only supported for Gemini TTS");
+            }
+            body["provider"] =
+                json!({"options":{"google-ai-studio":{"speech_metadata":{"style":style}}}});
+        }
         let response = self.post("/audio/speech", &body, Duration::from_secs(180))?;
         let mime = response
             .headers()
@@ -457,7 +481,8 @@ impl OpenRouter {
 
     /// Транскрипция (`/audio/transcriptions`, verbose_json с сегментами). `language` пусто или "auto" —
     /// автоопределение.
-    pub fn transcribe(&self, model: &str, audio: &[u8], format: &str, language: &str) -> Result<Transcript> {
+    pub fn transcribe(&self, model: &str, audio: &[u8], format: &str, language: &str,
+    ) -> Result<Transcript> {
         if model.trim().is_empty() {
             bail!("OpenRouter transcription needs a model id");
         }
@@ -475,7 +500,9 @@ impl OpenRouter {
             body["language"] = Value::String(language.to_string());
         }
         let response = self.post("/audio/transcriptions", &body, Duration::from_secs(900))?;
-        let value: Value = response.json().map_err(|e| anyhow!("OpenRouter transcription did not return JSON: {}", crate::net::why(&e)))?;
+        let value: Value = response.json().map_err(|e| {
+            anyhow!("OpenRouter transcription did not return JSON: {}", crate::net::why(&e))
+        })?;
         Ok(parse_transcript(&value))
     }
 }
@@ -519,10 +546,12 @@ fn speech_audio(mime: &str, bytes: Vec<u8>) -> Result<SpeechAudio> {
         "audio/pcm" | "audio/l16" | "audio/raw" | "application/octet-stream" => {
             let rate = mime_param(mime, "rate").unwrap_or(24_000);
             let channels = mime_param(mime, "channels").unwrap_or(1);
-            Ok(SpeechAudio::Wav(pcm16_to_wav(&bytes, rate, channels as u16)?))
+            Ok(SpeechAudio::Wav(pcm16_to_wav(&bytes, rate, channels as u16,
+            )?))
         }
         "audio/wav" | "audio/wave" | "audio/x-wav" => Ok(SpeechAudio::Wav(bytes)),
-        _ if base.starts_with("audio/") => Ok(SpeechAudio::Encoded { mime: base.to_string(), bytes }),
+        _ if base.starts_with("audio/") => Ok(SpeechAudio::Encoded { mime: base.to_string(), bytes,
+        }),
         other => bail!("OpenRouter speech returned {other}, not audio"),
     }
 }
@@ -535,7 +564,8 @@ pub fn pcm16_to_wav(pcm: &[u8], rate: u32, channels: u16) -> Result<Vec<u8>> {
     }
     let frame = 2 * channels as usize;
     let pcm = &pcm[..pcm.len() - pcm.len() % frame];
-    let spec = hound::WavSpec { channels, sample_rate: rate, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+    let spec = hound::WavSpec { channels, sample_rate: rate, bits_per_sample: 16, sample_format: hound::SampleFormat::Int,
+    };
     let mut out = std::io::Cursor::new(Vec::with_capacity(pcm.len() + 44));
     {
         let mut writer = hound::WavWriter::new(&mut out, spec).context("WAV header")?;
@@ -630,7 +660,8 @@ mod tests {
     #[test]
     fn a_key_is_accepted_or_rejected_by_openrouter_itself() {
         let server = serve(vec![
-            Reply::json(200, r#"{"data":{"label":"sk-or-v1-abc...","usage":1.25,"limit":null}}"#),
+            Reply::json(200, r#"{"data":{"label":"sk-or-v1-abc...","usage":1.25,"limit":null}}"#,
+            ),
             Reply::json(401, r#"{"error":{"message":"User not found.","code":401}}"#),
         ]);
         let accepted = OpenRouter::with_base(&server.base(), Some("sk-good".into())).unwrap();
@@ -644,7 +675,8 @@ mod tests {
     #[test]
     fn speech_asks_for_pcm_and_wraps_it() {
         let pcm: Vec<u8> = [5i16, -5].iter().flat_map(|s| s.to_le_bytes()).collect();
-        let server = serve(vec![Reply::bytes(200, "audio/pcm;rate=24000;channels=1", pcm)]);
+        let server = serve(vec![Reply::bytes(200, "audio/pcm;rate=24000;channels=1", pcm,
+        )]);
         let audio = OpenRouter::with_base(&server.base(), Some("k".into())).unwrap().speech("b/tts", "Привет", "alloy").unwrap();
         let SpeechAudio::Wav(wav) = audio else { panic!("wav") };
         assert_eq!(hound::WavReader::new(std::io::Cursor::new(&wav)).unwrap().len(), 2);
@@ -656,7 +688,8 @@ mod tests {
     fn transcription_sends_base64_audio_and_reads_segments() {
         let server = serve(vec![
             Reply::json(503, r#"{"error":"busy"}"#),
-            Reply::json(200, r#"{"text":"hello there","duration":2.5,"segments":[{"start":0.0,"end":1.2,"text":" hello "},{"start":1.2,"end":2.5,"text":"there"},{"start":2.5,"end":2.6,"text":"  "}]}"#),
+            Reply::json(200, r#"{"text":"hello there","duration":2.5,"segments":[{"start":0.0,"end":1.2,"text":" hello "},{"start":1.2,"end":2.5,"text":"there"},{"start":2.5,"end":2.6,"text":"  "}]}"#,
+            ),
         ]);
         let transcript = OpenRouter::with_base(&server.base(), Some("k".into())).unwrap().transcribe("c/stt", b"RIFF", "wav", "en").unwrap();
         assert_eq!(transcript.segments, vec![
@@ -675,7 +708,8 @@ mod tests {
 
     #[test]
     fn a_request_error_carries_the_answer() {
-        let server = serve(vec![Reply::json(400, r#"{"error":{"message":"voice not supported"}}"#)]);
+        let server = serve(vec![Reply::json(400, r#"{"error":{"message":"voice not supported"}}"#,
+        )]);
         let error = OpenRouter::with_base(&server.base(), Some("k".into())).unwrap().speech("b/tts", "x", "nope").unwrap_err();
         assert!(error.to_string().contains("voice not supported"), "{error}");
     }

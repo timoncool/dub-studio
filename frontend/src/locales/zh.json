@@ -1271,5 +1271,25 @@
       "failed": "上次更新：{{error}}"
     },
     "pickQuality": "选择其他画质"
+  },
+  "google": {
+    "keyTitle": "Google Gemini API 密钥",
+    "keyHint": "直接使用 Google TTS 和批处理；密钥与设置分开存储。",
+    "envKey": "由 {{name}} 提供",
+    "savedKey": "密钥已保存；输入新密钥以替换",
+    "keyPlaceholder": "Google AI Studio API 密钥",
+    "verifySave": "验证并保存",
+    "deleteKey": "删除 Google 密钥",
+    "error": "Google：{{detail}}",
+    "model": "Google TTS 模型",
+    "pickModel": "选择模型",
+    "mode": "请求模式",
+    "standard": "标准 — 即时请求",
+    "batch": "批处理 — API 费率降低 50%",
+    "batchHint": "Google 将批处理加入队列（目标：24 小时）。取消本地任务会暂停轮询，远程批处理继续运行。恢复时读取已有结果，不会重复付费提交。用量和估算费用：MCP 中的 project_google_tts_report。",
+    "standardHint": "按云端并发设置发送并行直接请求。用量和估算费用：MCP 中的 project_google_tts_report。",
+    "provider_local": "本地 · Higgs",
+    "provider_openrouter": "通过 OpenRouter",
+    "provider_google": "Google · 直连"
   }
 }

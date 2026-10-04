@@ -1307,5 +1307,25 @@
       "failed": "Dernière mise à jour : {{error}}"
     },
     "pickQuality": "Choisir une autre qualité"
+  },
+  "google": {
+    "keyTitle": "Clé API Google Gemini",
+    "keyHint": "TTS et Batch directement auprès de Google ; la clé est stockée à part des paramètres.",
+    "envKey": "Fournie par {{name}}",
+    "savedKey": "Clé enregistrée ; saisissez-en une autre pour la remplacer",
+    "keyPlaceholder": "Clé API Google AI Studio",
+    "verifySave": "Vérifier et enregistrer",
+    "deleteKey": "Supprimer la clé Google",
+    "error": "Google : {{detail}}",
+    "model": "Modèle TTS Google",
+    "pickModel": "Choisir un modèle",
+    "mode": "Mode de requête",
+    "standard": "Standard — requêtes immédiates",
+    "batch": "Batch — tarif API réduit de 50 %",
+    "batchHint": "Google place le lot en attente (objectif : 24 heures). Annuler la tâche locale suspend les consultations ; le lot distant continue. Reprendre récupère le résultat sans nouvel envoi payant. Usage et coût estimé : project_google_tts_report dans MCP.",
+    "standardHint": "Requêtes directes en parallèle selon le paramètre de concurrence du cloud. Usage et coût estimé : project_google_tts_report dans MCP.",
+    "provider_local": "En local · Higgs",
+    "provider_openrouter": "Via OpenRouter",
+    "provider_google": "Google · directement"
   }
 }

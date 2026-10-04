@@ -1289,5 +1289,25 @@
       "failed": "Last update: {{error}}"
     },
     "pickQuality": "Choose another quality"
+  },
+  "google": {
+    "keyTitle": "Google Gemini API key",
+    "keyHint": "Direct Google TTS and Batch; stored separately from settings.",
+    "envKey": "Provided by {{name}}",
+    "savedKey": "Key saved; enter a new one to replace it",
+    "keyPlaceholder": "Google AI Studio API key",
+    "verifySave": "Verify and save",
+    "deleteKey": "Remove Google key",
+    "error": "Google: {{detail}}",
+    "model": "Google TTS model",
+    "pickModel": "Choose a model",
+    "mode": "Request mode",
+    "standard": "Standard — immediate requests",
+    "batch": "Batch — 50% lower API tariff",
+    "batchHint": "Google queues the batch (target: 24 hours). Cancelling the local job pauses polling; the remote batch continues. Resume retrieves it without another paid submission. Usage and estimated cost: project_google_tts_report in MCP.",
+    "standardHint": "Parallel direct requests using the cloud concurrency setting. Usage and estimated cost: project_google_tts_report in MCP.",
+    "provider_local": "Local · Higgs",
+    "provider_openrouter": "OpenRouter",
+    "provider_google": "Google · direct"
   }
 }

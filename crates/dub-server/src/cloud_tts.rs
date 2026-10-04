@@ -10,6 +10,21 @@ use std::sync::atomic::AtomicU64;
 
 use dub_llm::openrouter::{OpenRouter, SpeechAudio};
 
+pub struct Job {
+    pub out: PathBuf,
+    pub key: String,
+    pub text: String,
+    pub voice: String,
+    pub style: String,
+}
+
+pub fn style(s: &dub_core::Segment) -> &str {
+    s.extra
+        .get("tts_style")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+}
+
 /// Уникализатор temp-файлов раскодировки (для потокобезопасности synth_batch).
 static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
@@ -19,7 +34,12 @@ const FFMPEG: &str = "ffmpeg.exe";
 const FFMPEG: &str = "ffmpeg";
 
 /// Синтез одной реплики -> WAV-байты (готовы к записи в seg-файл). `voice` пусто -> дефолт из настроек.
-pub fn synth_audio(models_root: &Path, text: &str, voice: &str) -> Result<Vec<u8>, String> {
+pub fn synth_audio(models_root: &Path, text: &str, voice: &str,
+    style: &str,
+) -> Result<Vec<u8>, String> {
+    if crate::models::tts_provider(models_root) == "google" {
+        return Err("Google TTS must use the journalled project synthesis stage; no untracked standard request is allowed".into());
+    }
     let key = crate::models::openrouter_key()
         .ok_or("облачный TTS включён, но ключ OpenRouter не задан")?;
     let model = crate::models::openrouter_model(models_root, "tts");
@@ -35,7 +55,7 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str) -> Result<Vec<u8
         return Err("голос TTS не задан в настройках (у каждой модели свои голоса)".into());
     }
     let client = OpenRouter::new(Some(key)).map_err(|e| format!("облачный TTS: {e:#}"))?;
-    let bytes = match client.speech(&model, text, &v).map_err(|e| format!("облачный TTS: {e:#}"))? {
+    let bytes = match client.speech_with_style(&model, text, &v, style).map_err(|e| format!("облачный TTS: {e:#}"))? {
         SpeechAudio::Wav(wav) if is_seg_format(&wav) => wav,
         SpeechAudio::Wav(wav) => to_seg_wav("audio/wav", &wav)?,
         SpeechAudio::Encoded { mime, bytes } => to_seg_wav(&mime, &bytes)?,
@@ -44,6 +64,26 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str) -> Result<Vec<u8
         return Err(format!("облачный TTS: слишком короткое аудио ({} байт)", bytes.len()));
     }
     Ok(bytes)
+}
+
+pub fn seg_audio(mime: &str, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
+    if is_seg_format(&bytes) {
+        return Ok(bytes);
+    }
+    if mime.starts_with("audio/L16") || mime.starts_with("audio/pcm") {
+        let rate = mime
+            .split(';')
+            .find_map(|p| p.trim().strip_prefix("rate="))
+            .and_then(|n| n.parse().ok())
+            .ok_or("Google PCM has no sample rate")?;
+        let wav = dub_llm::openrouter::pcm16_to_wav(&bytes, rate, 1).map_err(|e| e.to_string())?;
+        return if rate == SEG_RATE {
+            Ok(wav)
+        } else {
+            to_seg_wav("audio/wav", &wav)
+        };
+    }
+    to_seg_wav(mime, &bytes)
 }
 
 /// Частота seg-файлов дубляжа.
@@ -81,12 +121,22 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
 /// провал -> false (основной цикл ретраит/фолбэкнет на оригинал). Возвращает успех по каждой джобе.
 /// Потоки привязаны к джобе вызывающего: её отмена прекращает раздачу новых сегментов, а процессы
 /// сайдкара попадают в учёт джобы.
-pub fn synth_batch(models_root: &Path, jobs: Vec<(PathBuf, String, String)>, concurrency: usize) -> Vec<bool> {
+pub fn synth_batch(models_root: &Path,
+    wd: &Path,
+    jobs: Vec<Job>, concurrency: usize,
+    progress: &crate::render::Progress,
+) -> Result<Vec<bool>, String> {
+    if jobs.is_empty() {
+        return Ok(Vec::new());
+    }
+    if crate::models::tts_provider(models_root) == "google" {
+        return crate::google_tts::synth_jobs(models_root, wd, &jobs, concurrency, progress);
+    }
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     let n = jobs.len();
     let ok: Vec<AtomicBool> = (0..n).map(|_| AtomicBool::new(false)).collect();
     if n == 0 {
-        return Vec::new();
+        return Ok(Vec::new());
     }
     let workers = concurrency.max(1).min(n);
     let next = AtomicUsize::new(0);
@@ -104,17 +154,16 @@ pub fn synth_batch(models_root: &Path, jobs: Vec<(PathBuf, String, String)>, con
                     if i >= jobs.len() {
                         break;
                     }
-                    let (out, text, voice) = &jobs[i];
-                    if let Ok(bytes) = synth_audio(models_root, text, voice) {
-                        if dub_core::atomic::write(out, &bytes).is_ok() {
-                            ok[i].store(true, Ordering::Relaxed);
-                        }
+                    let j = &jobs[i];
+                    match synth_audio(models_root, &j.text, &j.voice, &j.style).and_then(|bytes| dub_core::atomic::write(&j.out, &bytes)) {
+                        Ok(()) => ok[i].store(true, Ordering::Relaxed),
+                        Err(e) => progress(serde_json::json!({"type":"progress","stage":"tts","msg":format!("OpenRouter {}: {e}",j.key)})),
                     }
                 }
             });
         }
     });
-    ok.iter().map(|b| b.load(Ordering::Relaxed)).collect()
+    Ok(ok.iter().map(|b| b.load(Ordering::Relaxed)).collect())
 }
 
 #[cfg(test)]
