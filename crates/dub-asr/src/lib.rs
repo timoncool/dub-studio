@@ -582,6 +582,55 @@ pub struct DiarTurns {
     pub ref_windows: std::collections::HashMap<i32, RefWindow>,
 }
 
+pub fn continuous_diarization_enabled() -> Result<bool, String> {
+    match std::env::var("DUB_STUDIO_DIAR_CONTINUOUS") {
+        Ok(value) => parse_continuous_diarization(Some(&value)),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(error) => Err(format!("DUB_STUDIO_DIAR_CONTINUOUS: {error}")),
+    }
+}
+
+fn parse_continuous_diarization(value: Option<&str>) -> Result<bool, String> {
+    match value {
+        None | Some("0") => Ok(false),
+        Some("1") => Ok(true),
+        Some(_) => Err("DUB_STUDIO_DIAR_CONTINUOUS: ожидается 0 или 1".into()),
+    }
+}
+
+fn known_diarization_window(total: f64, continuous: bool) -> f64 {
+    if continuous || total <= DIAR_WINDOW_GATE_SECS {
+        total.max(1.0)
+    } else {
+        DIAR_WIN_SECS
+    }
+}
+
+#[cfg(test)]
+mod continuous_diarization_tests {
+    use super::*;
+
+    #[test]
+    fn continuous_mode_keeps_the_entire_six_hour_recording_in_one_window() {
+        let total = 6.0 * 3600.0 - 180.0;
+        let windows = known_speakers::diar_windows(total, known_diarization_window(total, true), DIAR_OVERLAP_SECS);
+        assert_eq!(windows.len(), 1);
+        assert_eq!((windows[0].start, windows[0].end, windows[0].keep_start, windows[0].keep_end), (0.0, total, 0.0, total));
+        assert_eq!(known_diarization_window(total, false), 3600.0);
+        assert_eq!(known_diarization_window(60.0, false), 60.0);
+    }
+
+    #[test]
+    fn continuous_mode_rejects_invalid_values_without_enabling_another_path() {
+        assert!(!parse_continuous_diarization(None).unwrap());
+        assert!(!parse_continuous_diarization(Some("0")).unwrap());
+        assert!(parse_continuous_diarization(Some("1")).unwrap());
+        for value in ["", "true", "2", " 1"] {
+            assert!(parse_continuous_diarization(Some(value)).unwrap_err().contains("ожидается 0 или 1"));
+        }
+    }
+}
+
 /// DIARIZE-FIRST: порт diarize.turns() — слить подряд идущие реплики одного спикера (merge_gap),
 /// и если «настоящих» спикеров (суммарно >= min_speaker_dur) меньше двух, схлопнуть в single-speaker
 /// (turns=[], n=1) — это ШТАТНАЯ graceful-деградация питона, не отсебятина. Иначе перенумеровать
@@ -614,7 +663,7 @@ pub fn turns_with_speaker_count(
         .map_err(|e| AsrError::Parakeet(e.to_string()))?;
     sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
     let total = audio.len() as f64 / sr as f64;
-    let window = if total > DIAR_WINDOW_GATE_SECS { DIAR_WIN_SECS } else { total.max(1.0) };
+    let window = known_diarization_window(total, continuous_diarization_enabled().map_err(AsrError::Parakeet)?);
     let mut tracker = known_speakers::VoiceTracker::new(count);
     let mut out = Vec::new();
     for range in known_speakers::diar_windows(total, window, DIAR_OVERLAP_SECS) {

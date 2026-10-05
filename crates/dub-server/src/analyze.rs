@@ -622,16 +622,43 @@ fn file_tag(p: &std::path::Path) -> String {
 }
 
 fn diar_cache_key(input: &str, detector: &std::path::Path, voice_model: &std::path::Path, count: usize) -> Result<String, String> {
+    let continuous = count > 1 && dub_asr::continuous_diarization_enabled()?;
+    diar_cache_key_with_mode(input, detector, voice_model, count, continuous)
+}
+
+fn diar_cache_key_with_mode(input: &str, detector: &std::path::Path, voice_model: &std::path::Path, count: usize, continuous: bool) -> Result<String, String> {
     if count == 0 {
         return Ok(cache::hash_stage(&[DIAR_VER, input, &file_tag(detector)]));
     }
-    Ok(cache::hash_stage(&[DIAR_VER, "known-voices-v3", input, &file_tag(detector), &count.to_string(),
+    let version = if count > 1 && continuous { "known-voices-continuous-v1" } else { "known-voices-v3" };
+    Ok(cache::hash_stage(&[DIAR_VER, version, input, &file_tag(detector), &count.to_string(),
         &if count > 1 { cache::hash_model(voice_model)? } else { "none".into() }]))
 }
 
 fn diarization_fingerprint(diar: &dub_asr::DiarTurns, key: &str, count: usize) -> Result<String, String> {
     let output = serde_json::to_string(&DiarOut::of(diar)).map_err(|e| format!("сериализация диаризации: {e}"))?;
     Ok(if count == 0 { cache::hash_stage(&[&output]) } else { cache::hash_stage(&[key, &output]) })
+}
+
+#[cfg(test)]
+mod continuous_diarization_cache_tests {
+    use super::*;
+
+    #[test]
+    fn switching_mode_invalidates_diarization_and_asr_but_not_single_speaker_or_auto() {
+        let dir = tempfile::tempdir().unwrap();
+        let detector = dir.path().join("detector.onnx");
+        let voice = dir.path().join("voice.onnx");
+        std::fs::write(&voice, b"voice-model").unwrap();
+        let normal = diar_cache_key_with_mode("audio", &detector, &voice, 8, false).unwrap();
+        let continuous = diar_cache_key_with_mode("audio", &detector, &voice, 8, true).unwrap();
+        assert_ne!(normal, continuous);
+        let diar = dub_asr::DiarTurns { turns: Vec::new(), n_speakers: 8, ref_windows: Default::default() };
+        assert_ne!(diarization_fingerprint(&diar, &normal, 8).unwrap(), diarization_fingerprint(&diar, &continuous, 8).unwrap());
+        for count in [0, 1] {
+            assert_eq!(diar_cache_key_with_mode("audio", &detector, &voice, count, false).unwrap(), diar_cache_key_with_mode("audio", &detector, &voice, count, true).unwrap());
+        }
+    }
 }
 
 fn known_speaker_turns(
@@ -641,7 +668,12 @@ fn known_speaker_turns(
     count: usize,
     progress: &Progress,
 ) -> Result<dub_asr::DiarTurns, String> {
-    emit(progress, "diarize", &format!("диаризация: ожидается {count} спикер(ов), сопоставление голосов между фрагментами"));
+    let msg = if dub_asr::continuous_diarization_enabled()? {
+        format!("диаризация: ожидается {count} спикер(ов), непрерывный проход всей записи без сброса меток на часовых границах")
+    } else {
+        format!("диаризация: ожидается {count} спикер(ов), сопоставление голосов между фрагментами")
+    };
+    emit(progress, "diarize", &msg);
     let mut embedder = dub_faces::VoiceEmbedder::load(voice_model)
         .map_err(|e| format!("WeSpeaker необходим для заданного числа спикеров: {e}"))?;
     dub_asr::turns_with_speaker_count(wav, detector, count, &mut |samples| {
