@@ -65,6 +65,34 @@ translated.json, ocr.json, casting.json в cache.json), render синтезир�
 
 ## Эндпоинты
 
+### Google Gemini TTS
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/engine/google/settings` | `{configured, source, environment_variable}`; значение ключа не возвращается |
+| PUT | `/engine/google/settings` | `{api_key}`; проверка каталога через SDK, затем отдельное хранилище секретов. `GEMINI_API_KEY` имеет приоритет |
+| DELETE | `/engine/google/settings` | Удаление сохранённого ключа; ключ окружения защищён |
+| GET | `/engine/google/models` | `{models:[{name, displayName, supportedGenerationMethods}]}` — доступные TTS-модели |
+| GET | `/projects/{pid}/google-tts` | `{latest, batches}` — токены, длительность звука, время, расчётная стоимость и журнал Batch |
+
+Настройки: `tts_provider=local|openrouter|google` (при отсутствии читается прежний `or_tts_on`),
+`google_tts_model` — ID без `models/`, `google_tts_mode=standard|batch`. Голос по умолчанию и автокастинг
+используют существующие `or_tts_voice`/`or_tts_autocast`, параллелизм — `or_concurrency`.
+`Segment.tts_style` передаётся отдельно от произносимого текста. Выбранный Google без ключа даёт ошибку,
+не запускает локальную модель. Ошибка Batch не переключает реплики на обычный платный запрос.
+
+Batch: SDK `rust-genai` 0.3.1 загружает JSONL через Files API, создаёт пакет и читает Operation
+(типизированный BatchJob SDK не распознаёт состояния `BATCH_STATE_*`). JSONL сохраняет новые поля TTS,
+которых пока нет в типах SDK. Обычный `generateContent` использует существующий HTTP-транспорт студии
+по той же причине. Ключ не попадает в JSONL, журналы и отчёты. `google-tts/<hash>/batch.json` пишется
+до отправки; неопределённый исход POST блокирует повторную оплату и указывает displayName для проверки.
+Отмена локальной задачи приостанавливает опрос; пакет у Google продолжает работать. Возобновление
+использует сохранённое имя. `report.json` хранит `usageMetadata`, длительность сырых TTS-клипов,
+время текущего прохода и расчёт по опубликованному тарифу (не сумму подтверждённого счёта).
+Для неизвестного тарифа стоимость — null. MCP: `google_status`, `google_set_key`,
+`google_delete_key`, `google_models`, `project_google_tts_report`; запуск — существующие
+`project_dub_audio`/`project_render`, продолжение — `project_resume`.
+
 | Метод | Путь | Статус | Назначение |
 |-------|------|--------|-----------|
 | GET | `/health` | **done** | {status:"ok", app:"dub-studio", version, service_executable, repo_root, port}: чей сервис на порту; по нему оболочка переиспользует уже запущенную Dub Studio (service.rs) |

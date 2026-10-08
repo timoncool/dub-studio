@@ -377,6 +377,10 @@ export const api = {
   openrouterVerify: (key: string) => postJson<{ ok: boolean; data?: { label?: string; limit?: number; usage?: number }; error?: unknown }>("/engine/openrouter/verify", { key }),
   // Ключ OpenRouter: сервер отдаёт только «задан ли» и источник; PUT сначала проверяет ключ в OpenRouter.
   openrouterSettings: () => getJson<OpenRouterSettings>("/engine/openrouter/settings"),
+  googleSettings: () => getJson<OpenRouterSettings>("/engine/google/settings"),
+  saveGoogleKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/google/settings", { api_key: apiKey }),
+  deleteGoogleKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/google/settings"),
+  googleModels: () => getJson<{models: {name:string;displayName?:string;supportedGenerationMethods?:string[]}[]}>("/engine/google/models"),
   saveOpenrouterKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/openrouter/settings", { api_key: apiKey }),
   deleteOpenrouterKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/openrouter/settings"),
   // Прокси: адрес без пароля + флаг. password: нет поля — оставить сохранённый, null — удалить, строка — заменить.

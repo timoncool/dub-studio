@@ -4,6 +4,16 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## Unreleased
+
+### Added
+
+- **Direct Google Gemini TTS and Batch.** Choose Google alongside local voices and OpenRouter, with a separate API key and a live TTS model list. Batch runs use the `rust-genai` SDK and persist their Google job name; continuing a stopped render retrieves the same paid batch. MCP exposes the key settings, model list and project usage report with audio duration, wall time and tariff-based cost estimates.
+
+### Fixed
+
+- **Per-line Gemini voice direction.** The renderer forwards `tts_style` as speech metadata and includes it, the provider and request mode in take cache keys. Style instructions are never prepended to spoken dialogue.
+
 ## 2026-10-01 — 4.0.0
 
 ### Added

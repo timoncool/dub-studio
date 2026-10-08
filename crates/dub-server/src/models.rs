@@ -28,6 +28,14 @@ pub fn set_selection(mroot: &Path, engine: &str, variant: &str) -> std::io::Resu
     v.as_object_mut()
         .expect("load_selection returns object")
         .insert(engine.to_string(), Value::String(variant.to_string()));
+    if engine == "or_tts_on" {
+        v["tts_provider"] = (if variant == "1" {
+            "openrouter"
+        } else {
+            "local"
+        })
+        .into();
+    }
     write_selection(mroot, &v)
 }
 
@@ -42,7 +50,8 @@ pub(crate) fn selection_writes() -> std::sync::MutexGuard<'static, ()> {
 pub fn write_selection(mroot: &Path, selection: &Value) -> std::io::Result<()> {
     let _ = std::fs::create_dir_all(mroot);
     let tmp = mroot.join("active.json.tmp");
-    std::fs::write(&tmp, serde_json::to_vec_pretty(selection).unwrap_or_default())?;
+    std::fs::write(&tmp, serde_json::to_vec_pretty(selection).unwrap_or_default(),
+    )?;
     std::fs::rename(&tmp, mroot.join("active.json"))
 }
 
@@ -57,15 +66,23 @@ pub fn public_selection(mroot: &Path) -> Value {
         crate::credentials::proxy_password().is_some(),
     );
     let slots = public.as_object_mut().expect("redact_selection returns object");
+    slots.insert(
+        "google_key_set".into(),
+        crate::credentials::google_api_key().is_some().into(),
+    );
+    slots.insert("tts_provider".into(), tts_provider(mroot).into());
     for (key, stage) in [("llm_provider", "llm"), ("vision_provider", "vision")] {
-        slots.insert(key.into(), Value::String(llm_backend(mroot, stage).as_str().into()));
+        slots.insert(key.into(), Value::String(llm_backend(mroot, stage).as_str().into()),
+        );
     }
     public
 }
 
-pub(crate) fn redact_selection(selection: &Value, or_key_set: bool, proxy_password_set: bool) -> Value {
+pub(crate) fn redact_selection(selection: &Value, or_key_set: bool, proxy_password_set: bool,
+) -> Value {
     let mut slots = selection.as_object().cloned().unwrap_or_default();
     slots.remove("or_key");
+    slots.remove("google_key");
     let mut inline_password = false;
     if let Some(url) = slots.get("proxy_url").and_then(Value::as_str).map(str::to_owned) {
         let (bare, password) = split_proxy_password(&url);
@@ -73,7 +90,8 @@ pub(crate) fn redact_selection(selection: &Value, or_key_set: bool, proxy_passwo
         slots.insert("proxy_url".into(), Value::String(bare));
     }
     slots.insert("or_key_set".into(), Value::Bool(or_key_set));
-    slots.insert("proxy_password_set".into(), Value::Bool(proxy_password_set || inline_password));
+    slots.insert("proxy_password_set".into(), Value::Bool(proxy_password_set || inline_password),
+    );
     Value::Object(slots)
 }
 
@@ -105,13 +123,19 @@ pub fn component_selection(id: &str) -> Vec<(&'static str, String)> {
         "parakeet" => vec![("asr_engine", "parakeet".into()), ("asr", "int8".into())],
         "parakeet-fp32" => vec![("asr_engine", "parakeet".into()), ("asr", "fp32".into())],
         "parakeet-ultra" => vec![("asr_engine", "parakeet".into()), ("asr", "ultra".into())],
-        "whisper-tiny" => vec![("asr_engine", "whisper".into()), ("whisper_model", "tiny".into())],
-        "whisper-base" => vec![("asr_engine", "whisper".into()), ("whisper_model", "base".into())],
-        "whisper-small" => vec![("asr_engine", "whisper".into()), ("whisper_model", "small".into())],
-        "whisper-medium" => vec![("asr_engine", "whisper".into()), ("whisper_model", "medium".into())],
-        "whisper-large-v3" => vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3".into())],
+        "whisper-tiny" => vec![("asr_engine", "whisper".into()), ("whisper_model", "tiny".into()),
+        ],
+        "whisper-base" => vec![("asr_engine", "whisper".into()), ("whisper_model", "base".into()),
+        ],
+        "whisper-small" => vec![("asr_engine", "whisper".into()), ("whisper_model", "small".into()),
+        ],
+        "whisper-medium" => vec![("asr_engine", "whisper".into()), ("whisper_model", "medium".into()),
+        ],
+        "whisper-large-v3" => vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3".into()),
+        ],
         "whisper-large-v3-turbo" => {
-            vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3-turbo".into())]
+            vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3-turbo".into()),
+            ]
         }
         "gemma" => vec![("mt", "q4_0".into())],
         "gemma-q5_0" => vec![("mt", "q5_0".into())],
@@ -161,6 +185,7 @@ pub fn is_selection_key(key: &str) -> bool {
             | "or_vision_on"    // прежний флаг vision через OpenRouter; читается, только пока vision_provider не задан
             | "or_vision"       // id vision-модели (пусто -> or_llm, если он принимает картинки)
             | "or_tts_on"       // "1" -> TTS через облако вместо локального Higgs
+            | "tts_provider" | "google_tts_model" | "google_tts_mode"
             | "or_tts_model"    // id TTS-модели OpenRouter (напр. "openai/gpt-4o-mini-tts")
             | "or_tts_voice"    // голос по умолчанию для облачного TTS (напр. "alloy")
             | "or_tts_autocast" // БЕТА: автокастинг голосов по полу спикера (муж->муж/жен->жен); ВКЛ по умолчанию
@@ -176,6 +201,14 @@ pub fn is_selection_key(key: &str) -> bool {
 pub fn is_selection_value(key: &str, value: &str) -> bool {
     match key {
         "llm_provider" | "vision_provider" => LlmBackend::parse(value).is_some(),
+        "tts_provider" => matches!(value, "local" | "openrouter" | "google"),
+        "google_tts_mode" => matches!(value, "standard" | "batch"),
+        "google_tts_model" => {
+            !value.is_empty()
+                && value
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b"-_.".contains(&b))
+        }
         _ => true,
     }
 }
@@ -194,7 +227,9 @@ pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
         }
     };
     pick_bk(key)
-        .or_else(|| if key == "local_backend" { None } else { pick_bk("local_backend") })
+        .or_else(|| {
+            if key == "local_backend" { None } else { pick_bk("local_backend") }
+        })
         .unwrap_or(if crate::hw::gpu_report().cuda13_ok { "gpu" } else { "cpu" })
 }
 
@@ -372,7 +407,7 @@ pub fn server_model(mroot: &Path, stage: &str) -> String {
 pub fn openrouter_any_on(mroot: &Path) -> bool {
     llm_backend(mroot, "llm") == LlmBackend::OpenRouter
         || llm_backend(mroot, "vision") == LlmBackend::OpenRouter
-        || openrouter_stage_on(mroot, "tts")
+        || (tts_provider(mroot) == "openrouter" && openrouter_stage_on(mroot, "tts"))
         || openrouter_stage_on(mroot, "asr")
 }
 
@@ -397,6 +432,36 @@ pub fn openrouter_stage_on(mroot: &Path, stage: &str) -> bool {
         _ => return false,
     };
     pick(&sel, flag) == Some("1")
+}
+
+pub fn tts_provider(mroot: &Path) -> &'static str {
+    let sel = load_selection(mroot);
+    match pick(&sel, "tts_provider") {
+        Some("google") => "google",
+        Some("openrouter") => "openrouter",
+        Some("local") => "local",
+        _ if pick(&sel, "or_tts_on") == Some("1") => "openrouter",
+        _ => "local",
+    }
+}
+
+pub fn cloud_tts_on(mroot: &Path) -> bool {
+    tts_provider(mroot) != "local"
+}
+
+pub fn tts_model(mroot: &Path) -> String {
+    if tts_provider(mroot) == "google" {
+        pick(&load_selection(mroot), "google_tts_model")
+            .unwrap_or("")
+            .to_string()
+    } else {
+        openrouter_model(mroot, "tts")
+    }
+}
+
+pub fn google_tts_batch(mroot: &Path) -> bool {
+    tts_provider(mroot) == "google"
+        && pick(&load_selection(mroot), "google_tts_mode") == Some("batch")
 }
 
 /// id облачной модели для стадии: "llm" -> or_llm; "vision" -> or_vision, пусто -> or_llm;
@@ -469,7 +534,8 @@ pub fn higgs_ref_secs(mroot: &Path) -> f64 {
 #[derive(Debug, Clone)]
 pub enum AsrChoice {
     Parakeet(PathBuf),
-    Whisper { bin: PathBuf, model_dir: PathBuf, model: String, compute: String, device: String },
+    Whisper { bin: PathBuf, model_dir: PathBuf, model: String, compute: String, device: String,
+    },
 }
 
 impl AsrChoice {
@@ -523,7 +589,8 @@ pub fn resolve_asr_choice(repo_root: &Path, mroot: &Path, sel: &Value) -> AsrCho
         // выбранная модель, если скачана; иначе — лучшая из установленных.
         let want = pick(sel, "whisper_model").filter(|m| whisper_model_installed(mroot, m));
         let model = want.map(String::from).or_else(|| {
-            ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny"]
+            ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny",
+            ]
                 .into_iter()
                 .find(|m| whisper_model_installed(mroot, m))
                 .map(String::from)
@@ -556,7 +623,8 @@ pub fn resolve_asr_choice(repo_root: &Path, mroot: &Path, sel: &Value) -> AsrCho
             {
                 compute = "int8".to_string();
             }
-            return AsrChoice::Whisper { bin, model_dir: mroot.join("whisper"), model, compute, device };
+            return AsrChoice::Whisper { bin, model_dir: mroot.join("whisper"), model, compute, device,
+            };
         }
     }
     AsrChoice::Parakeet(resolve_asr(mroot, sel))
@@ -574,7 +642,8 @@ fn whisper_cuda_libs_present(bin: &std::path::Path) -> bool {
     {
         return true;
     }
-    let Some(dir) = bin.parent() else { return false };
+    let Some(dir) = bin.parent() else { return false;
+    };
     let cublas = dir.join("cublas64_11.dll").is_file() || dir.join("cublas64_12.dll").is_file();
     let cudnn = std::fs::read_dir(dir)
         .map(|rd| {
@@ -591,9 +660,9 @@ fn whisper_cuda_libs_present(bin: &std::path::Path) -> bool {
 pub fn build_engine(choice: &AsrChoice) -> Box<dyn dub_asr::AsrEngine> {
     match choice {
         AsrChoice::Parakeet(dir) => Box::new(dub_asr::Asr::new(dir)),
-        AsrChoice::Whisper { bin, model_dir, model, compute, device } => {
-            Box::new(dub_asr::WhisperAsr::new(bin, model_dir, model, compute, device))
-        }
+        AsrChoice::Whisper { bin, model_dir, model, compute, device,
+        } => Box::new(dub_asr::WhisperAsr::new(bin, model_dir, model, compute, device,
+        )),
     }
 }
 
@@ -610,7 +679,9 @@ pub fn resolve_tts(mroot: &Path, sel: &Value) -> (PathBuf, String) {
             .to_string();
         return (d, q);
     }
-    let has = |q: &str| mroot.join(format!("higgs-{q}")).join(format!("{q}.gguf")).is_file();
+    let has = |q: &str| {
+        mroot.join(format!("higgs-{q}")).join(format!("{q}.gguf")).is_file()
+    };
     let ret = |q: &str| (mroot.join(format!("higgs-{q}")), q.to_string());
     if let Some(q) = pick(sel, "tts") {
         if has(q) {
@@ -678,7 +749,9 @@ fn resolve_asr_dir(mroot: &Path, sel: &Value) -> PathBuf {
 /// Каталог годится, только если есть И модель, И mmproj (полускачанный игнорируется). Имя файла не
 /// важно — берём любой .gguf (mmproj по подстроке). Env-root уже учтён в mroot.
 pub fn resolve_mt(mroot: &Path, sel: &Value) -> (PathBuf, PathBuf) {
-    let dir_for = |q: &str| if q == "q4_0" { mroot.join("mt") } else { mroot.join(format!("mt-{q}")) };
+    let dir_for = |q: &str| {
+        if q == "q4_0" { mroot.join("mt") } else { mroot.join(format!("mt-{q}")) }
+    };
     let find = |dir: &Path, want_mmproj: bool| -> Option<PathBuf> {
         let mut hit: Option<PathBuf> = None;
         for e in std::fs::read_dir(dir).ok()?.flatten() {
@@ -724,7 +797,8 @@ mod asr_variant_tests {
 
     #[test]
     fn parakeet_components_map_to_their_asr_slot() {
-        for (id, variant) in [("parakeet", "int8"), ("parakeet-fp32", "fp32"), ("parakeet-ultra", "ultra")] {
+        for (id, variant) in [("parakeet", "int8"), ("parakeet-fp32", "fp32"), ("parakeet-ultra", "ultra"),
+        ] {
             let sel = component_selection(id);
             assert_eq!(sel, vec![("asr_engine", "parakeet".to_string()), ("asr", variant.to_string())], "{id}");
         }
@@ -814,7 +888,8 @@ mod resolve_live_tests {
         // Ассертим Whisper только когда он РЕАЛЬНО установлен: резолв по контракту тихо откатывается
         // на Parakeet без бинаря/модели (ревью: иначе тест ложно валится на машине без whisper).
         let whisper_ready = whisper_bin(repo).is_file()
-            && ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny"]
+            && ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny",
+            ]
                 .iter()
                 .any(|m| whisper_model_installed(&mroot, m));
         if pick(&sel, "asr_engine") == Some("whisper") && whisper_ready {
@@ -844,7 +919,8 @@ mod secret_tests {
         assert_eq!(proxy_with_password("http://alice@proxy.lan:3128", Some("p@ss:w")), "http://alice:p%40ss%3Aw@proxy.lan:3128");
         assert_eq!(proxy_with_password("http://alice@proxy.lan:3128", Some("pa/ss?#")), "http://alice:pa%2Fss%3F%23@proxy.lan:3128");
         for password in ["p@ss:w", "pa/ss?#", "100%", "пароль"] {
-            let (_, back) = split_proxy_password(&proxy_with_password("http://alice@proxy.lan:3128", Some(password)));
+            let (_, back) = split_proxy_password(&proxy_with_password("http://alice@proxy.lan:3128", Some(password),
+            ));
             assert_eq!(back.as_deref(), Some(password));
         }
         assert_eq!(proxy_with_password("http://alice:own@proxy.lan:3128", Some("stored")), "http://alice:own@proxy.lan:3128");
@@ -871,7 +947,8 @@ mod secret_tests {
         assert_eq!(public["proxy_password_set"], true, "a legacy inline password still counts as set");
         assert_eq!(public["tts"], "q6_k");
 
-        let bare = redact_selection(&json!({ "proxy_url": "socks5://proxy.lan:1080" }), false, false);
+        let bare = redact_selection(&json!({ "proxy_url": "socks5://proxy.lan:1080" }), false, false,
+        );
         assert_eq!(bare["or_key_set"], false);
         assert_eq!(bare["proxy_password_set"], false);
         assert_eq!(bare["proxy_url"], "socks5://proxy.lan:1080");

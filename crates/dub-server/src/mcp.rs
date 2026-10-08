@@ -23,8 +23,8 @@ use tower::ServiceExt;
 mod atomic;
 mod window;
 
-pub use window::{window_events, window_focus, window_result};
 pub(crate) use window::{carry, carry_job, save_with_revision, tell_windows, track, REV_HEADER};
+pub use window::{window_events, window_focus, window_result};
 
 /// The studio's API router, set once the service has built it.
 static API: OnceLock<Router> = OnceLock::new();
@@ -56,10 +56,12 @@ enum Payload {
     None,
     Json(Value),
     /// Multipart form fields and files, as the page uploads them.
-    Form { fields: Vec<(String, String)>, files: Vec<(String, PathBuf, String)> },
+    Form { fields: Vec<(String, String)>, files: Vec<(String, PathBuf, String)>,
+    },
     /// A command for the studio's window: what is on screen, the controls, the editor. Answered by
     /// the page itself.
-    Window { command: &'static str, args: Value, seconds: u64 },
+    Window { command: &'static str, args: Value, seconds: u64,
+    },
 }
 
 struct Call {
@@ -76,28 +78,35 @@ struct Tool {
 }
 
 fn get(path: String) -> Result<Call, String> {
-    Ok(Call { method: Method::GET, path, payload: Payload::None })
+    Ok(Call { method: Method::GET, path, payload: Payload::None,
+    })
 }
 
 fn post(path: String, body: Value) -> Result<Call, String> {
-    Ok(Call { method: Method::POST, path, payload: Payload::Json(body) })
+    Ok(Call { method: Method::POST, path, payload: Payload::Json(body),
+    })
 }
 
 fn send(method: Method, path: String, body: Value) -> Result<Call, String> {
-    Ok(Call { method, path, payload: Payload::Json(body) })
+    Ok(Call { method, path, payload: Payload::Json(body),
+    })
 }
 
 fn composite(kind: &'static str) -> Result<Call, String> {
-    Ok(Call { method: Method::GET, path: format!("composite:{kind}"), payload: Payload::None })
+    Ok(Call { method: Method::GET, path: format!("composite:{kind}"), payload: Payload::None,
+    })
 }
 
 /// A GET inside the process, as JSON; a route that refuses says why.
 async fn fetch(path: &str) -> Result<Value, String> {
-    let (status, text) = call_route(Call { method: Method::GET, path: path.into(), payload: Payload::None }).await?;
+    let (status, text) = call_route(Call { method: Method::GET, path: path.into(), payload: Payload::None,
+    }).await?;
     if !status.is_success() {
         return Err(format!("GET {path}: {status} {text}"));
     }
-    serde_json::from_str(&text).map_err(|_| format!("GET {path} did not answer JSON: {}", text.chars().take(200).collect::<String>()))
+    serde_json::from_str(&text).map_err(|_| {
+        format!("GET {path} did not answer JSON: {}", text.chars().take(200).collect::<String>())
+    })
 }
 
 /// The app's version: tauri.conf.json is its single source, as for the window.
@@ -112,7 +121,8 @@ fn app_version() -> &'static str {
 // ---------------------------------------------------------------- jobs
 
 /// A job that ended, one way or the other; any other status is still at work.
-const FINISHED: &[&str] = &["done", "error", "failed", "cancelled", "abandoned", "interrupted"];
+const FINISHED: &[&str] = &["done", "error", "failed", "cancelled", "abandoned", "interrupted",
+];
 
 fn finished(job: &Value) -> bool {
     job["status"].as_str().is_some_and(|status| FINISHED.contains(&status))
@@ -124,7 +134,9 @@ fn job_rows(listed: &Value) -> Result<Vec<Value>, String> {
         .as_array()
         .or_else(|| listed.get("jobs").and_then(Value::as_array))
         .cloned()
-        .ok_or_else(|| format!("GET /jobs answered no list of jobs: {}", listed.to_string().chars().take(200).collect::<String>()))
+        .ok_or_else(|| {
+            format!("GET /jobs answered no list of jobs: {}", listed.to_string().chars().take(200).collect::<String>())
+        })
 }
 
 /// A job as an agent follows it: what it is, where it got, what it made. A
@@ -293,7 +305,9 @@ fn transcript(project: &Value, args: &Value) -> Value {
         .as_array()
         .into_iter()
         .flatten()
-        .filter(|segment| segment["hidden"] != true && !(translation && segment["keep_original"] == true))
+        .filter(|segment| {
+            segment["hidden"] != true && !(translation && segment["keep_original"] == true)
+        })
         .map(|segment| {
             let text = match translation {
                 true => segment["id"].as_str().and_then(|id| own.get(id).copied()).unwrap_or_else(|| segment["tgt_text"].as_str().unwrap_or_default()),
@@ -312,7 +326,9 @@ fn transcript(project: &Value, args: &Value) -> Value {
     if args.get("format").and_then(Value::as_str) == Some("text") {
         let text: Vec<String> = lines
             .iter()
-            .map(|(segment, text)| format!("[{} SPK {}] {text}", clock(segment["start"].as_f64().unwrap_or_default()), segment["speaker"].as_str().unwrap_or("-")))
+            .map(|(segment, text)| {
+                format!("[{} SPK {}] {text}", clock(segment["start"].as_f64().unwrap_or_default()), segment["speaker"].as_str().unwrap_or("-"))
+            })
             .collect();
         return json!({ "text": text.join("\n"), "lines": lines.len(), "speakers": speakers });
     }
@@ -342,12 +358,16 @@ fn compact_change(name: &str, args: &Value, project: &Value) -> Value {
     }
     if name == "segment_split" {
         let after = args.get("id").and_then(Value::as_str).and_then(|id| segments.iter().position(|segment| segment["id"] == id)).and_then(|at| segments.get(at + 1));
-        named.extend(after.and_then(|segment| segment["id"].as_str()).map(str::to_string));
+        named.extend(after.and_then(|segment| segment["id"].as_str()).map(str::to_string),
+        );
     }
     let mut changed: Vec<Value> = segments.iter().filter(|segment| named.iter().any(|id| segment["id"] == id.as_str())).map(compact_segment).collect();
     if name == "segment_add" && args.get("id").is_none() {
         let start = args.get("start").and_then(Value::as_f64).unwrap_or_default().max(0.0);
-        changed.extend(segments.iter().filter(|segment| segment["start"].as_f64().is_some_and(|at| (at - start).abs() < 1e-6) && segment["src_text"] == "").map(compact_segment));
+        changed.extend(segments.iter().filter(|segment| {
+                    segment["start"].as_f64().is_some_and(|at| (at - start).abs() < 1e-6) && segment["src_text"] == ""
+                }).map(compact_segment),
+        );
     }
     if !changed.is_empty() {
         summary["changed"] = Value::Array(changed);
@@ -533,7 +553,9 @@ fn fetch_row(fetch: &Value) -> Value {
         None => "unknown",
     };
     let pct = match (fetch["downloaded"].as_f64(), fetch["total"].as_f64()) {
-        (Some(done), Some(total)) if total > 0.0 => Value::from((done / total * 100.0).min(100.0).round()),
+        (Some(done), Some(total)) if total > 0.0 => {
+            Value::from((done / total * 100.0).min(100.0).round())
+        }
         _ => Value::Null,
     };
     let mut row = json!({ "id": fetch["id"], "kind": "download", "pid": fetch["pid"], "status": status, "stage": fetch["phase"], "msg": fetch["title"], "pct": pct, "url": fetch["url"] });
@@ -556,7 +578,8 @@ fn download_row(setup: &Value) -> Option<Value> {
     if active["status"] != "downloading" {
         return None;
     }
-    let (done, total) = (active["downloaded"].as_f64().unwrap_or(0.0), active["total"].as_f64().unwrap_or(0.0));
+    let (done, total) = (active["downloaded"].as_f64().unwrap_or(0.0), active["total"].as_f64().unwrap_or(0.0),
+    );
     Some(json!({
         "id": active["id"], "kind": "download", "status": "running", "stage": active["phase"],
         "pct": if total > 0.0 { Value::from((done / total * 100.0).round()) } else { Value::Null },
@@ -615,7 +638,8 @@ async fn wait_for(args: &Value) -> Result<Value, String> {
             return Ok(json!({ "done": true, "state": now }));
         }
         if tokio::time::Instant::now() >= deadline {
-            return Ok(json!({ "done": false, "note": "still running; call studio_wait again to keep waiting", "state": now }));
+            return Ok(json!({ "done": false, "note": "still running; call studio_wait again to keep waiting", "state": now }),
+            );
         }
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -638,7 +662,8 @@ async fn graphics_card_free() -> Result<(), String> {
 
 /// MCP tool annotations, from what each tool does.
 fn annotations(name: &str) -> Value {
-    const READS: &[&str] = &["_get", "_status", "_list", "_catalog", "_files", "_capabilities", "_system", "_frame", "_waveform", "_avatar", "_models", "_voices"];
+    const READS: &[&str] = &["_get", "_status", "_list", "_catalog", "_files", "_capabilities", "_system", "_frame", "_waveform", "_avatar", "_models", "_voices",
+    ];
     // a verb that changes something outweighs a noun that reads
     const CHANGES: &[&str] = &[
         "import", "delete", "create", "update", "cancel", "select", "download", "apply", "add", "set", "assign", "analyze", "render", "remix", "retranslate",
@@ -646,7 +671,9 @@ fn annotations(name: &str) -> Value {
         "shorten", "pin",
     ];
     // reads whose names the rules above miss
-    const READ_NAMES: &[&str] = &["studio_wait", "proxy_test", "openrouter_verify", "project_transcript", "ui_screenshot", "ui_read_page", "ui_console", "editor_state", "url_probe"];
+    const READ_NAMES: &[&str] = &["studio_wait", "proxy_test", "openrouter_verify", "project_transcript", "ui_screenshot", "ui_read_page", "ui_console", "editor_state", "url_probe",
+        "project_google_tts_report",
+    ];
     // writes over what was stored, so the earlier content is gone: a client asks first
     const OVERWRITES: &[&str] = &[
         "project_put", "project_analyze", "project_retranslate", "project_remix", "project_align", "segment_update", "segments_reorder", "segments_regen_all",
@@ -658,7 +685,9 @@ fn annotations(name: &str) -> Value {
     let read_only = READ_NAMES.contains(&name) || !changes && READS.iter().any(|part| name.ends_with(part) || name.contains(&format!("{part}_")));
     let destructive = name.ends_with("_delete") || name.ends_with("_cancel") || name.contains("_cancel_") || name.ends_with("_delete_key") || OVERWRITES.contains(&name);
     // what reaches the internet: OpenRouter, Hugging Face, the sites of links and every download
-    let open_world = name.starts_with("openrouter_") && !matches!(name, "openrouter_status" | "openrouter_delete_key")
+    let open_world = name.starts_with("google_")
+        && matches!(name, "google_set_key" | "google_models")
+        || name.starts_with("openrouter_") && !matches!(name, "openrouter_status" | "openrouter_delete_key")
         || matches!(
             name,
             "models_download" | "voice_download" | "voices_download_pack" | "voices_catalog" | "proxy_test" | "url_probe" | "project_create_from_url" | "url_fetch_resume" | "url_tool_update"
@@ -679,7 +708,8 @@ struct Agent {
 
 fn agent() -> &'static Agent {
     static AGENT: OnceLock<Agent> = OnceLock::new();
-    AGENT.get_or_init(|| Agent { last_call: Mutex::new(None), calls: AtomicU64::new(0) })
+    AGENT.get_or_init(|| Agent { last_call: Mutex::new(None), calls: AtomicU64::new(0),
+    })
 }
 
 /// An agent that called within this long still counts as connected.
@@ -715,7 +745,9 @@ fn text(args: &Value, name: &str) -> Result<String, String> {
 
 /// A path segment, escaped.
 pub(crate) fn segment(value: &str) -> String {
-    value.bytes().map(|byte| if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) { (byte as char).to_string() } else { format!("%{byte:02X}") }).collect()
+    value.bytes().map(|byte| {
+            if byte.is_ascii_alphanumeric() || b"-_.~".contains(&byte) { (byte as char).to_string() } else { format!("%{byte:02X}") }
+        }).collect()
 }
 
 /// The arguments without the ones that went into the path.
@@ -732,7 +764,8 @@ fn object(properties: Value, required: &[&str]) -> Value {
 }
 
 fn id_only(name: &str, what: &str) -> Value {
-    object(json!({ name: { "type": "string", "description": what } }), &[name])
+    object(json!({ name: { "type": "string", "description": what } }), &[name],
+    )
 }
 
 fn nothing() -> Value {
@@ -759,7 +792,9 @@ fn project_path(args: &Value, rest: &str) -> Result<String, String> {
 
 /// A query string of the arguments given, in this order.
 fn query(pairs: &[(&str, Option<String>)]) -> String {
-    let given: Vec<String> = pairs.iter().filter_map(|(name, value)| value.as_ref().map(|value| format!("{name}={}", segment(value)))).collect();
+    let given: Vec<String> = pairs.iter().filter_map(|(name, value)| {
+            value.as_ref().map(|value| format!("{name}={}", segment(value)))
+        }).collect();
     if given.is_empty() { String::new() } else { format!("?{}", given.join("&")) }
 }
 
@@ -882,21 +917,25 @@ fn edits() -> Value {
             json!({ "op": op, "tool": tool, "fields": fields })
         })
         .collect();
-    ops.extend(PATCH_ALIASES.iter().map(|(op, same)| json!({ "op": op, "same_as": same })));
+    ops.extend(PATCH_ALIASES.iter().map(|(op, same)| json!({ "op": op, "same_as": same })),
+    );
     json!({ "route": "PATCH /projects/{pid}", "body": "{ op, ...fields }", "answer": "the whole project, saved", "ops": ops })
 }
 
 /// The languages a project is dubbed from and into.
 fn languages() -> Value {
-    Value::Array(dub_translate::WHISPER_LANGS.iter().map(|(code, name)| json!({ "code": code, "name": name })).collect())
+    Value::Array(dub_translate::WHISPER_LANGS.iter().map(|(code, name)| json!({ "code": code, "name": name })).collect(),
+    )
 }
 
 /// A resource by its uri: its type and its text.
 fn resource(uri: &str) -> Option<(&'static str, String)> {
     match uri {
         SKILL_URI => Some(("text/markdown", SKILL.to_string())),
-        LANGUAGES_URI => Some(("application/json", serde_json::to_string_pretty(&languages()).unwrap_or_default())),
-        EDITS_URI => Some(("application/json", serde_json::to_string_pretty(&edits()).unwrap_or_default())),
+        LANGUAGES_URI => Some(("application/json", serde_json::to_string_pretty(&languages()).unwrap_or_default(),
+        )),
+        EDITS_URI => Some(("application/json", serde_json::to_string_pretty(&edits()).unwrap_or_default(),
+        )),
         _ => None,
     }
 }
@@ -1029,10 +1068,13 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "settings_set",
-                description: "Change one setting (a key settings_get lists) to a text value: \"1\" or \"0\" for a switch. Applies from the next job. The OpenRouter key is set with openrouter_set_key, the proxy's address with proxy_settings_set.",
+                description: "Change one setting to a text value. TTS: tts_provider=local|openrouter|google, google_tts_model=<id without models/>, google_tts_mode=standard|batch. Voice/autocast use or_tts_voice/or_tts_autocast, parallel requests use or_concurrency (1..16). Applies from the next job. Secrets: openrouter_set_key, google_set_key; proxy: proxy_settings_set.",
                 schema: || object(json!({ "key": { "type": "string" }, "value": { "type": "string" } }), &["key", "value"]),
                 call: |args| {
                     let key = text(args, "key")?;
+                    if key == "google_key" {
+                        return Err("The Google key is set with google_set_key.".into());
+                    }
                     if key == "or_key" {
                         return Err("The OpenRouter key is set with openrouter_set_key.".into());
                     }
@@ -1119,6 +1161,36 @@ fn tools() -> &'static [Tool] {
                 call: |_| get("/presets".into()),
             },
             // ---------------------------------------------------------------- OpenRouter
+            Tool {
+                name: "google_status",
+                description: "Whether a direct Google Gemini API key is configured and its source. Never returns the key.",
+                schema: nothing,
+                call: |_| get("/engine/google/settings".into()),
+            },
+            Tool {
+                name: "google_set_key",
+                description: "Verify a Gemini API key against Google's model catalog and store it separately from settings. No paid generation is made.",
+                schema: || id_only("key", "Google Gemini API key"),
+                call: |args| send(Method::PUT,"/engine/google/settings".into(),json!({"api_key":text(args,"key")?})),
+            },
+            Tool {
+                name: "google_delete_key",
+                description: "Remove the stored Google Gemini API key. An environment key cannot be removed by the app.",
+                schema: nothing,
+                call: |_| send(Method::DELETE,"/engine/google/settings".into(),json!({})),
+            },
+            Tool {
+                name: "google_models",
+                description: "List TTS models available through the direct Google API, including supported generation methods. Needs the Google key.",
+                schema: nothing,
+                call: |_| get("/engine/google/models".into()),
+            },
+            Tool {
+                name: "project_google_tts_report",
+                description: "Direct Google TTS usage, generated audio duration, wall time, tariff-based cost estimate (not invoice), and persisted Batch names/states for a project. settings_set tts_provider=google, google_tts_model=<id without models/>, google_tts_mode=standard|batch; project_dub_audio or project_render starts the normal pipeline. A local job cancellation pauses polling; the remote Batch continues and resume uses its saved name without submitting again.",
+                schema: || id_only("pid","project id"),
+                call: |args| get(format!("/projects/{}/google-tts",text(args,"pid")?)),
+            },
             Tool {
                 name: "openrouter_status",
                 description: "Whether an OpenRouter key is set for the cloud stages and where it comes from (the studio's store or an environment variable). The key itself is never shown.",
@@ -2068,7 +2140,8 @@ async fn call_route_raw(call: Call) -> Result<Reply, String> {
     if mime.starts_with("text/html") {
         return Err(format!("The studio has no route {asked}: its page answered instead."));
     }
-    Ok(Reply { status, mime, bytes })
+    Ok(Reply { status, mime, bytes,
+    })
 }
 
 /// A route's answer as text, cut to a size an agent reads.
@@ -2097,7 +2170,8 @@ enum Part {
 
 /// The parts as a stream, a file a megabyte at a time: a long video is sent
 /// without ever being held in memory whole.
-fn streamed(parts: Vec<Part>) -> impl futures_util::Stream<Item = std::io::Result<axum::body::Bytes>> {
+fn streamed(parts: Vec<Part>,
+) -> impl futures_util::Stream<Item = std::io::Result<axum::body::Bytes>> {
     futures_util::stream::unfold((parts.into_iter(), None::<tokio::fs::File>), |(mut parts, mut open)| async move {
         loop {
             if let Some(file) = open.as_mut() {
@@ -2120,7 +2194,8 @@ fn streamed(parts: Vec<Part>) -> impl futures_util::Stream<Item = std::io::Resul
                 },
             }
         }
-    })
+    },
+    )
 }
 
 /// Cuts an answer to what an agent reads in one go, and says how to get the rest.
@@ -2131,7 +2206,8 @@ fn cut(mut text: String) -> String {
             end -= 1;
         }
         text.truncate(end);
-        text.push_str("\n... (cut: ask for a part, e.g. project_get with from and to seconds or ids)");
+        text.push_str("\n... (cut: ask for a part, e.g. project_get with from and to seconds or ids)",
+        );
     }
     text
 }
@@ -2172,12 +2248,14 @@ fn rpc_error(id: Value, code: i64, message: String) -> Response {
     rpc_failure(StatusCode::OK, id, code, message, None)
 }
 
-fn rpc_failure(status: StatusCode, id: Value, code: i64, message: String, data: Option<Value>) -> Response {
+fn rpc_failure(status: StatusCode, id: Value, code: i64, message: String, data: Option<Value>,
+) -> Response {
     let mut error = json!({ "code": code, "message": message });
     if let Some(data) = data {
         error["data"] = data;
     }
-    (status, Json(json!({ "jsonrpc": "2.0", "id": id, "error": error }))).into_response()
+    (status, Json(json!({ "jsonrpc": "2.0", "id": id, "error": error })),
+    ).into_response()
 }
 
 /// A list or a read a client may cache: the same for everyone, fresh for five minutes.
@@ -2199,19 +2277,25 @@ fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
 
 /// Why a stateless request is refused, if it is: a version the studio does
 /// not speak, or headers that do not say what its body says.
-fn refused(headers: &HeaderMap, method: &str, params: &Value, version: &str) -> Option<(i64, String, Option<Value>)> {
+fn refused(headers: &HeaderMap, method: &str, params: &Value, version: &str,
+) -> Option<(i64, String, Option<Value>)> {
     if !MODERN.contains(&version) {
-        return Some((UNSUPPORTED_VERSION, "Unsupported protocol version".into(), Some(json!({ "supported": supported_versions(), "requested": version }))));
+        return Some((UNSUPPORTED_VERSION, "Unsupported protocol version".into(), Some(json!({ "supported": supported_versions(), "requested": version })),
+        ));
     }
     let mismatch = |what: String| Some((HEADER_MISMATCH, format!("Header mismatch: {what}"), None));
     match header_value(headers, "mcp-protocol-version") {
         Some(value) if value == version => {}
-        Some(value) => return mismatch(format!("MCP-Protocol-Version header value '{value}' does not match body value '{version}'")),
+        Some(value) => {
+            return mismatch(format!("MCP-Protocol-Version header value '{value}' does not match body value '{version}'"))
+        }
         None => return mismatch("the MCP-Protocol-Version header is missing".into()),
     }
     match header_value(headers, "mcp-method") {
         Some(value) if value == method => {}
-        Some(value) => return mismatch(format!("Mcp-Method header value '{value}' does not match body value '{method}'")),
+        Some(value) => {
+            return mismatch(format!("Mcp-Method header value '{value}' does not match body value '{method}'"))
+        }
         None => return mismatch("the Mcp-Method header is missing".into()),
     }
     let named = match method {
@@ -2261,7 +2345,8 @@ fn tool_image(id: Value, reply: &Reply, name: &str, args: &Value) -> Response {
         _ => format!("The avatar of character {}.", args.get("character_id").and_then(Value::as_str).unwrap_or_default()),
     };
     let image = base64::engine::general_purpose::STANDARD.encode(&reply.bytes);
-    rpc(id, json!({ "content": [{ "type": "image", "data": image, "mimeType": mime }, { "type": "text", "text": what }], "isError": false }))
+    rpc(id, json!({ "content": [{ "type": "image", "data": image, "mimeType": mime }, { "type": "text", "text": what }], "isError": false }),
+    )
 }
 
 /// The name a tool shows the user: its words, the first capitalised.
@@ -2276,10 +2361,12 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
         return crate::guard::foreign_origin();
     }
     let Ok(message) = serde_json::from_slice::<Value>(&body) else {
-        return rpc_failure(StatusCode::BAD_REQUEST, Value::Null, -32700, "Parse error".into(), None);
+        return rpc_failure(StatusCode::BAD_REQUEST, Value::Null, -32700, "Parse error".into(), None,
+        );
     };
     let Some(method) = message.get("method").and_then(Value::as_str) else {
-        return rpc_failure(StatusCode::BAD_REQUEST, Value::Null, -32600, "Invalid request: one JSON-RPC request or notification per POST".into(), None);
+        return rpc_failure(StatusCode::BAD_REQUEST, Value::Null, -32600, "Invalid request: one JSON-RPC request or notification per POST".into(), None,
+        );
     };
     let id = message.get("id").cloned().unwrap_or(Value::Null);
     let params = message.get("params").cloned().unwrap_or(Value::Null);
@@ -2306,24 +2393,29 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
                 "capabilities": { "tools": {}, "resources": {}, "prompts": {} },
                 "serverInfo": server_info(),
                 "instructions": INSTRUCTIONS,
-            }))
+            }),
+            )
         }
         "server/discover" => rpc(id, cacheable(json!({
             "supportedVersions": supported_versions(),
             "capabilities": { "tools": {}, "resources": {}, "prompts": {} },
             "instructions": INSTRUCTIONS,
-        }))),
+        })),
+        ),
         "ping" => rpc(id, json!({})),
         "resources/list" => rpc(id, cacheable(json!({ "resources": [
             { "uri": SKILL_URI, "name": "studio skill", "title": "How to drive the studio", "description": "How to drive Dub Studio: every tool by area, the ground rules, step-by-step recipes.", "mimeType": "text/markdown" },
             { "uri": LANGUAGES_URI, "name": "languages", "title": "Languages", "description": "The language codes a video is dubbed from and into: tgt_lang, src_lang, lang.", "mimeType": "application/json" },
             { "uri": EDITS_URI, "name": "project edits", "title": "Project edits", "description": "Every edit of a project (PATCH op), the tool that makes it and its fields.", "mimeType": "application/json" },
-        ] }))),
+        ] })),
+        ),
         "resources/templates/list" => rpc(id, cacheable(json!({ "resourceTemplates": [] }))),
         "resources/read" => {
             let uri = params.get("uri").and_then(Value::as_str).unwrap_or_default();
             match resource(uri) {
-                Some((mime, text)) => rpc(id, cacheable(json!({ "contents": [{ "uri": uri, "mimeType": mime, "text": text }] }))),
+                Some((mime, text)) => rpc(id, cacheable(json!({ "contents": [{ "uri": uri, "mimeType": mime, "text": text }] }),
+                    ),
+                ),
                 None => rpc_error(id, -32002, format!("Resource not found: {uri}")),
             }
         }
@@ -2334,10 +2426,13 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
                 { "name": "lang", "description": "the language to dub into, a code such as ru, en, es", "required": true },
                 { "name": "mode", "description": "dub (default), voiceover, nodub (subtitles only) or transcribe", "required": false },
             ] },
-        ] }))),
+        ] })),
+        ),
         "prompts/get" => {
             let name = params.get("name").and_then(Value::as_str).unwrap_or_default();
-            let argument = |key: &str| params.get("arguments").and_then(|arguments| arguments.get(key)).and_then(Value::as_str).unwrap_or_default().trim().to_string();
+            let argument = |key: &str| {
+                params.get("arguments").and_then(|arguments| arguments.get(key)).and_then(Value::as_str).unwrap_or_default().trim().to_string()
+            };
             let text = match name {
                 "studio" => Some(SKILL.to_string()),
                 "dub_video" => {
@@ -2351,7 +2446,8 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
                 _ => None,
             };
             match text {
-                Some(text) => rpc(id, json!({ "messages": [{ "role": "user", "content": { "type": "text", "text": text } }] })),
+                Some(text) => rpc(id, json!({ "messages": [{ "role": "user", "content": { "type": "text", "text": text } }] }),
+                ),
                 None => rpc_error(id, -32602, format!("Unknown prompt: {name}")),
             }
         }
@@ -2365,7 +2461,8 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             let answer = |text: String, error: bool| tool_result(id.clone(), text, None, error);
             let Some(tool) = tools().iter().find(|tool| tool.name == name) else {
-                return rpc_error(id, -32602, format!("Unknown tool: {name}; tools/list names them all."));
+                return rpc_error(id, -32602, format!("Unknown tool: {name}; tools/list names them all."),
+                );
             };
             // a tool may look at a file on disk before its call: off the runtime
             let prepare = tool.call;
@@ -2375,19 +2472,24 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
             };
             match prepared {
                 Err(problem) => answer(problem, true),
-                Ok(Call { payload: Payload::Window { command, args, seconds }, .. }) => match window::ask_window(command, args, seconds).await {
+                Ok(Call { payload: Payload::Window { command, args, seconds,
+                        }, .. }) => match window::ask_window(command, args, seconds).await {
                     Ok(result) => window::window_reply(id, result),
                     Err(problem) => answer(problem, true),
                 },
-                Ok(call) if call.path == "composite:status" => tool_json(id, status_summary().await),
+                Ok(call) if call.path == "composite:status" => {
+                    tool_json(id, status_summary().await)
+                }
                 Ok(call) if call.path == "composite:wait" => match wait_for(&args).await {
                     Ok(state) => tool_json(id, state),
                     Err(problem) => answer(problem, true),
                 },
-                Ok(call) if call.path.starts_with(atomic::PREFIX) => match atomic::run(name, &args).await {
+                Ok(call) if call.path.starts_with(atomic::PREFIX) => {
+                    match atomic::run(name, &args).await {
                     Ok(result) => tool_json(id, result),
                     Err(problem) => answer(problem, true),
-                },
+                }
+                }
                 Ok(call) => {
                     if QUEUED_BEHIND_JOBS.contains(&name) {
                         if let Err(problem) = graphics_card_free().await {
@@ -2395,7 +2497,10 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
                         }
                     }
                     match call_route_raw(call).await {
-                        Ok(reply) if reply.status.is_success() && reply.mime.starts_with("image/") => tool_image(id, &reply, name, &args),
+                        Ok(reply) if reply.status.is_success() && reply.mime.starts_with("image/") =>
+                        {
+                            tool_image(id, &reply, name, &args)
+                        }
                         Ok(reply) if reply.status.is_success() => {
                             let text = reply_text(&reply);
                             match serde_json::from_str::<Value>(&text) {
@@ -2409,7 +2514,8 @@ pub async fn handle(headers: HeaderMap, body: axum::body::Bytes) -> Response {
                 }
             }
         }
-        _ => rpc_failure(StatusCode::NOT_FOUND, id, -32601, format!("Method not found: {method}"), None),
+        _ => rpc_failure(StatusCode::NOT_FOUND, id, -32601, format!("Method not found: {method}"), None,
+        ),
     }
 }
 
@@ -2428,7 +2534,9 @@ fn moment(text: &str, end: bool) -> Result<i64, String> {
         None => NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M:%S")
             .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%d %H:%M"))
             .or_else(|_| NaiveDateTime::parse_from_str(text, "%Y-%m-%dT%H:%M"))
-            .map_err(|_| format!("'{text}' is not a moment: today, yesterday, 2026-09-26 or 2026-09-26T18:00."))?,
+            .map_err(|_| {
+                format!("'{text}' is not a moment: today, yesterday, 2026-09-26 or 2026-09-26T18:00.")
+            })?,
     };
     Local.from_local_datetime(&at).earliest().map(|at| at.timestamp()).ok_or_else(|| format!("'{text}' does not exist in this time zone."))
 }
@@ -2562,7 +2670,9 @@ mod tests {
             let handlers = chunk.split(".fallback(").next().unwrap().split(".layer(").next().unwrap().split(".with_state(").next().unwrap();
             for method in ["get", "post", "patch", "put", "delete"] {
                 let call = format!("{method}(");
-                let called = handlers.match_indices(&call).any(|(at, _)| !handlers[..at].chars().last().is_some_and(|c| c.is_alphanumeric() || c == '_'));
+                let called = handlers.match_indices(&call).any(|(at, _)| {
+                    !handlers[..at].chars().last().is_some_and(|c| c.is_alphanumeric() || c == '_')
+                });
                 if called {
                     routes.push((method.to_uppercase(), path.clone()));
                 }
@@ -2575,7 +2685,9 @@ mod tests {
     fn patch_ops() -> Vec<String> {
         let source = include_str!("patch.rs").replace("\r\n", "\n");
         let body = source.split("pub fn apply(").nth(1).expect("patch::apply").split("other =>").next().unwrap();
-        body.lines().filter_map(|line| line.trim().strip_prefix('"').and_then(|rest| rest.split_once("\" =>")).map(|(op, _)| op.to_string())).collect()
+        body.lines().filter_map(|line| {
+                line.trim().strip_prefix('"').and_then(|rest| rest.split_once("\" =>")).map(|(op, _)| op.to_string())
+            }).collect()
     }
 
     fn route_of(pattern: &str, path: &str) -> bool {
@@ -2615,8 +2727,12 @@ mod tests {
 
     /// What the composite tools read.
     const COMPOSITE_ROUTES: &[(&str, &[(&str, &str)])] = &[
-        ("composite:status", &[("GET", "/jobs"), ("GET", "/setup/status"), ("GET", "/url/fetches")]),
-        ("composite:wait", &[("GET", "/jobs/x1"), ("GET", "/url/fetches/x1"), ("GET", "/jobs"), ("GET", "/setup/status"), ("GET", "/url/fetches")]),
+        ("composite:status", &[("GET", "/jobs"), ("GET", "/setup/status"), ("GET", "/url/fetches"),
+            ],
+        ),
+        ("composite:wait", &[("GET", "/jobs/x1"), ("GET", "/url/fetches/x1"), ("GET", "/jobs"), ("GET", "/setup/status"), ("GET", "/url/fetches"),
+            ],
+        ),
     ];
 
     /// Arguments for every property of a tool, and one set more for each other
@@ -2665,7 +2781,8 @@ mod tests {
                 continue;
             }
             match COMPOSITE_ROUTES.iter().chain(atomic::ROUTES).find(|(path, _)| *path == call.path) {
-                Some((_, reads)) => reached.extend(reads.iter().map(|(method, path)| (method.to_string(), path.to_string()))),
+                Some((_, reads)) => reached.extend(reads.iter().map(|(method, path)| (method.to_string(), path.to_string())),
+                ),
                 None => {
                     assert!(!call.path.starts_with("composite:"), "{} is a composite this test does not know", tool.name);
                     reached.push((call.method.to_string(), call.path.clone()));
@@ -2697,7 +2814,8 @@ mod tests {
     #[test]
     fn every_route_and_every_edit_is_a_tool() {
         let folder = tempfile::tempdir().unwrap();
-        let (video, subtitles) = (folder.path().join("clip.mp4"), folder.path().join("clip.srt"));
+        let (video, subtitles) = (folder.path().join("clip.mp4"), folder.path().join("clip.srt"),
+        );
         std::fs::write(&video, b"x").unwrap();
         std::fs::write(&subtitles, b"x").unwrap();
         let routes = router_routes();
@@ -2716,7 +2834,9 @@ mod tests {
         let by_tool = covered.clone();
         let mut stale = Vec::new();
         for (method, path) in NOT_TOOLS.iter().map(|(method, path, _)| (method, path)) {
-            let at = routes.iter().position(|(m, p)| m == method && p == path).unwrap_or_else(|| panic!("{method} {path} of NOT_TOOLS is not a route of build_router"));
+            let at = routes.iter().position(|(m, p)| m == method && p == path).unwrap_or_else(|| {
+                    panic!("{method} {path} of NOT_TOOLS is not a route of build_router")
+                });
             if by_tool[at] {
                 stale.push(format!("{method} {path}"));
             }
@@ -2725,7 +2845,9 @@ mod tests {
         assert!(stale.is_empty(), "these routes of NOT_TOOLS are reached by a tool: drop them from NOT_TOOLS: {stale:?}");
         let missing: Vec<String> = routes.iter().zip(&covered).filter(|(_, done)| !**done).map(|((method, path), _)| format!("{method} {path}")).collect();
         assert!(missing.is_empty(), "these routes have no tool: give each one, or put it into NOT_TOOLS with why: {missing:?}");
-        let landed: Vec<String> = PENDING.iter().filter(|(method, pattern)| routes.iter().any(|(m, p)| m == method && route_of(p, &filled(pattern)))).map(|(method, pattern)| format!("{method} {pattern}")).collect();
+        let landed: Vec<String> = PENDING.iter().filter(|(method, pattern)| {
+                routes.iter().any(|(m, p)| m == method && route_of(p, &filled(pattern)))
+            }).map(|(method, pattern)| format!("{method} {pattern}")).collect();
         assert!(landed.is_empty(), "these routes are in the router now: drop them from PENDING: {landed:?}");
 
         let ops = patch_ops();
@@ -2752,7 +2874,9 @@ mod tests {
 
     #[test]
     fn the_glossary_tools_turn_their_arguments_into_their_routes() {
-        let find = |name: &str| tools().iter().find(|tool| tool.name == name).expect("the tool");
+        let find = |name: &str| {
+            tools().iter().find(|tool| tool.name == name).expect("the tool")
+        };
         let body = |call: Call| match call.payload {
             Payload::Json(body) => body,
             _ => panic!("a JSON body"),
@@ -2768,7 +2892,8 @@ mod tests {
         assert_eq!((call.method.clone(), call.path.as_str()), (Method::POST, "/projects/p1/glossary/extract"));
         let call = (find("series_glossary_get").call)(&json!({ "slug": "my show", "format": "json" })).unwrap();
         assert_eq!(call.path, "/casting/library/my%20show/glossary");
-        let call = (find("series_glossary_set").call)(&json!({ "slug": "show", "tsv": "Harry\tГарри", "lang": "ru" })).unwrap();
+        let call = (find("series_glossary_set").call)(&json!({ "slug": "show", "tsv": "Harry\tГарри", "lang": "ru" }),
+        ).unwrap();
         assert_eq!((call.method.clone(), call.path.as_str()), (Method::PUT, "/casting/library/show/glossary"));
         assert_eq!(body(call), json!({ "tsv": "Harry\tГарри", "lang": "ru" }));
         assert!((find("series_glossary_get").call)(&json!({})).is_err(), "a slug is required");
@@ -2796,7 +2921,9 @@ mod tests {
 
     #[test]
     fn a_tool_turns_its_arguments_into_its_route() {
-        let find = |name: &str| tools().iter().find(|tool| tool.name == name).expect("the tool");
+        let find = |name: &str| {
+            tools().iter().find(|tool| tool.name == name).expect("the tool")
+        };
         let call = (find("segment_update").call)(&json!({ "pid": "p 1", "id": "s1", "tgt_text": "Привет", "response_format": "detailed" })).unwrap();
         assert_eq!(call.method, Method::PATCH);
         assert_eq!(call.path, "/projects/p%201");
@@ -2834,7 +2961,9 @@ mod tests {
 
     #[test]
     fn bilingual_subtitles_and_their_export_are_tools() {
-        let find = |name: &str| tools().iter().find(|tool| tool.name == name).expect("the tool");
+        let find = |name: &str| {
+            tools().iter().find(|tool| tool.name == name).expect("the tool")
+        };
         let args = json!({ "pid": "p1", "value": "bilingual", "order": "original_top", "secondary": { "size_pct": 60, "color": null } });
         let call = (find("subtitles_content_set").call)(&args).unwrap();
         assert_eq!((call.method.clone(), call.path.as_str()), (Method::PATCH, "/projects/p1"));
@@ -2842,7 +2971,8 @@ mod tests {
             Payload::Json(body) => assert_eq!(body, json!({ "op": "subs_content", "value": "bilingual", "order": "original_top", "secondary": { "size_pct": 60, "color": null } })),
             _ => panic!("a JSON body"),
         }
-        let call = (find("project_export_text").call)(&json!({ "pid": "p1", "format": "vtt", "text": "both", "order": "translation_top" })).unwrap();
+        let call = (find("project_export_text").call)(&json!({ "pid": "p1", "format": "vtt", "text": "both", "order": "translation_top" }),
+        ).unwrap();
         assert_eq!((call.method.clone(), call.path.as_str()), (Method::POST, "/projects/p1/export-text"));
         match call.payload {
             Payload::Json(body) => assert_eq!(body, json!({ "format": "vtt", "text": "both", "order": "translation_top" })),
@@ -2854,33 +2984,40 @@ mod tests {
 
     #[test]
     fn a_tool_that_changes_something_is_not_read_only() {
-        for name in ["project_create", "segment_update", "models_download", "project_dub_audio", "voice_from_speaker", "project_export_text", "blur_enable", "job_cancel"] {
+        for name in ["project_create", "segment_update", "models_download", "project_dub_audio", "voice_from_speaker", "project_export_text", "blur_enable", "job_cancel",
+        ] {
             assert_eq!(annotations(name)["readOnlyHint"], false, "{name}");
         }
-        for name in ["studio_status", "studio_wait", "project_get", "project_frame", "project_files", "jobs_list", "casting_avatar", "openrouter_models", "settings_get", "caption_presets_list", "proxy_test"] {
+        for name in ["studio_status", "studio_wait", "project_get", "project_frame", "project_files", "jobs_list", "casting_avatar", "openrouter_models", "settings_get", "caption_presets_list", "proxy_test",
+        ] {
             assert_eq!(annotations(name)["readOnlyHint"], true, "{name}");
         }
-        for name in ["models_download", "voice_download", "openrouter_set_key", "openrouter_models"] {
+        for name in ["models_download", "voice_download", "openrouter_set_key", "openrouter_models",
+        ] {
             assert_eq!(annotations(name)["openWorldHint"], true, "{name}");
         }
-        for name in ["openrouter_status", "openrouter_delete_key", "project_render"] {
+        for name in ["openrouter_status", "openrouter_delete_key", "project_render",
+        ] {
             assert_eq!(annotations(name)["openWorldHint"], false, "{name}");
         }
     }
 
     #[test]
     fn a_tool_that_writes_over_what_was_stored_is_destructive() {
-        for name in ["project_put", "project_analyze", "segment_update", "segments_delete", "project_delete", "voice_delete", "casting_update", "openrouter_delete_key", "job_cancel", "models_cancel_download"] {
+        for name in ["project_put", "project_analyze", "segment_update", "segments_delete", "project_delete", "voice_delete", "casting_update", "openrouter_delete_key", "job_cancel", "models_cancel_download",
+        ] {
             assert_eq!(annotations(name)["destructiveHint"], true, "{name}");
         }
-        for name in ["project_create", "segment_add", "project_render", "project_export_lang", "title_add", "settings_set"] {
+        for name in ["project_create", "segment_add", "project_render", "project_export_lang", "title_add", "settings_set",
+        ] {
             assert_eq!(annotations(name)["destructiveHint"], false, "{name}");
         }
     }
 
     #[test]
     fn the_key_never_leaves_the_studio() {
-        let clean = redact(json!({ "selection": { "or_key": "sk-or-secret", "proxy_url": "socks5://user:pass@host:1080", "bench": "1" }, "list": [{ "or_key": "" }] }));
+        let clean = redact(json!({ "selection": { "or_key": "sk-or-secret", "proxy_url": "socks5://user:pass@host:1080", "bench": "1" }, "list": [{ "or_key": "" }] }),
+        );
         assert_eq!(clean, json!({ "selection": { "or_key_set": true, "proxy_url": "socks5://user@host:1080", "bench": "1" }, "list": [{ "or_key_set": false }] }));
     }
 
@@ -2897,17 +3034,21 @@ mod tests {
         assert_eq!(window["segments"].as_array().unwrap().len(), 1);
         assert_eq!(window["segments"][0]["id"], "s2");
 
-        let change = compact_change("segment_update", &json!({ "pid": "p1", "id": "s1" }), &a_project());
+        let change = compact_change("segment_update", &json!({ "pid": "p1", "id": "s1" }), &a_project(),
+        );
         assert_eq!(change["changed"][0]["tgt_text"], "Привет");
         assert!(change.get("titles").is_none());
-        let titles = compact_change("title_update", &json!({ "pid": "p1", "idx": 0 }), &a_project());
+        let titles = compact_change("title_update", &json!({ "pid": "p1", "idx": 0 }), &a_project(),
+        );
         assert_eq!(titles["titles"][0]["tgt"], "Титр");
         assert_eq!(shape("segment_update", &json!({ "response_format": "detailed" }), a_project()), a_project(), "detailed is the whole project");
-        let by_op = compact_change("project_patch", &json!({ "pid": "p1", "op": "blur_del", "idx": 0 }), &a_project());
+        let by_op = compact_change("project_patch", &json!({ "pid": "p1", "op": "blur_del", "idx": 0 }), &a_project(),
+        );
         assert_eq!(by_op["blur_boxes"][0]["idx"], 0, "an op answers as its tool");
         assert!(compact_change("segments_reorder", &json!({ "pid": "p1", "ids": ["s2", "s1"] }), &a_project()).get("changed").is_none(), "a new order is not every line again");
 
-        let job = compact_job(&json!({ "id": "j", "kind": "remix", "pid": "p", "status": "done", "result": a_project() }));
+        let job = compact_job(&json!({ "id": "j", "kind": "remix", "pid": "p", "status": "done", "result": a_project() }),
+        );
         assert_eq!(job["result"], "the project, updated: project_get reads it");
         assert!(job.get("error").is_none());
     }
@@ -2932,7 +3073,8 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let path = folder.path().join("clip.mp4");
         std::fs::write(&path, vec![7u8; (1 << 20) + 5]).unwrap();
-        let parts = vec![Part::Text("head".into()), Part::File(path), Part::Text("tail".into())];
+        let parts = vec![Part::Text("head".into()), Part::File(path), Part::Text("tail".into()),
+        ];
         let chunks: Vec<axum::body::Bytes> = futures_util::StreamExt::collect::<Vec<_>>(streamed(parts)).await.into_iter().map(Result::unwrap).collect();
         let whole: Vec<u8> = chunks.concat();
         assert_eq!(whole.len(), 4 + (1 << 20) + 5 + 4);
@@ -2943,7 +3085,8 @@ mod tests {
     async fn a_video_by_its_path_arrives_as_the_page_uploads_it() {
         stub();
         let folder = tempfile::tempdir().unwrap();
-        let (video, subtitles) = (folder.path().join("My clip.mp4"), folder.path().join("My clip.srt"));
+        let (video, subtitles) = (folder.path().join("My clip.mp4"), folder.path().join("My clip.srt"),
+        );
         std::fs::write(&video, vec![1u8; 3 * (1 << 20) + 7]).unwrap();
         let cues = b"1\n00:00:00,000 --> 00:00:01,000\nHi\n";
         std::fs::write(&subtitles, cues).unwrap();
@@ -2991,15 +3134,18 @@ mod tests {
     #[tokio::test]
     async fn a_tool_calls_its_route_as_this_computer() {
         stub();
-        let reply = call_route_raw(Call { method: Method::GET, path: "/host".into(), payload: Payload::None }).await.unwrap();
+        let reply = call_route_raw(Call { method: Method::GET, path: "/host".into(), payload: Payload::None,
+        }).await.unwrap();
         assert_eq!(serde_json::from_slice::<Value>(&reply.bytes).unwrap()["host"], "127.0.0.1");
     }
 
     #[tokio::test]
     async fn a_picture_comes_back_as_an_image() {
         stub();
-        let reply = call_route_raw(Call { method: Method::GET, path: "/projects/p1/preview?t=1".into(), payload: Payload::None }).await.unwrap();
-        let response = tool_image(json!(7), &reply, "project_frame", &json!({ "pid": "p1", "t": 1.0 }));
+        let reply = call_route_raw(Call { method: Method::GET, path: "/projects/p1/preview?t=1".into(), payload: Payload::None,
+        }).await.unwrap();
+        let response = tool_image(json!(7), &reply, "project_frame", &json!({ "pid": "p1", "t": 1.0 }),
+        );
         let bytes = axum::body::to_bytes(response.into_body(), 1 << 20).await.unwrap();
         let answer: Value = serde_json::from_slice(&bytes).unwrap();
         let content = &answer["result"]["content"];
@@ -3014,7 +3160,8 @@ mod tests {
         let text = answer_text(&settings);
         assert!(!text.contains("sk-or-secret") && !text.contains("user:pass"), "{text}");
         assert_eq!(settings["result"]["structuredContent"]["settings"]["or_key_set"], true);
-        let edit = call_tool("segment_update", json!({ "pid": "p1", "id": "s1", "tgt_text": "Привет" })).await;
+        let edit = call_tool("segment_update", json!({ "pid": "p1", "id": "s1", "tgt_text": "Привет" }),
+        ).await;
         assert_eq!(edit["result"]["structuredContent"]["changed"][0]["id"], "s1", "{edit}");
         let missing = call_tool("openrouter_status", json!({})).await;
         assert_eq!(missing["result"]["isError"], true);
@@ -3024,7 +3171,8 @@ mod tests {
     #[tokio::test]
     async fn a_probe_is_what_the_agent_chooses_from() {
         stub();
-        for args in [json!({ "url": "https://www.youtube.com/watch?v=abc" }), json!({ "url": "https://www.youtube.com/watch?v=abc", "response_format": "detailed" })] {
+        for args in [json!({ "url": "https://www.youtube.com/watch?v=abc" }), json!({ "url": "https://www.youtube.com/watch?v=abc", "response_format": "detailed" }),
+        ] {
             let reply = call_tool("url_probe", args).await;
             let text = answer_text(&reply);
             assert!(text.len() < 8_000, "{} characters", text.len());
@@ -3042,17 +3190,20 @@ mod tests {
         let call = |headers: &[(&str, &str)], body: Value| {
             let mut map = HeaderMap::new();
             for (name, value) in headers {
-                map.insert(axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(), value.parse().unwrap());
+                map.insert(axum::http::HeaderName::from_bytes(name.as_bytes()).unwrap(), value.parse().unwrap(),
+                );
             }
             async move {
                 let response = handle(map, axum::body::Bytes::from(body.to_string())).await;
                 let status = response.status();
                 let bytes = axum::body::to_bytes(response.into_body(), 1 << 22).await.unwrap();
-                (status, serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null))
+                (status, serde_json::from_slice::<Value>(&bytes).unwrap_or(Value::Null),
+                )
             }
         };
         let meta = json!({ "io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientCapabilities": {} });
-        let modern = [("mcp-protocol-version", "2026-07-28"), ("mcp-method", "server/discover")];
+        let modern = [("mcp-protocol-version", "2026-07-28"), ("mcp-method", "server/discover"),
+        ];
         let (status, found) = call(&modern, json!({ "jsonrpc": "2.0", "id": 1, "method": "server/discover", "params": { "_meta": meta } })).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(found["result"]["supportedVersions"][0], "2026-07-28");
@@ -3081,12 +3232,15 @@ mod tests {
         let (status, found) = call(&[("mcp-protocol-version", "2026-07-28"), ("mcp-method", "nope/nope")], json!({ "jsonrpc": "2.0", "id": 6, "method": "nope/nope", "params": { "_meta": meta } })).await;
         assert_eq!((status, found["error"]["code"].clone()), (StatusCode::NOT_FOUND, json!(-32601)));
 
-        let (status, _) = call(&[], json!({ "jsonrpc": "2.0", "method": "notifications/initialized" })).await;
+        let (status, _) = call(&[], json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }),
+        ).await;
         assert_eq!(status, StatusCode::ACCEPTED);
 
         let mut foreign = HeaderMap::new();
         foreign.insert(header::ORIGIN, "https://evil.example".parse().unwrap());
-        let response = handle(foreign, axum::body::Bytes::from(json!({ "jsonrpc": "2.0", "id": 7, "method": "ping" }).to_string())).await;
+        let response = handle(foreign, axum::body::Bytes::from(json!({ "jsonrpc": "2.0", "id": 7, "method": "ping" }).to_string(),
+            ),
+        ).await;
         assert_eq!(response.status(), StatusCode::FORBIDDEN, "a web page is refused");
     }
 
