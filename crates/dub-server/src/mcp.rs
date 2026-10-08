@@ -391,7 +391,7 @@ fn compact_change(name: &str, args: &Value, project: &Value) -> Value {
         summary["subs"] = project["subs"].clone();
         summary["sub_y"] = captions["sub_y"].clone();
     }
-    if matches!(name, "voice_set" | "gain_set" | "voiceover_gain_set" | "original_track_set" | "rewrite_set" | "translation_style_set" | "translation_target_set" | "project_mode_set" | "audio_output_set") {
+    if matches!(name, "voice_set" | "gain_set" | "loudness_set" | "voiceover_gain_set" | "original_track_set" | "rewrite_set" | "translation_style_set" | "translation_target_set" | "project_mode_set" | "audio_output_set") {
         summary["audio"] = project["audio"].clone();
     }
     summary
@@ -870,6 +870,7 @@ const PATCH_OPS: &[(&str, &str)] = &[
     ("rewrite", "rewrite_set"),
     ("recast", "voice_set"),
     ("gain", "gain_set"),
+    ("loudness", "loudness_set"),
     ("voiceover_gain", "voiceover_gain_set"),
     ("keep_original", "original_track_set"),
     ("caption", "caption_style_set"),
@@ -1785,6 +1786,12 @@ fn tools() -> &'static [Tool] {
                 description: "The dub track's volume in dB (-24 to 24), applied at the next render without voicing again.",
                 schema: || object(json!({ "pid": pid(), "gain_db": { "type": "number" }, "response_format": detail() }), &["pid", "gain_db"]),
                 call: |args| edit(args, "gain"),
+            },
+            Tool {
+                name: "loudness_set",
+                description: "Even out loudness (on, the default): every phrase to one level and the dub to -14 LUFS with a -1 dBTP ceiling; off keeps the mix as it came. Applied at the next render without voicing again.",
+                schema: || object(json!({ "pid": pid(), "on": { "type": "boolean" }, "response_format": detail() }), &["pid", "on"]),
+                call: |args| edit(args, "loudness"),
             },
             Tool {
                 name: "voiceover_gain_set",
