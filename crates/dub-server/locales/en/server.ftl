@@ -517,3 +517,139 @@ ytdlp-live = a live stream ({ $status })
 ytdlp-thumbnail-not-image = the thumbnail is not an image ({ $mime })
 ytdlp-thumbnail-too-large = the thumbnail is larger than 4 MB
 ytdlp-failed-silently = yt-dlp failed without a message
+
+## Render: voicing, QC, mix, mux
+
+render-input = input { $width }x{ $height } dur={ $duration }s
+render-nodub-original = nodub: the original audio track
+render-done-audio = done (audio only) -> { $path }
+render-building-ass = building the ASS (titles + dubbed subtitles)
+render-burning = burning in the subtitles + blur (ffmpeg + libass, NVENC)
+render-burn-off = subtitles/titles are off (subs.burn=off)
+render-muxing = muxing video + audio
+render-track-dub = { $lang } (dub)
+render-track-original = { $lang } (original)
+render-two-tracks = two tracks: { $dub } + { $original } -> { $container }
+render-multitrack-failed = the multi-track mux failed ({ $error }) -> one track
+render-subtitle-tracks = subtitles as mkv tracks: { $tracks }
+render-subtitle-tracks-failed = subtitles as mkv tracks: { $error }
+render-mp4-companion-failed = the mp4 companion was not built ({ $error }); the player opens the mkv (VLC works)
+render-done = done -> { $path }
+render-dub-audio-done = the dub audio is ready
+render-synth-thread-ended = the synthesis thread ended without a result
+render-synth-timeout = synthesis timed out after >{ $seconds }s; cancelled, the engine is free
+render-engine-stuck = synthesis does not cancel after >{ $seconds }s; the render is stopped (the engine hung in the DLL)
+render-higgs-load-failed = loading the Higgs DLL: { $error }
+render-defect-runaway = runaway
+render-defect-cutoff = cut off
+render-defect-silence = silence
+render-defect-hum = hum
+render-recognition-no-answer = recognition returned no answer
+render-second-pass-overflow = the second voicing pass asked for shortening, which is off in it
+render-no-translated-lines = no translated lines -> silence, the original track
+render-takes-of-removed-lines = take histories of removed lines cleared: { $count }
+render-extracting-audio = extracting the audio (ffmpeg 44.1k stereo)
+render-separator-missing = the separation engine was not found -> no background (keep_music off)
+render-ref-from-mix = the clone reference comes from the unseparated mix: the original background sounds in it too
+render-emotion-ref-failed = segment { $segment }: the emotion reference was not cut ({ $error }); using the speaker’s identity reference
+render-cloud-voices = cloud voices by speaker: { $voices }
+render-synth-keys-reset = { $error }; the synthesis keys start over
+render-synthesizing = synthesizing { $count } of { $total } { $total ->
+    [one] segment
+   *[other] segments
+}
+render-voicing-cached = voicing from the cache: { $count } { $count ->
+    [one] segment
+   *[other] segments
+}
+render-cloud-tts-parallel = cloud TTS: { $count } { $count ->
+    [one] segment
+   *[other] segments
+} in { $threads } parallel threads
+render-cloud-tts-ready = cloud TTS: pre-synthesis ready ({ $count } { $count ->
+    [one] segment
+   *[other] segments
+})
+render-takes-quarantined = { $error }; the take history of line { $line } is set aside in { $path } and started over
+render-pinned-take = line { $line }: the pinned take plays; new voicing does not replace it
+render-take-unpinned = line { $line }: the take is unpinned because the line’s text changed
+render-selected-take = line { $line }: the chosen take { $take } plays; new voicing does not replace it
+render-write-cloud-segment = writing the cloud seg{ $line }: { $error }
+render-cloud-tts-failed = ⚠ segment { $line }: cloud TTS failed ({ $error }); the original is kept
+render-loading-higgs = loading Higgs
+render-failures-kept-generated = ⚠ segment { $line }: { $attempts } synthesis failures ({ $error }); the generated voicing is used (range { $range } dB)
+render-failures-kept-original = ⚠ segment { $line }: { $attempts } synthesis failures/timeouts ({ $error }); the original line is kept
+render-regenerating = segment { $line }: { $error }; regenerating ({ $attempt }/{ $attempts })
+render-defects-kept-generated = ⚠ segment { $line }: all { $attempts } attempts have a defect ({ $defect }); the generated voicing is used (range { $range } dB)
+render-silent-kept-original = ⚠ segment { $line }: { $attempts } attempts without sound; the original is used
+render-retry-alt-ref = another reference
+render-retry-temperature = higher temperature
+render-defect-regenerating = segment { $line }: a synthesis defect ({ $defect }); regenerating ({ $via } { $attempt }/{ $attempts })
+render-write-segment = writing seg{ $line }: { $error }
+render-too-many-artifacts = TTS: too many hum artifacts ({ $in_a_row } in a row, { $retries } retries in total); regenerating does not help. The problem is likely the setup (model/VRAM) or the voice reference clips. Stopped at segment { $line }.
+render-multi-take = segment { $line }: multi-take; the take closest to the slot is chosen ({ $deviation }s off)
+render-stretch-over-cap = segment { $line }: needs a stretch of x{ $needed } (slot { $slot }s), cap x{ $cap }; the text is faster than normal
+render-silence-trimmed = trimming TTS silence: { $seconds } s cut from { $lines } { $lines ->
+    [one] line
+   *[other] lines
+} ({ $pauses } s of it pauses); trimming brought the speed-up within the cap for { $into_cap } { $into_cap ->
+    [one] line
+   *[other] lines
+}
+render-fit-summary = fitting: { $over }/{ $total } segments above the cap ({ $share }%)
+render-fit-summary-drift = fitting: { $over }/{ $total } segments above the cap ({ $share }%), sync caught up on { $drift }
+render-qc-start = QC: checking { $count } { $count ->
+    [one] line
+   *[other] lines
+} by transcription
+render-qc-unheard = QC: { $count } of { $total } lines were not checked; recognition failed: { $reason }
+render-qc-mismatch = QC: { $count } { $count ->
+    [one] line does
+   *[other] lines do
+} not match the translation; resynthesizing
+render-qc-resynthesized = QC: segment { $line } resynthesized (attempt { $attempt })
+render-qc-unconfirmed = ⚠ QC: segment { $line } (“{ $text }”) could not be confirmed; check the line by hand
+render-qc-kept-mismatch = ⚠ QC: segment { $line } does not match the translated text; the generated voicing is kept
+render-qc-resynth-unheard = QC: { $count } resynthesized { $count ->
+    [one] line was
+   *[other] lines were
+} not checked; recognition failed: { $reason }
+render-qc-summary = QC result: { $fixed }/{ $total } fixed, { $flagged } still flagged, { $unheard } not checked
+render-qc-all-confirmed = QC: every line is confirmed by transcription ✓
+render-qc-rest-confirmed = QC: the other lines are confirmed by transcription
+render-laying-out = laying the dub out on the timeline
+render-peak-limiter = peak limiter: { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}, { $samples } samples above the { $ceiling } ceiling brought down without clipping
+render-tempo-fit = tempo fit of the whole track x{ $factor }
+render-voiceover-envelope = voiceover: the original at { $db } dB UNDER the translation, full in the pauses (dynamic envelope, { $blocks } blocks)
+render-voiceover-flat = voiceover: the envelope is unavailable -> flat attenuation
+render-mix-no-ducking = mixing: instrumental + dub vocals (ducking OFF, full background)
+render-mix-ducking = mixing: instrumental + dub vocals (ducking ON, envelope, { $blocks } blocks)
+render-mix-sidechain = the envelope is unavailable -> sidechain ducking
+render-mix-plain = sidechain is unavailable -> a plain mix
+render-loudness-off = loudness evening is off: the mix as it is
+render-loudness-normalizing = normalizing loudness (EBU R128, true peak)
+render-loudnorm-skipped = loudnorm skipped ({ $error })
+render-track-gain = track gain { $db } dB
+render-dub-timings-not-written = dub timings for the subtitles were not written: the layout ({ $lines } lines, { $spans } spans) did not match the segments ({ $segments }); the subtitles follow the original timings
+render-dub-timing-mismatch = dub timings: line { $line } of the synthesis view does not match project segment #{ $index }
+render-word-timings = word timings of the subtitles: recognizing { $count } dub { $count ->
+    [one] line
+   *[other] lines
+}
+render-refs-unchecked = checking references: { $count } { $count ->
+    [one] candidate is
+   *[other] candidates are
+} accepted unchecked; recognition failed: { $error }
+render-refs-all-failed = ⚠ speaker { $speaker }: no reference candidate passed the check (heard: “{ $heard }”); taking the best by score
+render-speaker-ref-failed = speaker { $speaker } reference: { $error }
+render-speaker-ref = speaker { $speaker } reference: “{ $text }” ({ $seconds }s, { $candidates } { $candidates ->
+    [one] candidate
+   *[other] candidates
+}, check ok)
+render-speaker-ref-unchecked = speaker { $speaker } reference: “{ $text }” ({ $seconds }s, { $candidates } { $candidates ->
+    [one] candidate
+   *[other] candidates
+}, check ⚠ failed)

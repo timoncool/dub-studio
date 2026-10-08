@@ -517,3 +517,139 @@ ytdlp-live = un direct ({ $status })
 ytdlp-thumbnail-not-image = la miniature n’est pas une image ({ $mime })
 ytdlp-thumbnail-too-large = la miniature dépasse 4 Mo
 ytdlp-failed-silently = yt-dlp a échoué sans message
+
+## Render: voicing, QC, mix, mux
+
+render-input = entrée { $width }x{ $height } durée={ $duration }s
+render-nodub-original = nodub : la piste audio d’origine
+render-done-audio = terminé (audio seulement) -> { $path }
+render-building-ass = construction de l’ASS (titres + sous-titres doublés)
+render-burning = incrustation des sous-titres + flou (ffmpeg + libass, NVENC)
+render-burn-off = sous-titres/titres désactivés (subs.burn=off)
+render-muxing = multiplexage vidéo + audio
+render-track-dub = { $lang } (doublage)
+render-track-original = { $lang } (original)
+render-two-tracks = deux pistes : { $dub } + { $original } -> { $container }
+render-multitrack-failed = le multiplexage multipiste a échoué ({ $error }) -> une piste
+render-subtitle-tracks = sous-titres en pistes mkv : { $tracks }
+render-subtitle-tracks-failed = sous-titres en pistes mkv : { $error }
+render-mp4-companion-failed = le mp4 compagnon n’a pas été construit ({ $error }) ; le lecteur ouvrira le mkv (VLC fonctionne)
+render-done = terminé -> { $path }
+render-dub-audio-done = l’audio doublé est prêt
+render-synth-thread-ended = le fil de synthèse s’est terminé sans résultat
+render-synth-timeout = la synthèse a dépassé { $seconds } s ; annulée, le moteur est libre
+render-engine-stuck = la synthèse ne s’annule pas après { $seconds } s ; le rendu est interrompu (le moteur est bloqué dans la DLL)
+render-higgs-load-failed = chargement de la DLL Higgs : { $error }
+render-defect-runaway = emballement
+render-defect-cutoff = coupure
+render-defect-silence = silence
+render-defect-hum = bourdonnement
+render-recognition-no-answer = la reconnaissance n’a renvoyé aucune réponse
+render-second-pass-overflow = la seconde passe de voix a demandé un raccourcissement, désactivé dans celle-ci
+render-no-translated-lines = aucune réplique traduite -> silence, la piste d’origine
+render-takes-of-removed-lines = historiques de prises des répliques supprimées effacés : { $count }
+render-extracting-audio = extraction de l’audio (ffmpeg 44,1k stéréo)
+render-separator-missing = le moteur de séparation est introuvable -> sans fond (keep_music off)
+render-ref-from-mix = la référence du clone vient du mix non séparé : le fond d’origine s’y entend aussi
+render-emotion-ref-failed = segment { $segment } : la référence d’émotion n’a pas été découpée ({ $error }) ; référence d’identité du locuteur
+render-cloud-voices = voix cloud par locuteur : { $voices }
+render-synth-keys-reset = { $error } ; les clés de synthèse repartent de zéro
+render-synthesizing = synthèse de { $count } { $total ->
+    [one] segment
+   *[other] segments
+} sur { $total }
+render-voicing-cached = voix depuis le cache : { $count } { $count ->
+    [one] segment
+   *[other] segments
+}
+render-cloud-tts-parallel = TTS cloud : { $count } { $count ->
+    [one] segment
+   *[other] segments
+} sur { $threads } fils parallèles
+render-cloud-tts-ready = TTS cloud : pré-synthèse prête ({ $count } { $count ->
+    [one] segment
+   *[other] segments
+})
+render-takes-quarantined = { $error } ; l’historique des prises de la réplique { $line } est mis de côté dans { $path } et repart de zéro
+render-pinned-take = réplique { $line } : la prise épinglée est jouée ; la nouvelle voix ne la remplace pas
+render-take-unpinned = réplique { $line } : la prise est désépinglée car le texte a changé
+render-selected-take = réplique { $line } : la prise choisie { $take } est jouée ; la nouvelle voix ne la remplace pas
+render-write-cloud-segment = écriture du seg{ $line } cloud : { $error }
+render-cloud-tts-failed = ⚠ segment { $line } : le TTS cloud a échoué ({ $error }) ; l’original est gardé
+render-loading-higgs = chargement de Higgs
+render-failures-kept-generated = ⚠ segment { $line } : { $attempts } échecs de synthèse ({ $error }) ; la voix générée est utilisée (amplitude { $range } dB)
+render-failures-kept-original = ⚠ segment { $line } : { $attempts } échecs/délais de synthèse ({ $error }) ; la réplique d’origine est gardée
+render-regenerating = segment { $line } : { $error } ; régénération ({ $attempt }/{ $attempts })
+render-defects-kept-generated = ⚠ segment { $line } : les { $attempts } essais ont un défaut ({ $defect }) ; la voix générée est utilisée (amplitude { $range } dB)
+render-silent-kept-original = ⚠ segment { $line } : { $attempts } essais sans son ; l’original est utilisé
+render-retry-alt-ref = autre référence
+render-retry-temperature = température plus haute
+render-defect-regenerating = segment { $line } : défaut de synthèse ({ $defect }) ; régénération ({ $via } { $attempt }/{ $attempts })
+render-write-segment = écriture de seg{ $line } : { $error }
+render-too-many-artifacts = TTS : trop d’artefacts de bourdonnement ({ $in_a_row } d’affilée, { $retries } nouvelles tentatives au total) ; régénérer n’aide pas. Le problème vient sans doute de la configuration (modèle/VRAM) ou des extraits de référence des voix. Arrêté au segment { $line }.
+render-multi-take = segment { $line } : plusieurs prises ; la plus proche du créneau est choisie (écart de { $deviation } s)
+render-stretch-over-cap = segment { $line } : il faut étirer x{ $needed } (créneau { $slot } s), plafond x{ $cap } ; le texte est plus rapide que la normale
+render-silence-trimmed = découpe des silences du TTS : { $seconds } s retirées sur { $lines } { $lines ->
+    [one] réplique
+   *[other] répliques
+} (dont { $pauses } s de pauses) ; grâce à la découpe l’accélération reste sous le plafond pour { $into_cap } { $into_cap ->
+    [one] réplique
+   *[other] répliques
+}
+render-fit-summary = ajustement : { $over }/{ $total } segments au-dessus du plafond ({ $share } %)
+render-fit-summary-drift = ajustement : { $over }/{ $total } segments au-dessus du plafond ({ $share } %), synchro rattrapée sur { $drift }
+render-qc-start = QC : vérification de { $count } { $count ->
+    [one] réplique
+   *[other] répliques
+} par transcription
+render-qc-unheard = QC : { $count } répliques sur { $total } non vérifiées ; la reconnaissance a échoué : { $reason }
+render-qc-mismatch = QC : { $count } { $count ->
+    [one] réplique ne correspond
+   *[other] répliques ne correspondent
+} pas à la traduction ; nouvelle synthèse
+render-qc-resynthesized = QC : segment { $line } resynthétisé (essai { $attempt })
+render-qc-unconfirmed = ⚠ QC : le segment { $line } (« { $text } ») n’a pas pu être confirmé ; vérifiez la réplique à la main
+render-qc-kept-mismatch = ⚠ QC : le segment { $line } ne correspond pas au texte traduit ; la voix générée est gardée
+render-qc-resynth-unheard = QC : { $count } { $count ->
+    [one] réplique resynthétisée non vérifiée
+   *[other] répliques resynthétisées non vérifiées
+} ; la reconnaissance a échoué : { $reason }
+render-qc-summary = bilan QC : { $fixed }/{ $total } corrigées, { $flagged } encore signalées, { $unheard } non vérifiées
+render-qc-all-confirmed = QC : toutes les répliques sont confirmées par transcription ✓
+render-qc-rest-confirmed = QC : les autres répliques sont confirmées par transcription
+render-laying-out = placement du doublage sur la timeline
+render-peak-limiter = limiteur de crêtes : { $lines } { $lines ->
+    [one] réplique
+   *[other] répliques
+}, { $samples } échantillons au-dessus du plafond { $ceiling } abaissés sans écrêtage
+render-tempo-fit = ajustement du tempo de toute la piste x{ $factor }
+render-voiceover-envelope = voix off : l’original à { $db } dB SOUS la traduction, plein dans les pauses (enveloppe dynamique, { $blocks } blocs)
+render-voiceover-flat = voix off : l’enveloppe est indisponible -> atténuation uniforme
+render-mix-no-ducking = mixage : instrumental + voix doublée (ducking DÉSACTIVÉ, fond complet)
+render-mix-ducking = mixage : instrumental + voix doublée (ducking ACTIVÉ, enveloppe, { $blocks } blocs)
+render-mix-sidechain = l’enveloppe est indisponible -> ducking en sidechain
+render-mix-plain = le sidechain est indisponible -> mixage direct
+render-loudness-off = l’égalisation du volume est désactivée : le mix tel quel
+render-loudness-normalizing = normalisation du volume (EBU R128, true peak)
+render-loudnorm-skipped = loudnorm ignoré ({ $error })
+render-track-gain = gain de la piste { $db } dB
+render-dub-timings-not-written = les temps du doublage pour les sous-titres n’ont pas été écrits : le placement ({ $lines } répliques, { $spans } plages) ne correspond pas aux segments ({ $segments }) ; les sous-titres suivent les temps d’origine
+render-dub-timing-mismatch = temps du doublage : la réplique { $line } de la vue de synthèse ne correspond pas au segment n° { $index } du projet
+render-word-timings = temps par mot des sous-titres : reconnaissance de { $count } { $count ->
+    [one] réplique
+   *[other] répliques
+} du doublage
+render-refs-unchecked = vérification des références : { $count } { $count ->
+    [one] candidat accepté
+   *[other] candidats acceptés
+} sans vérification ; la reconnaissance a échoué : { $error }
+render-refs-all-failed = ⚠ locuteur { $speaker } : aucune référence candidate n’a passé la vérification (entendu : « { $heard } ») ; je prends la meilleure au score
+render-speaker-ref-failed = référence du locuteur { $speaker } : { $error }
+render-speaker-ref = référence du locuteur { $speaker } : « { $text } » ({ $seconds } s, { $candidates } { $candidates ->
+    [one] candidat
+   *[other] candidats
+}, vérification ok)
+render-speaker-ref-unchecked = référence du locuteur { $speaker } : « { $text } » ({ $seconds } s, { $candidates } { $candidates ->
+    [one] candidat
+   *[other] candidats
+}, vérification ⚠ échouée)

@@ -517,3 +517,139 @@ ytdlp-live = uma transmissão ao vivo ({ $status })
 ytdlp-thumbnail-not-image = a miniatura não é uma imagem ({ $mime })
 ytdlp-thumbnail-too-large = a miniatura passa de 4 MB
 ytdlp-failed-silently = o yt-dlp falhou sem mensagem
+
+## Render: voicing, QC, mix, mux
+
+render-input = entrada { $width }x{ $height } dur={ $duration }s
+render-nodub-original = nodub: a faixa de áudio original
+render-done-audio = pronto (só áudio) -> { $path }
+render-building-ass = montando o ASS (títulos + legendas dubladas)
+render-burning = gravando as legendas + desfoque (ffmpeg + libass, NVENC)
+render-burn-off = legendas/títulos desativados (subs.burn=off)
+render-muxing = multiplexando vídeo + áudio
+render-track-dub = { $lang } (dublagem)
+render-track-original = { $lang } (original)
+render-two-tracks = duas faixas: { $dub } + { $original } -> { $container }
+render-multitrack-failed = a multiplexação multifaixa falhou ({ $error }) -> uma faixa
+render-subtitle-tracks = legendas como faixas mkv: { $tracks }
+render-subtitle-tracks-failed = legendas como faixas mkv: { $error }
+render-mp4-companion-failed = o mp4 complementar não foi montado ({ $error }); o player abrirá o mkv (o VLC funciona)
+render-done = pronto -> { $path }
+render-dub-audio-done = o áudio dublado está pronto
+render-synth-thread-ended = a thread de síntese terminou sem resultado
+render-synth-timeout = a síntese passou de { $seconds } s; cancelada, o motor está livre
+render-engine-stuck = a síntese não cancela após { $seconds } s; a renderização parou (o motor travou na DLL)
+render-higgs-load-failed = carregando a DLL do Higgs: { $error }
+render-defect-runaway = descontrolada
+render-defect-cutoff = cortada
+render-defect-silence = silêncio
+render-defect-hum = zumbido
+render-recognition-no-answer = o reconhecimento não retornou resposta
+render-second-pass-overflow = a segunda passada de voz pediu um encurtamento, que nela está desativado
+render-no-translated-lines = não há falas traduzidas -> silêncio, a faixa original
+render-takes-of-removed-lines = históricos de tomadas de falas removidas apagados: { $count }
+render-extracting-audio = extraindo o áudio (ffmpeg 44,1k estéreo)
+render-separator-missing = o motor de separação não foi encontrado -> sem fundo (keep_music off)
+render-ref-from-mix = a referência do clone vem da mixagem sem separação: o fundo original também soa nela
+render-emotion-ref-failed = segmento { $segment }: a referência de emoção não foi cortada ({ $error }); usando a referência de identidade do falante
+render-cloud-voices = vozes na nuvem por falante: { $voices }
+render-synth-keys-reset = { $error }; as chaves de síntese recomeçam
+render-synthesizing = sintetizando { $count } de { $total } { $total ->
+    [one] segmento
+   *[other] segmentos
+}
+render-voicing-cached = voz do cache: { $count } { $count ->
+    [one] segmento
+   *[other] segmentos
+}
+render-cloud-tts-parallel = TTS na nuvem: { $count } { $count ->
+    [one] segmento
+   *[other] segmentos
+} em { $threads } threads paralelas
+render-cloud-tts-ready = TTS na nuvem: pré-síntese pronta ({ $count } { $count ->
+    [one] segmento
+   *[other] segmentos
+})
+render-takes-quarantined = { $error }; o histórico de tomadas da fala { $line } foi separado em { $path } e recomeçou
+render-pinned-take = fala { $line }: toca a tomada fixada; a nova voz não a substitui
+render-take-unpinned = fala { $line }: a tomada foi desafixada porque o texto da fala mudou
+render-selected-take = fala { $line }: toca a tomada escolhida { $take }; a nova voz não a substitui
+render-write-cloud-segment = gravando o seg{ $line } da nuvem: { $error }
+render-cloud-tts-failed = ⚠ segmento { $line }: o TTS na nuvem falhou ({ $error }); o original foi mantido
+render-loading-higgs = carregando o Higgs
+render-failures-kept-generated = ⚠ segmento { $line }: { $attempts } falhas de síntese ({ $error }); usada a voz gerada (amplitude { $range } dB)
+render-failures-kept-original = ⚠ segmento { $line }: { $attempts } falhas/timeouts de síntese ({ $error }); a fala original foi mantida
+render-regenerating = segmento { $line }: { $error }; regenerando ({ $attempt }/{ $attempts })
+render-defects-kept-generated = ⚠ segmento { $line }: todas as { $attempts } tentativas têm defeito ({ $defect }); usada a voz gerada (amplitude { $range } dB)
+render-silent-kept-original = ⚠ segmento { $line }: { $attempts } tentativas sem som; usado o original
+render-retry-alt-ref = outra referência
+render-retry-temperature = temperatura maior
+render-defect-regenerating = segmento { $line }: defeito de síntese ({ $defect }); regenerando ({ $via } { $attempt }/{ $attempts })
+render-write-segment = gravando seg{ $line }: { $error }
+render-too-many-artifacts = TTS: artefatos de zumbido demais ({ $in_a_row } seguidos, { $retries } novas tentativas no total); regenerar não ajuda. O problema provavelmente é a máquina (modelo/VRAM) ou os clipes de referência de voz. Parado no segmento { $line }.
+render-multi-take = segmento { $line }: várias tomadas; escolhida a mais próxima do espaço (desvio de { $deviation } s)
+render-stretch-over-cap = segmento { $line }: precisa esticar x{ $needed } (espaço { $slot } s), limite x{ $cap }; o texto está mais rápido que o normal
+render-silence-trimmed = corte de silêncio do TTS: { $seconds } s removidos de { $lines } { $lines ->
+    [one] fala
+   *[other] falas
+} ({ $pauses } s de pausas); graças ao corte a aceleração ficou dentro do limite em { $into_cap } { $into_cap ->
+    [one] fala
+   *[other] falas
+}
+render-fit-summary = ajuste: { $over }/{ $total } segmentos acima do limite ({ $share }%)
+render-fit-summary-drift = ajuste: { $over }/{ $total } segmentos acima do limite ({ $share }%), sincronia recuperada em { $drift }
+render-qc-start = QC: conferindo { $count } { $count ->
+    [one] fala
+   *[other] falas
+} por transcrição
+render-qc-unheard = QC: { $count } de { $total } falas não foram conferidas; o reconhecimento falhou: { $reason }
+render-qc-mismatch = QC: { $count } { $count ->
+    [one] fala não coincide
+   *[other] falas não coincidem
+} com a tradução; ressintetizando
+render-qc-resynthesized = QC: segmento { $line } ressintetizado (tentativa { $attempt })
+render-qc-unconfirmed = ⚠ QC: não foi possível confirmar o segmento { $line } (“{ $text }”); confira a fala manualmente
+render-qc-kept-mismatch = ⚠ QC: o segmento { $line } não coincide com o texto traduzido; mantida a voz gerada
+render-qc-resynth-unheard = QC: { $count } { $count ->
+    [one] fala ressintetizada não foi conferida
+   *[other] falas ressintetizadas não foram conferidas
+}; o reconhecimento falhou: { $reason }
+render-qc-summary = resultado do QC: { $fixed }/{ $total } corrigidas, { $flagged } ainda marcadas, { $unheard } não conferidas
+render-qc-all-confirmed = QC: todas as falas foram confirmadas por transcrição ✓
+render-qc-rest-confirmed = QC: as demais falas foram confirmadas por transcrição
+render-laying-out = posicionando a dublagem na linha do tempo
+render-peak-limiter = limitador de picos: { $lines } { $lines ->
+    [one] fala
+   *[other] falas
+}, { $samples } amostras acima do teto { $ceiling } reduzidas sem clipping
+render-tempo-fit = ajuste de andamento da faixa inteira x{ $factor }
+render-voiceover-envelope = voice-over: o original a { $db } dB SOB a tradução, cheio nas pausas (envelope dinâmico, { $blocks } blocos)
+render-voiceover-flat = voice-over: o envelope está indisponível -> atenuação plana
+render-mix-no-ducking = mixagem: instrumental + voz dublada (ducking DESLIGADO, fundo cheio)
+render-mix-ducking = mixagem: instrumental + voz dublada (ducking LIGADO, envelope, { $blocks } blocos)
+render-mix-sidechain = o envelope está indisponível -> ducking por sidechain
+render-mix-plain = o sidechain está indisponível -> mixagem direta
+render-loudness-off = o nivelamento de volume está desligado: a mixagem como está
+render-loudness-normalizing = normalizando o volume (EBU R128, true peak)
+render-loudnorm-skipped = loudnorm pulado ({ $error })
+render-track-gain = ganho da faixa { $db } dB
+render-dub-timings-not-written = os tempos da dublagem para as legendas não foram gravados: o posicionamento ({ $lines } falas, { $spans } trechos) não coincidiu com os segmentos ({ $segments }); as legendas seguem os tempos originais
+render-dub-timing-mismatch = tempos da dublagem: a fala { $line } da visão de síntese não coincide com o segmento nº { $index } do projeto
+render-word-timings = tempos por palavra das legendas: reconhecendo { $count } { $count ->
+    [one] fala
+   *[other] falas
+} da dublagem
+render-refs-unchecked = conferência de referências: { $count } { $count ->
+    [one] candidata aceita
+   *[other] candidatas aceitas
+} sem conferência; o reconhecimento falhou: { $error }
+render-refs-all-failed = ⚠ falante { $speaker }: nenhuma referência candidata passou na conferência (ouvido: “{ $heard }”); usando a melhor pela pontuação
+render-speaker-ref-failed = referência do falante { $speaker }: { $error }
+render-speaker-ref = referência do falante { $speaker }: “{ $text }” ({ $seconds } s, { $candidates } { $candidates ->
+    [one] candidata
+   *[other] candidatas
+}, conferência ok)
+render-speaker-ref-unchecked = referência do falante { $speaker }: “{ $text }” ({ $seconds } s, { $candidates } { $candidates ->
+    [one] candidata
+   *[other] candidatas
+}, conferência ⚠ falhou)

@@ -536,3 +536,129 @@ ytdlp-live = эфир ({ $status })
 ytdlp-thumbnail-not-image = превью не картинка ({ $mime })
 ytdlp-thumbnail-too-large = превью больше 4 МБ
 ytdlp-failed-silently = yt-dlp завершился с ошибкой без сообщения
+
+## Render: voicing, QC, mix, mux
+
+render-input = вход { $width }x{ $height } dur={ $duration }s
+render-nodub-original = nodub: оригинальная аудиодорожка
+render-done-audio = готово (только аудио) -> { $path }
+render-building-ass = сборка ASS (титры + дублированные субтитры)
+render-burning = вжигание субтитров + блюр (ffmpeg + libass, NVENC)
+render-burn-off = субтитры/титры отключены (subs.burn=off)
+render-muxing = муксирование видео + аудио
+render-track-dub = { $lang } (дубляж)
+render-track-original = { $lang } (оригинал)
+render-two-tracks = две дорожки: { $dub } + { $original } -> { $container }
+render-multitrack-failed = мультитрек-mux не удался ({ $error }) -> одна дорожка
+render-subtitle-tracks = субтитры дорожками mkv: { $tracks }
+render-subtitle-tracks-failed = субтитры дорожками mkv: { $error }
+render-mp4-companion-failed = mp4-компаньон не собран ({ $error }) — плеер откроет mkv (VLC ок)
+render-done = готово -> { $path }
+render-dub-audio-done = дуб-аудио готово
+render-synth-thread-ended = поток синтеза завершился без результата
+render-synth-timeout = таймаут синтеза >{ $seconds }с — отменён, движок свободен
+render-engine-stuck = синтез не отменяется >{ $seconds }с — рендер прерван (движок завис в DLL)
+render-higgs-load-failed = загрузка Higgs DLL: { $error }
+render-defect-runaway = затянулась
+render-defect-cutoff = обрыв
+render-defect-silence = тишина
+render-defect-hum = гул
+render-recognition-no-answer = распознавание не вернуло ответ
+render-second-pass-overflow = второй проход озвучки запросил сокращение, которое в нём выключено
+render-no-translated-lines = нет строк с переводом -> тишина, оригинальная дорожка
+render-takes-of-removed-lines = истории дублей удалённых фраз убраны: { $count }
+render-extracting-audio = извлечение аудио (ffmpeg 44.1k stereo)
+render-separator-missing = движок сепарации не найден -> без фона (keep_music off)
+render-ref-from-mix = реф клона из микса без сепарации: в нём звучит и фон оригинала
+render-emotion-ref-failed = сегмент { $segment }: эмоц-реф не вырезан ({ $error }) — identity-реф спикера
+render-cloud-voices = облачные голоса по спикерам: { $voices }
+render-synth-keys-reset = { $error } — ключи синтеза начаты заново
+render-synthesizing = синтез { $count } из { $total } { $total ->
+    [one] сегмента
+    [few] сегментов
+   *[many] сегментов
+}
+render-voicing-cached = озвучка из кэша: { $count } { $count ->
+    [one] сегмент
+    [few] сегмента
+   *[many] сегментов
+}
+render-cloud-tts-parallel = облачный TTS: { $count } { $count ->
+    [one] сегмент
+    [few] сегмента
+   *[many] сегментов
+} в { $threads } параллельных потоков
+render-cloud-tts-ready = облачный TTS: пре-синтез готов ({ $count } { $count ->
+    [one] сегмент
+    [few] сегмента
+   *[many] сегментов
+})
+render-takes-quarantined = { $error } — история дублей фразы { $line } отложена в { $path } и начата заново
+render-pinned-take = фраза { $line }: звучит закреплённый дубль — новая озвучка его не заменяет
+render-take-unpinned = фраза { $line }: закрепление дубля снято — текст реплики изменён
+render-selected-take = фраза { $line }: звучит выбранный дубль { $take } — новая озвучка его не заменяет
+render-write-cloud-segment = запись облачного seg{ $line }: { $error }
+render-cloud-tts-failed = ⚠ сегмент { $line }: облачный TTS не удался ({ $error }) — оригинал
+render-loading-higgs = загрузка Higgs
+render-failures-kept-generated = ⚠ сегмент { $line }: { $attempts } сбоев синтеза ({ $error }) — взята сгенерированная озвучка (размах { $range } дБ)
+render-failures-kept-original = ⚠ сегмент { $line }: { $attempts } сбоев/таймаутов синтеза ({ $error }) — оставлена оригинальная реплика
+render-regenerating = сегмент { $line }: { $error } — регенерация ({ $attempt }/{ $attempts })
+render-defects-kept-generated = ⚠ сегмент { $line }: все { $attempts } попыток с дефектом ({ $defect }) — взята сгенерированная озвучка (размах { $range } дБ)
+render-silent-kept-original = ⚠ сегмент { $line }: { $attempts } попыток без звука — подставлен оригинал
+render-retry-alt-ref = альт-реф
+render-retry-temperature = temp-бамп
+render-defect-regenerating = сегмент { $line }: дефект синтеза ({ $defect }), регенерация ({ $via } { $attempt }/{ $attempts })
+render-write-segment = запись seg{ $line }: { $error }
+render-too-many-artifacts = TTS: слишком много артефактов-гудения (подряд { $in_a_row }, всего ретраев { $retries }) — регенерация не помогает. Вероятно проблема со стендом (модель/VRAM) или с реф-клипами голосов. Остановлено на сегменте { $line }.
+render-multi-take = сегмент { $line }: multi-take — выбран дубль ближе к слоту ({ $deviation }с отклонение)
+render-stretch-over-cap = сегмент { $line }: нужно растянуть x{ $needed } (слот { $slot }с), кап x{ $cap } — текст быстрее нормы
+render-silence-trimmed = обрезка тишины TTS: снято { $seconds } с у { $lines } фраз (из них паузы { $pauses } с); ускорение ушло в кап благодаря обрезке у { $into_cap } фраз
+render-fit-summary = укладка: { $over }/{ $total } сегментов выше капа ({ $share }%)
+render-fit-summary-drift = укладка: { $over }/{ $total } сегментов выше капа ({ $share }%), догон синка на { $drift }
+render-qc-start = QC: сверка { $count } { $count ->
+    [one] фразы
+    [few] фраз
+   *[many] фраз
+} транскрипцией
+render-qc-unheard = QC: { $count } из { $total } фраз не сверены — распознавание не удалось: { $reason }
+render-qc-mismatch = QC: { $count } { $count ->
+    [one] фраза не совпала
+    [few] фразы не совпали
+   *[many] фраз не совпали
+} с переводом — пересинтез
+render-qc-resynthesized = QC: сегмент { $line } пересинтезирован (попытка { $attempt })
+render-qc-unconfirmed = ⚠ QC: сегмент { $line } («{ $text }») не удалось подтвердить — проверь фразу вручную
+render-qc-kept-mismatch = ⚠ QC: сегмент { $line } не совпадает с текстом перевода — оставлена сгенерированная озвучка
+render-qc-resynth-unheard = QC: { $count } пересинтезированных фраз не сверены — распознавание не удалось: { $reason }
+render-qc-summary = QC итог: исправлено { $fixed }/{ $total }, осталось помеченных { $flagged }, не сверено { $unheard }
+render-qc-all-confirmed = QC: все фразы подтверждены транскрипцией ✓
+render-qc-rest-confirmed = QC: остальные фразы подтверждены транскрипцией
+render-laying-out = укладка дубляжа на таймлайн
+render-peak-limiter = лимитер пиков: { $lines } фраз, { $samples } сэмплов выше полки { $ceiling } опущены без клипа
+render-tempo-fit = tempo-fit всей дорожки x{ $factor }
+render-voiceover-envelope = voiceover: оригинал { $db } dB ПОД переводом, полный в паузах (динам. огибающая, { $blocks } блоков)
+render-voiceover-flat = voiceover: огибающая недоступна -> плоское приглушение
+render-mix-no-ducking = сведение: инструментал + дубль-вокал (дакинг ВЫКЛ — фон полный)
+render-mix-ducking = сведение: инструментал + дубль-вокал (дакинг ВКЛ, огибающая, { $blocks } блоков)
+render-mix-sidechain = огибающая недоступна -> сайдчейн-дакинг
+render-mix-plain = sidechain недоступен -> прямой mix
+render-loudness-off = выравнивание громкости выключено: микс как есть
+render-loudness-normalizing = нормализация громкости (EBU R128, true-peak)
+render-loudnorm-skipped = loudnorm пропущен ({ $error })
+render-track-gain = гейн дорожки { $db } dB
+render-dub-timings-not-written = тайминги дубляжа для субтитров не записаны: укладка ({ $lines } фраз, { $spans } спанов) не сопоставилась с сегментами ({ $segments }) — субтитры по таймингам оригинала
+render-dub-timing-mismatch = тайминги дубляжа: фраза { $line } вида для синтеза не совпала с сегментом проекта №{ $index }
+render-word-timings = пословные тайминги субтитров: распознавание { $count } фраз дубляжа
+render-refs-unchecked = сверка рефов: { $count } кандидатов приняты без сверки — распознавание не удалось: { $error }
+render-refs-all-failed = ⚠ спикер { $speaker }: все реф-кандидаты не прошли сверку (слышно: «{ $heard }») — беру лучший по скору
+render-speaker-ref-failed = реф спикера { $speaker }: { $error }
+render-speaker-ref = реф спикера { $speaker }: «{ $text }» ({ $seconds }с, { $candidates } { $candidates ->
+    [one] кандидат
+    [few] кандидата
+   *[many] кандидатов
+}, сверка ok)
+render-speaker-ref-unchecked = реф спикера { $speaker }: «{ $text }» ({ $seconds }с, { $candidates } { $candidates ->
+    [one] кандидат
+    [few] кандидата
+   *[many] кандидатов
+}, сверка ⚠ не пройдена)
