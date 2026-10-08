@@ -1,19 +1,22 @@
 //! Пример asr: транскрибировать WAV со словными таймстемпами, опционально с диаризацией. JSON в stdout.
 //!
-//!   asr --wav <in.wav> --tdt <каталог_TDT> [--diarize --diar <nemotron3_diar_v3.onnx>] [--lang auto]
+//!   asr --wav <in.wav> --tdt <каталог_TDT> [--diarize --diar <nemotron3_diar_v3.onnx>] [--lang auto] [--whole]
+//!
+//! Без --whole транскрипция идёт тем же путём, что в приложении (окнами по паузам); --whole — одним прогоном.
 //!
 //! Без --diarize: печатает {"segments":[{start,end,text,words:[{word,start,end}]}]}.
 //! С --diarize: печатает {"turns":[...],"n_speakers":N,"segments":[{start,end,text,speaker}]} — сегменты по
 //! сырым репликам модели; n_speakers — после свёртки, как в analyze.
 //! Время загрузки+прогона каждой стадии — в stderr.
 
-use dub_asr::{diarize, merge_turns, Asr};
+use dub_asr::{diarize, merge_turns, Asr, AsrEngine};
 
 fn main() {
     let mut wav = None;
     let mut tdt = None;
     let mut diar = None;
     let mut do_diarize = false;
+    let mut whole = false;
     let mut lang = "auto".to_string();
 
     let mut it = std::env::args().skip(1);
@@ -23,6 +26,7 @@ fn main() {
             "--tdt" => tdt = it.next(),
             "--diar" => diar = it.next(),
             "--diarize" => do_diarize = true,
+            "--whole" => whole = true,
             "--lang" => lang = it.next().unwrap_or(lang),
             other => {
                 eprintln!("неизвестный флаг: {other}");
@@ -70,7 +74,7 @@ fn main() {
     } else {
         eprintln!("[asr] загрузка модели TDT из {tdt} + транскрипция {wav} ...");
         let t0 = std::time::Instant::now();
-        let segs = match asr.transcribe(&wav, &lang) {
+        let segs = match if whole { asr.transcribe(&wav, &lang) } else { AsrEngine::transcribe(&mut asr, std::path::Path::new(&wav), &lang) } {
             Ok(s) => s,
             Err(e) => die(&format!("транскрипция не удалась: {e}")),
         };

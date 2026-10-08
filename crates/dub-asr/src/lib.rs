@@ -421,8 +421,10 @@ impl Asr {
 }
 
 impl AsrEngine for Asr {
+    // The model's attention holds a few minutes of audio, so a recording is heard in windows cut at
+    // pauses; a short one is a single window.
     fn transcribe(&mut self, wav: &Path, lang: &str) -> Result<Vec<Segment>, AsrError> {
-        Asr::transcribe(self, wav, lang)
+        Asr::transcribe_windowed(self, wav, lang, None)
     }
     // Parakeet-TDT сам определяет язык (мультиязычная модель) — lang игнорируем, как и в whole-clip.
     fn transcribe_turns(&mut self, wav: &Path, turns: &[Turn], _lang: &str) -> Result<Vec<SpeakerSegment>, AsrError> {

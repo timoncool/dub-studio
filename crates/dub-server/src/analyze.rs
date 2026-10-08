@@ -1048,7 +1048,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         emit(
             progress,
             "asr",
-            &format!("транскрипция единым прогоном на GPU ({} спикер(ов))", nsp),
+            &format!("транскрипция по окнам на GPU ({} спикер(ов))", nsp),
         );
         let ts = asr
             .transcribe(&asr_wav, &args.src_lang)
