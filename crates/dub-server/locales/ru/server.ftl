@@ -108,3 +108,30 @@ llm-openrouter-not-text = модель OpenRouter { $model } не отвечае
 llm-openrouter-not-vision = модель OpenRouter { $model } не принимает картинки — выберите vision-модель
 llm-vision-missing = нет ({ $reason })
 llm-pair = перевод: { $text }; vision: { $vision }
+
+## Media tools and OCR
+
+common-ffmpeg-exit = ffmpeg код { $code }:
+    { $tail }
+media-ffprobe-start = ffprobe запуск не удался: { $error }
+media-ffprobe-exit = ffprobe вернул код { $code }: { $stderr }
+media-ffprobe-no-streams = ffprobe: нет streams
+media-no-streams = во входе нет ни видео-, ни аудиопотока
+media-no-duration = не удалось определить длительность
+media-no-wav = ffmpeg не создал wav
+media-ffmpeg-hung = ffmpeg не завершился за { $seconds }с — убит (зависание)
+media-ffprobe-duration-exit = ffprobe duration код { $code }
+media-env-filter-script = env filter-скрипт: { $error }
+media-no-sample-rate = { $path }: частота звука не прочитана ({ $stderr })
+ocr-no-blur = { $error }; без блюра
+ocr-models-missing = модели OCR не найдены
+ocr-detection-failed = OCR-детекция не удалась ({ $error })
+ocr-summary = OCR: { $regions } { $regions ->
+    [one] регион
+    [few] региона
+   *[many] регионов
+}, { $localize } localize, { $bands } band-{ $bands ->
+    [one] спан
+    [few] спана
+   *[many] спанов
+}, sub_y={ $sub_y }

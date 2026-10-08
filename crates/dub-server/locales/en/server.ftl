@@ -104,3 +104,28 @@ llm-openrouter-not-text = the OpenRouter model { $model } does not answer in tex
 llm-openrouter-not-vision = the OpenRouter model { $model } does not accept images; choose a vision model
 llm-vision-missing = none ({ $reason })
 llm-pair = translation: { $text }; vision: { $vision }
+
+## Media tools and OCR
+
+common-ffmpeg-exit = ffmpeg exit code { $code }:
+    { $tail }
+media-ffprobe-start = ffprobe failed to start: { $error }
+media-ffprobe-exit = ffprobe exited with code { $code }: { $stderr }
+media-ffprobe-no-streams = ffprobe: no streams
+media-no-streams = the input has neither a video nor an audio stream
+media-no-duration = the duration could not be determined
+media-no-wav = ffmpeg did not create the wav
+media-ffmpeg-hung = ffmpeg did not finish in { $seconds }s and was killed (it hung)
+media-ffprobe-duration-exit = ffprobe duration exit code { $code }
+media-env-filter-script = envelope filter script: { $error }
+media-no-sample-rate = { $path }: the sample rate was not read ({ $stderr })
+ocr-no-blur = { $error }; no blur
+ocr-models-missing = the OCR models were not found
+ocr-detection-failed = OCR detection failed ({ $error })
+ocr-summary = OCR: { $regions } { $regions ->
+    [one] region
+   *[other] regions
+}, { $localize } to localize, { $bands } band { $bands ->
+    [one] span
+   *[other] spans
+}, sub_y={ $sub_y }

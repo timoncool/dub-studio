@@ -80,3 +80,22 @@ llm-openrouter-not-text = OpenRouter 模型 { $model } 不能输出文本；请�
 llm-openrouter-not-vision = OpenRouter 模型 { $model } 不接受图片；请选择视觉模型
 llm-vision-missing = 无（{ $reason }）
 llm-pair = 翻译：{ $text }；视觉：{ $vision }
+
+## Media tools and OCR
+
+common-ffmpeg-exit = ffmpeg 退出码 { $code }：
+    { $tail }
+media-ffprobe-start = ffprobe 启动失败：{ $error }
+media-ffprobe-exit = ffprobe 退出码 { $code }：{ $stderr }
+media-ffprobe-no-streams = ffprobe：没有流
+media-no-streams = 输入中既没有视频流也没有音频流
+media-no-duration = 无法确定时长
+media-no-wav = ffmpeg 没有生成 wav
+media-ffmpeg-hung = ffmpeg 在 { $seconds } 秒内未结束，已被终止（卡死）
+media-ffprobe-duration-exit = ffprobe duration 退出码 { $code }
+media-env-filter-script = 包络滤镜脚本：{ $error }
+media-no-sample-rate = { $path }：未读取到采样率（{ $stderr }）
+ocr-no-blur = { $error }；不模糊
+ocr-models-missing = 未找到 OCR 模型
+ocr-detection-failed = OCR 检测失败（{ $error }）
+ocr-summary = OCR：{ $regions } 个区域，{ $localize } 个待本地化，{ $bands } 个条带，sub_y={ $sub_y }

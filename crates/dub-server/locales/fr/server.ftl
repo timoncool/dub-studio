@@ -104,3 +104,28 @@ llm-openrouter-not-text = le modèle OpenRouter { $model } ne répond pas en tex
 llm-openrouter-not-vision = le modèle OpenRouter { $model } n’accepte pas les images ; choisissez un modèle de vision
 llm-vision-missing = aucun ({ $reason })
 llm-pair = traduction : { $text } ; vision : { $vision }
+
+## Media tools and OCR
+
+common-ffmpeg-exit = ffmpeg a quitté avec le code { $code } :
+    { $tail }
+media-ffprobe-start = ffprobe n’a pas pu démarrer : { $error }
+media-ffprobe-exit = ffprobe a quitté avec le code { $code } : { $stderr }
+media-ffprobe-no-streams = ffprobe : aucun flux
+media-no-streams = l’entrée n’a ni flux vidéo ni flux audio
+media-no-duration = impossible de déterminer la durée
+media-no-wav = ffmpeg n’a pas créé le wav
+media-ffmpeg-hung = ffmpeg ne s’est pas terminé en { $seconds } s et a été arrêté (bloqué)
+media-ffprobe-duration-exit = ffprobe duration a quitté avec le code { $code }
+media-env-filter-script = script de filtre d’enveloppe : { $error }
+media-no-sample-rate = { $path } : la fréquence d’échantillonnage n’a pas été lue ({ $stderr })
+ocr-no-blur = { $error } ; sans flou
+ocr-models-missing = les modèles OCR sont introuvables
+ocr-detection-failed = la détection OCR a échoué ({ $error })
+ocr-summary = OCR : { $regions } { $regions ->
+    [one] région
+   *[other] régions
+}, { $localize } à localiser, { $bands } { $bands ->
+    [one] bande
+   *[other] bandes
+}, sub_y={ $sub_y }

@@ -36,14 +36,14 @@ fn load_cached(models_root: &Path) -> Option<CachedCatalog> {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
-            tracing::error!("кэш каталога OpenRouter {} не читается: {e}", path.display());
+            tracing::error!("the OpenRouter catalogue cache {} is unreadable: {e}", path.display());
             return None;
         }
     };
     match serde_json::from_str::<CachedCatalog>(&text) {
         Ok(cached) => Some(cached),
         Err(e) => {
-            tracing::error!("кэш каталога OpenRouter {} битый ({e}) — будет скачан заново", path.display());
+            tracing::error!("the OpenRouter catalogue cache {} is broken ({e}); it will be downloaded again", path.display());
             None
         }
     }
@@ -53,7 +53,7 @@ fn save_cached(models_root: &Path, cached: &CachedCatalog) -> Result<(), String>
     std::fs::create_dir_all(models_root).map_err(|e| format!("{}: {e}", models_root.display()))?;
     let path = cache_path(models_root);
     let tmp = path.with_extension("json.tmp");
-    let body = serde_json::to_vec(cached).map_err(|e| format!("каталог OpenRouter: {e}"))?;
+    let body = serde_json::to_vec(cached).map_err(|e| t!("openrouter-catalog-failed", error = e.to_string()))?;
     std::fs::write(&tmp, body).map_err(|e| format!("{}: {e}", tmp.display()))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
 }
@@ -90,7 +90,7 @@ pub fn describe(models_root: &Path, id: &str) -> Option<CatalogModel> {
     let known = match catalog(models_root) {
         Ok(cached) => cached.models.into_iter().find(|model| model.id == id),
         Err(e) => {
-            tracing::error!("каталог OpenRouter недоступен ({e}) — модель {id} идёт без проверки возможностей");
+            tracing::error!("the OpenRouter catalogue is unavailable ({e}); model {id} goes without a capability check");
             return None;
         }
     };
@@ -100,7 +100,7 @@ pub fn describe(models_root: &Path, id: &str) -> Option<CatalogModel> {
     match refresh(models_root) {
         Ok(cached) => cached.models.into_iter().find(|model| model.id == id),
         Err(e) => {
-            tracing::error!("каталог OpenRouter не обновился ({e}) — модель {id} идёт без проверки возможностей");
+            tracing::error!("the OpenRouter catalogue did not refresh ({e}); model {id} goes without a capability check");
             None
         }
     }
@@ -117,7 +117,7 @@ pub fn total_usage_usd(models_root: &Path) -> Option<f64> {
     match usage {
         Ok(usage) => Some(usage),
         Err(e) => {
-            tracing::warn!("затраты OpenRouter не прочитаны: {e:#}");
+            tracing::warn!("OpenRouter spending was not read: {e:#}");
             None
         }
     }

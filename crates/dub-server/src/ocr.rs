@@ -31,7 +31,7 @@ pub fn stage(
 ) {
     match detect(paths, progress) {
         Ok((regions, raw)) => compose_captions(args, paths, proj, &regions, &raw, vw, vh, total, progress),
-        Err(e) => emit(progress, "ocr_detect", &format!("{e}; без блюра")),
+        Err(e) => emit(progress, "ocr_detect", &t!("ocr-no-blur", error = e)),
     }
 }
 
@@ -40,13 +40,13 @@ pub fn stage(
 pub fn detect(paths: &AnalyzePaths, progress: &Progress) -> Result<(Vec<Region>, Vec<RawDet>), String> {
     let ocr_paths = OcrPaths::under(&paths.models_root);
     if !ocr_paths.all_exist() {
-        return Err("модели OCR не найдены".into());
+        return Err(t!("ocr-models-missing"));
     }
-    emit(progress, "ocr_detect", "детекция вшитого текста (PP-OCR DBNet+CRNN)");
+    emit(progress, "ocr_detect", &t!("ocr-detecting-burned-text", model = "PP-OCR DBNet+CRNN"));
     // detect_regions: fps=caption_fps, дефолты как в питоне (min_dur .3, iou .3, pad 8, jitter 20, score .4).
     let fps = paths.caption_fps.max(1);
     detect_regions(&paths.input, &paths.work_dir, &ocr_paths, fps, 0.3, 0.3, 8, 20.0, 0.4)
-        .map_err(|e| format!("OCR-детекция не удалась ({e})"))
+        .map_err(|e| t!("ocr-detection-failed", error = e.to_string()))
 }
 
 /// Раскладка + блюр субтитр-полосы + caption-композит по готовым детекциям (дёшево; зависит от перевода).
@@ -128,12 +128,12 @@ pub fn compose_captions(
     emit(
         progress,
         "ocr_detect",
-        &format!(
-            "OCR: {} регионов, {} localize, {} band-спанов, sub_y={:?}",
-            regions.len(),
-            localize.len(),
-            band_blur.len(),
-            proj.captions.sub_y
+        &t!(
+            "ocr-summary",
+            regions = regions.len(),
+            localize = localize.len(),
+            bands = band_blur.len(),
+            sub_y = format!("{:?}", proj.captions.sub_y)
         ),
     );
 }

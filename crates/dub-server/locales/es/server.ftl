@@ -104,3 +104,28 @@ llm-openrouter-not-text = el modelo de OpenRouter { $model } no responde con tex
 llm-openrouter-not-vision = el modelo de OpenRouter { $model } no acepta imágenes; elige un modelo de visión
 llm-vision-missing = ninguno ({ $reason })
 llm-pair = traducción: { $text }; visión: { $vision }
+
+## Media tools and OCR
+
+common-ffmpeg-exit = ffmpeg terminó con el código { $code }:
+    { $tail }
+media-ffprobe-start = ffprobe no se pudo iniciar: { $error }
+media-ffprobe-exit = ffprobe terminó con el código { $code }: { $stderr }
+media-ffprobe-no-streams = ffprobe: no hay streams
+media-no-streams = la entrada no tiene ni pista de vídeo ni de audio
+media-no-duration = no se pudo determinar la duración
+media-no-wav = ffmpeg no creó el wav
+media-ffmpeg-hung = ffmpeg no terminó en { $seconds } s y se detuvo (se colgó)
+media-ffprobe-duration-exit = ffprobe duration terminó con el código { $code }
+media-env-filter-script = script de filtro de envolvente: { $error }
+media-no-sample-rate = { $path }: no se leyó la frecuencia de muestreo ({ $stderr })
+ocr-no-blur = { $error }; sin desenfoque
+ocr-models-missing = no se encontraron los modelos de OCR
+ocr-detection-failed = la detección OCR falló ({ $error })
+ocr-summary = OCR: { $regions } { $regions ->
+    [one] región
+   *[other] regiones
+}, { $localize } para localizar, { $bands } { $bands ->
+    [one] franja
+   *[other] franjas
+}, sub_y={ $sub_y }

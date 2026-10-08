@@ -252,7 +252,7 @@ pub fn proxy_mode(sel: &Value) -> dub_llm::net::ProxyMode {
         if let Some(mode) = ProxyMode::parse(mode) {
             return mode;
         }
-        tracing::error!("proxy_mode {mode:?} в active.json не распознан — считаю «как в Windows»");
+        tracing::error!("proxy_mode {mode:?} in active.json is not recognized; using the Windows setting");
     }
     if pick(sel, "proxy_on") == Some("1") && pick(sel, "proxy_url").is_some() {
         ProxyMode::Custom
@@ -287,11 +287,11 @@ pub fn apply_proxy_route(mroot: &Path) {
     let settings = proxy_settings(mroot);
     if settings.mode == dub_llm::net::ProxyMode::Custom {
         match dub_llm::net::normalize(settings.address.as_deref().unwrap_or_default(), settings.kind) {
-            Ok(url) => tracing::info!("прокси: свой, {}", dub_llm::net::masked(url.as_str())),
-            Err(e) => tracing::error!("прокси: свой адрес не читается ({e:#}) — запросы идут напрямую, пока его не исправят в настройках"),
+            Ok(url) => tracing::info!("proxy: custom, {}", dub_llm::net::masked(url.as_str())),
+            Err(e) => tracing::error!("proxy: the custom address is unreadable ({e:#}); requests go direct until it is fixed in the settings"),
         }
     } else {
-        tracing::info!("прокси: {}", settings.mode.as_str());
+        tracing::info!("proxy: {}", settings.mode.as_str());
     }
     dub_llm::net::set(settings);
 }
@@ -376,7 +376,7 @@ pub fn llm_backend(mroot: &Path, stage: &str) -> LlmBackend {
     if let Some(value) = pick(&sel, key) {
         match LlmBackend::parse(value) {
             Some(backend) => return backend,
-            None => tracing::error!("{key}={value:?} в active.json не распознан — беру прежние флаги or_*_on"),
+            None => tracing::error!("{key}={value:?} in active.json is not recognized; using the old or_*_on flags"),
         }
     }
     // Прежний формат: vision шёл тем же провайдером, что перевод (or_vision_on выбирал лишь отдельную модель).
