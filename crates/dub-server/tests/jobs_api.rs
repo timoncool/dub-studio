@@ -85,7 +85,7 @@ async fn interrupted_job_is_listed_and_resumes_with_same_kind_and_args() {
     assert_eq!(st, StatusCode::OK);
     assert_eq!(snap["status"], "error", "{snap}");
     assert_eq!(snap["pid"], PID);
-    assert!(snap["error"].as_str().is_some_and(|e| e.contains("LLM недоступен")), "{snap}");
+    assert!(snap["error"].as_str().is_some_and(|e| e.contains("the LLM is unavailable")), "{snap}");
     // Снапшот живёт в истории: второй читатель тоже его видит.
     let (_, again) = call(&app, "GET", &format!("/jobs/{job_id}")).await;
     assert_eq!(again["status"], "error");

@@ -245,3 +245,41 @@ tts-silent-after-cleanup = no speech left after cleaning the text, so silence: {
 } ({ $lines })
 mcp-bad-speaker-count = speaker_count: a whole number from 0 to { $max } is expected
 mcp-speakers-without-diarize = speaker_count above 1 does not go with diarize=false
+
+## Routes: projects, voices, setup, translation, export, jobs, alignment
+
+project-serialize = serializing project.json: { $error }
+project-delete-failed = deleting the project { $path }: { $error }
+setup-no-ids = ids is empty
+setup-fetching-missing = Fetching the models this feature still needs…
+setup-diarization-missing = The diarization model did not download ({ $error }); the analysis goes on without telling the speakers apart
+setup-pick-model-files = Model file(s)
+setup-pick-models-folder = Folder with ready models
+setup-no-folder = there is no folder { $path }
+voices-not-found = voice { $name } was not found in voices/
+voices-no-vocals = no vocals to measure F0 on; analyze first
+voices-speakers-changed = voices by slots: the speakers changed while the voice was measured; the project was left as it was, run it again
+analyze-args-not-object = analyze args: an object was expected
+cost-analyze = OpenRouter: ${ $spent } spent on the analysis (${ $total } used in total)
+cost-run = OpenRouter: ${ $spent } spent on the run (${ $total } used in total)
+translate-lines-to = Translating { $count } { $count ->
+    [one] line
+   *[other] lines
+} → { $lang }
+translate-note = translation: { $note }
+translate-titles-failed = the titles were not translated ({ $error }); they stay in the source language in the video
+translate-titles-error = translating the titles: { $error }
+translate-lines-changed = translation: the lines or titles changed while the translation ran; the project was left as it was, run the translation again
+export-pick-folder = Where to save the results
+export-copy-failed = copying to { $path }: { $error }
+jobs-wait-not-number = wait: a number of seconds was expected
+jobs-unknown-kind = unknown job kind in job.json: { $kind }
+jobs-not-resumable = a { $kind } job cannot be resumed
+align-no-source-text = aligning to speech: the lines have no text in the original language (the subtitles were imported in the target language)
+align-no-vocals = aligning to speech: the project has no vocal track; analyze first
+align-recognizing = aligning to speech: recognizing the words
+align-recognition-failed = aligning to speech: recognition: { $error }
+align-no-speech = aligning to speech: no speech was recognized; the timings were not changed
+align-mismatch = aligning to speech: the lines did not match the speech ({ $share }% matched); the timings were not changed
+align-lines-changed = aligning to speech: the lines changed during recognition; the timings were not changed, run the alignment again
+align-done = aligned to speech: { $share }% of the lines by words, timing changed for { $changed }; offset { $offset } s

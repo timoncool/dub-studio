@@ -191,3 +191,38 @@ translate-coverage-left = 翻译覆盖：仍有 { $count } 行未翻译
 tts-silent-after-cleanup = 清理文本后没有可读内容，保持静音：{ $count } 句（{ $lines }）
 mcp-bad-speaker-count = speaker_count：应为 0 到 { $max } 的整数
 mcp-speakers-without-diarize = speaker_count 大于 1 时不能与 diarize=false 同用
+
+## Routes: projects, voices, setup, translation, export, jobs, alignment
+
+project-serialize = 序列化 project.json：{ $error }
+project-delete-failed = 删除项目 { $path }：{ $error }
+setup-no-ids = ids 为空
+setup-fetching-missing = 正在下载此功能缺少的模型…
+setup-diarization-missing = 说话人分离模型未能下载（{ $error }）；分析将不区分说话人
+setup-pick-model-files = 模型文件
+setup-pick-models-folder = 包含现成模型的文件夹
+setup-no-folder = 文件夹 { $path } 不存在
+voices-not-found = 在 voices/ 中未找到音色 { $name }
+voices-no-vocals = 没有可测量 F0 的人声；请先分析
+voices-speakers-changed = 按槽位分配音色：测量音色期间说话人发生了变化；项目未修改，请重新运行
+analyze-args-not-object = analyze 参数：应为对象
+cost-analyze = OpenRouter：本次分析花费 ${ $spent }（累计 ${ $total }）
+cost-run = OpenRouter：本次运行花费 ${ $spent }（累计 ${ $total }）
+translate-lines-to = 正在翻译 { $count } 行 → { $lang }
+translate-note = 翻译：{ $note }
+translate-titles-failed = 标题未翻译（{ $error }）；视频中将保留原语言
+translate-titles-error = 翻译标题：{ $error }
+translate-lines-changed = 翻译：翻译期间台词或标题发生了变化；项目未修改，请重新翻译
+export-pick-folder = 结果保存位置
+export-copy-failed = 复制到 { $path }：{ $error }
+jobs-wait-not-number = wait：应为秒数
+jobs-unknown-kind = job.json 中的任务类型未知：{ $kind }
+jobs-not-resumable = { $kind } 任务无法继续
+align-no-source-text = 按语音对齐：台词没有原语言文本（字幕以目标语言导入）
+align-no-vocals = 按语音对齐：项目没有人声轨；请先分析
+align-recognizing = 按语音对齐：正在识别单词
+align-recognition-failed = 按语音对齐：识别：{ $error }
+align-no-speech = 按语音对齐：未识别到语音；时间未更改
+align-mismatch = 按语音对齐：台词与语音不匹配（匹配 { $share }%）；时间未更改
+align-lines-changed = 按语音对齐：识别期间台词发生了变化；时间未更改，请重新对齐
+align-done = 已按语音对齐：{ $share }% 的台词按单词对齐，{ $changed } 句时间已更改；偏移 { $offset } 秒

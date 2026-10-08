@@ -245,3 +245,41 @@ tts-silent-after-cleanup = no queda habla tras limpiar el texto, así que silenc
 } ({ $lines })
 mcp-bad-speaker-count = speaker_count: se espera un número entero de 0 a { $max }
 mcp-speakers-without-diarize = speaker_count mayor que 1 no es compatible con diarize=false
+
+## Routes: projects, voices, setup, translation, export, jobs, alignment
+
+project-serialize = serializando project.json: { $error }
+project-delete-failed = eliminando el proyecto { $path }: { $error }
+setup-no-ids = ids está vacío
+setup-fetching-missing = Descargando los modelos que faltan para esta función…
+setup-diarization-missing = El modelo de diarización no se descargó ({ $error }); el análisis seguirá sin separar a los hablantes
+setup-pick-model-files = Archivo(s) del modelo
+setup-pick-models-folder = Carpeta con modelos listos
+setup-no-folder = no existe la carpeta { $path }
+voices-not-found = no se encontró la voz { $name } en voices/
+voices-no-vocals = no hay voz para medir F0; primero analiza
+voices-speakers-changed = voces por espacios: los hablantes cambiaron mientras se medía la voz; el proyecto no se modificó, ejecútalo de nuevo
+analyze-args-not-object = argumentos de analyze: se esperaba un objeto
+cost-analyze = OpenRouter: ${ $spent } gastados en el análisis (${ $total } usados en total)
+cost-run = OpenRouter: ${ $spent } gastados en la ejecución (${ $total } usados en total)
+translate-lines-to = Traduciendo { $count } { $count ->
+    [one] línea
+   *[other] líneas
+} → { $lang }
+translate-note = traducción: { $note }
+translate-titles-failed = los títulos no se tradujeron ({ $error }); en el vídeo quedarán en el idioma original
+translate-titles-error = traduciendo los títulos: { $error }
+translate-lines-changed = traducción: las frases o los títulos cambiaron durante la traducción; el proyecto no se modificó, vuelve a traducir
+export-pick-folder = Dónde guardar los resultados
+export-copy-failed = copiando a { $path }: { $error }
+jobs-wait-not-number = wait: se esperaba un número de segundos
+jobs-unknown-kind = tipo de tarea desconocido en job.json: { $kind }
+jobs-not-resumable = una tarea { $kind } no se puede reanudar
+align-no-source-text = alineación con el habla: las frases no tienen texto en el idioma original (los subtítulos se importaron en el idioma de destino)
+align-no-vocals = alineación con el habla: el proyecto no tiene pista de voz; primero analiza
+align-recognizing = alineación con el habla: reconociendo las palabras
+align-recognition-failed = alineación con el habla: reconocimiento: { $error }
+align-no-speech = alineación con el habla: no se reconoció habla; los tiempos no se cambiaron
+align-mismatch = alineación con el habla: las frases no coincidieron con el habla ({ $share }% emparejado); los tiempos no se cambiaron
+align-lines-changed = alineación con el habla: las frases cambiaron durante el reconocimiento; los tiempos no se cambiaron, vuelve a alinear
+align-done = alineado con el habla: { $share }% de las frases por palabras, tiempos cambiados en { $changed }; desfase { $offset } s

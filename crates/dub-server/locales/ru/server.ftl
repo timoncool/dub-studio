@@ -259,3 +259,42 @@ tts-silent-after-cleanup = без речи после чистки текста 
 } ({ $lines })
 mcp-bad-speaker-count = speaker_count: ожидается целое число от 0 до { $max }
 mcp-speakers-without-diarize = speaker_count больше 1 несовместим с diarize=false
+
+## Routes: projects, voices, setup, translation, export, jobs, alignment
+
+project-serialize = сериализация project.json: { $error }
+project-delete-failed = удаление проекта { $path }: { $error }
+setup-no-ids = ids пуст
+setup-fetching-missing = Догружаю недостающие модели для этой функции…
+setup-diarization-missing = Модель диаризации не скачалась ({ $error }) — анализ пойдёт без разделения спикеров
+setup-pick-model-files = Файл(ы) модели
+setup-pick-models-folder = Папка с готовыми моделями
+setup-no-folder = нет папки { $path }
+voices-not-found = голос { $name } не найден в voices/
+voices-no-vocals = нет вокала для замера F0 — сначала analyze
+voices-speakers-changed = голоса по слотам: спикеры изменились, пока мерился голос — проект не менялся, запустите ещё раз
+analyze-args-not-object = analyze args: ожидался объект
+cost-analyze = OpenRouter: потрачено ${ $spent } за анализ (всего использовано ${ $total })
+cost-run = OpenRouter: потрачено ${ $spent } за прогон (всего использовано ${ $total })
+translate-lines-to = Перевод { $count } { $count ->
+    [one] строки
+    [few] строк
+   *[many] строк
+} → { $lang }
+translate-note = перевод: { $note }
+translate-titles-failed = титры не переведены ({ $error }) — в видео они останутся на исходном языке
+translate-titles-error = перевод титров: { $error }
+translate-lines-changed = перевод: реплики или титры изменились, пока шёл перевод — проект не менялся, запустите перевод ещё раз
+export-pick-folder = Куда сохранить результаты
+export-copy-failed = копирование в { $path }: { $error }
+jobs-wait-not-number = wait: ожидалось число секунд
+jobs-unknown-kind = неизвестный вид джобы в job.json: { $kind }
+jobs-not-resumable = джоба { $kind } не продолжается
+align-no-source-text = выравнивание по речи: у реплик нет текста на языке оригинала (субтитры импортированы на языке перевода)
+align-no-vocals = выравнивание по речи: нет дорожки вокала проекта — сначала анализ
+align-recognizing = выравнивание по речи: распознавание слов
+align-recognition-failed = выравнивание по речи: распознавание: { $error }
+align-no-speech = выравнивание по речи: речь не распознана — тайминги не менялись
+align-mismatch = выравнивание по речи: реплики не совпали с речью (сопоставлено { $share }%) — тайминги не менялись
+align-lines-changed = выравнивание по речи: реплики изменились, пока шло распознавание — тайминги не менялись, запустите выравнивание ещё раз
+align-done = выровнено по речи: { $share }% реплик по словам, изменён тайминг у { $changed }; сдвиг { $offset } с
