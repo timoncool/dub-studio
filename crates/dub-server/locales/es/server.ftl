@@ -461,3 +461,34 @@ voices-pack-done = listo: { $count } { $count ->
     [one] archivo
    *[other] archivos
 }
+
+## Downloads by link
+
+url-no-fetch = no existe la descarga { $id }
+url-stopped = detenido
+url-already-downloading = este enlace ya se está descargando: { $id }
+url-probe-not-json = la respuesta de yt-dlp -J no es JSON: { $error }; { $stderr }
+url-interrupted = la descarga se interrumpió al cerrarse el estudio; lo descargado está en su carpeta y se reanudará desde ahí
+url-not-a-link = «{ $url }» no es un enlace: { $error }
+url-not-http = «{ $url }» no es un enlace http(s)
+url-bad-subs-lang = «{ $lang }» no es un código de idioma de subtítulos
+url-cookies-not-file = { $path } no es un archivo cookies.txt de hasta 1 MB
+url-cookies-empty-or-large = cookies.txt está vacío o supera 1 MB
+url-thread-failed = el hilo de descarga no se inició: { $error }
+url-cookies-gone = el cookies.txt de esta descarga desapareció de su carpeta; vuelve a iniciar la descarga con cookies
+url-disk-space = se necesitan unos { $need } MB, hay { $free } MB libres
+url-no-subs = el vídeo no tiene subtítulos «{ $lang }» subidos por personas (hay: { $have })
+url-no-subs-none = el vídeo no tiene subtítulos «{ $lang }» subidos por personas (no hay ninguno)
+url-no-media-file = yt-dlp terminó, pero no hay archivo de vídeo en { $path }: { $stderr }
+url-subs-failed = los subtítulos «{ $lang }» no se descargaron ({ $code }): { $error }
+url-ytdlp-start = iniciando yt-dlp: { $error }
+url-ytdlp-wait = esperando a yt-dlp: { $error }
+url-still-downloading = { $id } aún se está descargando
+url-cancelled-removed = { $id } se canceló y lo descargado se eliminó: inicia una descarga nueva
+url-still-stopping = { $id } aún se está deteniendo; vuelve a intentarlo en un par de segundos
+url-cancel-first = { $id } aún se está descargando; cancélalo primero
+url-no-subs-file = yt-dlp terminó sin archivo de subtítulos en { $path }: { $stderr }
+url-no-parent = { $path } no tiene carpeta superior
+url-subs-empty = los subtítulos { $path } no tienen ninguna frase
+url-ytdlp-missing = el componente ytdlp no está descargado
+url-bad-quality = calidad «{ $quality }»: best, 1080, 720, 480 o audio

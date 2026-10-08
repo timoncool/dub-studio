@@ -461,3 +461,34 @@ voices-pack-done = pronto: { $count } { $count ->
     [one] arquivo
    *[other] arquivos
 }
+
+## Downloads by link
+
+url-no-fetch = não existe o download { $id }
+url-stopped = interrompido
+url-already-downloading = este link já está sendo baixado: { $id }
+url-probe-not-json = a resposta do yt-dlp -J não é JSON: { $error }; { $stderr }
+url-interrupted = o download parou junto com o estúdio; o que foi baixado está na pasta dele e continuará dali
+url-not-a-link = “{ $url }” não é um link: { $error }
+url-not-http = “{ $url }” não é um link http(s)
+url-bad-subs-lang = “{ $lang }” não é um código de idioma de legendas
+url-cookies-not-file = { $path } não é um arquivo cookies.txt de até 1 MB
+url-cookies-empty-or-large = cookies.txt está vazio ou passa de 1 MB
+url-thread-failed = a thread de download não iniciou: { $error }
+url-cookies-gone = o cookies.txt deste download sumiu da pasta; comece o download de novo com cookies
+url-disk-space = são necessários cerca de { $need } MB, há { $free } MB livres
+url-no-subs = o vídeo não tem legendas “{ $lang }” feitas por pessoas (há: { $have })
+url-no-subs-none = o vídeo não tem legendas “{ $lang }” feitas por pessoas (não há nenhuma)
+url-no-media-file = o yt-dlp terminou, mas não há arquivo de vídeo em { $path }: { $stderr }
+url-subs-failed = as legendas “{ $lang }” não foram baixadas ({ $code }): { $error }
+url-ytdlp-start = iniciando o yt-dlp: { $error }
+url-ytdlp-wait = aguardando o yt-dlp: { $error }
+url-still-downloading = { $id } ainda está sendo baixado
+url-cancelled-removed = { $id } foi cancelado e o que foi baixado foi removido: comece um novo download
+url-still-stopping = { $id } ainda está parando; tente de novo em alguns segundos
+url-cancel-first = { $id } ainda está sendo baixado; cancele primeiro
+url-no-subs-file = o yt-dlp terminou sem arquivo de legendas em { $path }: { $stderr }
+url-no-parent = { $path } não tem pasta pai
+url-subs-empty = as legendas { $path } não têm nenhuma fala
+url-ytdlp-missing = o componente ytdlp não foi baixado
+url-bad-quality = qualidade “{ $quality }”: best, 1080, 720, 480 ou audio

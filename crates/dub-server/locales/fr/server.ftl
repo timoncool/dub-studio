@@ -461,3 +461,34 @@ voices-pack-done = terminé : { $count } { $count ->
     [one] fichier
    *[other] fichiers
 }
+
+## Downloads by link
+
+url-no-fetch = le téléchargement { $id } n’existe pas
+url-stopped = arrêté
+url-already-downloading = ce lien est déjà en téléchargement : { $id }
+url-probe-not-json = la réponse de yt-dlp -J n’est pas du JSON : { $error } ; { $stderr }
+url-interrupted = le téléchargement s’est arrêté avec le studio ; ce qui a été reçu est dans son dossier et reprendra de là
+url-not-a-link = « { $url } » n’est pas un lien : { $error }
+url-not-http = « { $url } » n’est pas un lien http(s)
+url-bad-subs-lang = « { $lang } » n’est pas un code de langue de sous-titres
+url-cookies-not-file = { $path } n’est pas un fichier cookies.txt de 1 Mo au plus
+url-cookies-empty-or-large = cookies.txt est vide ou dépasse 1 Mo
+url-thread-failed = le fil de téléchargement n’a pas démarré : { $error }
+url-cookies-gone = le cookies.txt de ce téléchargement a disparu de son dossier ; relancez le téléchargement avec les cookies
+url-disk-space = il faut environ { $need } Mo, { $free } Mo sont libres
+url-no-subs = la vidéo n’a pas de sous-titres « { $lang } » faits par des humains (il y a : { $have })
+url-no-subs-none = la vidéo n’a pas de sous-titres « { $lang } » faits par des humains (il n’y en a aucun)
+url-no-media-file = yt-dlp a terminé, mais il n’y a pas de fichier vidéo dans { $path } : { $stderr }
+url-subs-failed = les sous-titres « { $lang } » ne se sont pas téléchargés ({ $code }) : { $error }
+url-ytdlp-start = lancement de yt-dlp : { $error }
+url-ytdlp-wait = attente de yt-dlp : { $error }
+url-still-downloading = { $id } est encore en téléchargement
+url-cancelled-removed = { $id } a été annulé et ce qui a été reçu est supprimé : lancez un nouveau téléchargement
+url-still-stopping = { $id } est encore en train de s’arrêter ; réessayez dans quelques secondes
+url-cancel-first = { $id } est encore en téléchargement ; annulez-le d’abord
+url-no-subs-file = yt-dlp a terminé sans fichier de sous-titres dans { $path } : { $stderr }
+url-no-parent = { $path } n’a pas de dossier parent
+url-subs-empty = les sous-titres { $path } n’ont aucune réplique
+url-ytdlp-missing = le composant ytdlp n’est pas téléchargé
+url-bad-quality = qualité « { $quality } » : best, 1080, 720, 480 ou audio

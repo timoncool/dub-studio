@@ -461,3 +461,34 @@ voices-pack-done = done: { $count } { $count ->
     [one] file
    *[other] files
 }
+
+## Downloads by link
+
+url-no-fetch = there is no download { $id }
+url-stopped = stopped
+url-already-downloading = this link is already downloading: { $id }
+url-probe-not-json = the yt-dlp -J answer is not JSON: { $error }; { $stderr }
+url-interrupted = the download stopped when the studio closed; what was fetched is in its folder and resumes from there
+url-not-a-link = “{ $url }” is not a link: { $error }
+url-not-http = “{ $url }” is not an http(s) link
+url-bad-subs-lang = “{ $lang }” is not a subtitle language code
+url-cookies-not-file = { $path } is not a cookies.txt file of up to 1 MB
+url-cookies-empty-or-large = cookies.txt is empty or larger than 1 MB
+url-thread-failed = the download thread did not start: { $error }
+url-cookies-gone = this download’s cookies.txt is gone from its folder; start the download again with cookies
+url-disk-space = about { $need } MB is needed, { $free } MB is free
+url-no-subs = the video has no human-made “{ $lang }” subtitles (there are: { $have })
+url-no-subs-none = the video has no human-made “{ $lang }” subtitles (there are none at all)
+url-no-media-file = yt-dlp finished, but there is no video file in { $path }: { $stderr }
+url-subs-failed = the “{ $lang }” subtitles did not download ({ $code }): { $error }
+url-ytdlp-start = starting yt-dlp: { $error }
+url-ytdlp-wait = waiting for yt-dlp: { $error }
+url-still-downloading = { $id } is still downloading
+url-cancelled-removed = { $id } was cancelled and what was fetched is removed: start a new download
+url-still-stopping = { $id } is still stopping; try again in a couple of seconds
+url-cancel-first = { $id } is still downloading; cancel it first
+url-no-subs-file = yt-dlp finished without a subtitle file in { $path }: { $stderr }
+url-no-parent = { $path } has no parent folder
+url-subs-empty = the subtitles { $path } have no lines at all
+url-ytdlp-missing = the ytdlp component is not downloaded
+url-bad-quality = quality “{ $quality }”: best, 1080, 720, 480 or audio

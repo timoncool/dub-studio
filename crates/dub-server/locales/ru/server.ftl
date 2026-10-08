@@ -483,3 +483,34 @@ voices-pack-done = готово: { $count } { $count ->
     [few] файла
    *[many] файлов
 }
+
+## Downloads by link
+
+url-no-fetch = нет загрузки { $id }
+url-stopped = остановлено
+url-already-downloading = эта ссылка уже качается: { $id }
+url-probe-not-json = ответ yt-dlp -J не JSON: { $error }; { $stderr }
+url-interrupted = загрузка оборвалась вместе со студией; скачанное лежит в её папке и докачается с места
+url-not-a-link = «{ $url }» не ссылка: { $error }
+url-not-http = «{ $url }» — не http(s)-ссылка
+url-bad-subs-lang = «{ $lang }» — не код языка субтитров
+url-cookies-not-file = { $path } — не файл cookies.txt до 1 МБ
+url-cookies-empty-or-large = cookies.txt пуст или больше 1 МБ
+url-thread-failed = поток загрузки не запустился: { $error }
+url-cookies-gone = cookies.txt этой загрузки пропал из её папки — начните загрузку заново с cookies
+url-disk-space = нужно около { $need } МБ, свободно { $free } МБ
+url-no-subs = у видео нет субтитров «{ $lang }», загруженных людьми (есть: { $have })
+url-no-subs-none = у видео нет субтитров «{ $lang }», загруженных людьми (есть: никаких)
+url-no-media-file = yt-dlp закончил, но файла видео нет в { $path }: { $stderr }
+url-subs-failed = субтитры «{ $lang }» не скачались ({ $code }): { $error }
+url-ytdlp-start = запуск yt-dlp: { $error }
+url-ytdlp-wait = ожидание yt-dlp: { $error }
+url-still-downloading = { $id } ещё качается
+url-cancelled-removed = { $id } отменена, скачанное удалено: начните новую загрузку
+url-still-stopping = { $id } ещё останавливается — повторите через пару секунд
+url-cancel-first = { $id } ещё качается — сначала отмените
+url-no-subs-file = yt-dlp закончил без файла субтитров в { $path }: { $stderr }
+url-no-parent = { $path } без родителя
+url-subs-empty = в субтитрах { $path } нет ни одной реплики
+url-ytdlp-missing = компонент ytdlp не скачан
+url-bad-quality = качество «{ $quality }»: best, 1080, 720, 480 или audio

@@ -347,3 +347,34 @@ voices-open-zip = 打开 zip：{ $error }
 voices-create-file = 创建 { $name }：{ $error }
 voices-unpack-file = 解压 { $name }：{ $error }
 voices-pack-done = 完成：{ $count } 个文件
+
+## Downloads by link
+
+url-no-fetch = 没有下载 { $id }
+url-stopped = 已停止
+url-already-downloading = 该链接已在下载：{ $id }
+url-probe-not-json = yt-dlp -J 的输出不是 JSON：{ $error }；{ $stderr }
+url-interrupted = 下载随工作室关闭而中断；已下载部分在其文件夹中，将从断点继续
+url-not-a-link = “{ $url }”不是链接：{ $error }
+url-not-http = “{ $url }”不是 http(s) 链接
+url-bad-subs-lang = “{ $lang }”不是字幕语言代码
+url-cookies-not-file = { $path } 不是不超过 1 MB 的 cookies.txt 文件
+url-cookies-empty-or-large = cookies.txt 为空或超过 1 MB
+url-thread-failed = 下载线程未能启动：{ $error }
+url-cookies-gone = 此下载的 cookies.txt 已从其文件夹中消失；请携带 cookies 重新开始下载
+url-disk-space = 需要约 { $need } MB，可用 { $free } MB
+url-no-subs = 视频没有人工上传的“{ $lang }”字幕（现有：{ $have }）
+url-no-subs-none = 视频没有人工上传的“{ $lang }”字幕（一个也没有）
+url-no-media-file = yt-dlp 已结束，但 { $path } 中没有视频文件：{ $stderr }
+url-subs-failed = “{ $lang }”字幕未能下载（{ $code }）：{ $error }
+url-ytdlp-start = 启动 yt-dlp：{ $error }
+url-ytdlp-wait = 等待 yt-dlp：{ $error }
+url-still-downloading = { $id } 仍在下载
+url-cancelled-removed = { $id } 已取消，已下载部分已删除：请开始新的下载
+url-still-stopping = { $id } 仍在停止；请几秒后重试
+url-cancel-first = { $id } 仍在下载；请先取消
+url-no-subs-file = yt-dlp 已结束，但 { $path } 中没有字幕文件：{ $stderr }
+url-no-parent = { $path } 没有上级文件夹
+url-subs-empty = 字幕 { $path } 中没有任何台词
+url-ytdlp-missing = 尚未下载 ytdlp 组件
+url-bad-quality = 画质“{ $quality }”：应为 best、1080、720、480 或 audio
