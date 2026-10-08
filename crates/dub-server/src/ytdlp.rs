@@ -155,7 +155,7 @@ fn read_record(repo_root: &Path) -> UpdateRecord {
     let path = record_path(repo_root);
     match std::fs::read_to_string(&path) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-            tracing::warn!("{} не читается ({e}) — обновления yt-dlp не учитываются", path.display());
+            tracing::warn!("{} is unreadable ({e}); yt-dlp updates are not taken into account", path.display());
             UpdateRecord::default()
         }),
         Err(_) => UpdateRecord::default(),
@@ -200,7 +200,7 @@ fn active(repo_root: &Path, rec: &UpdateRecord) -> Active {
     let exe = updates_dir(repo_root).join(file);
     let len = std::fs::metadata(&exe).map(|m| m.len()).ok();
     if len != Some(size) {
-        let problem = format!("обновление yt-dlp {version} ({}) не на месте — работает закреплённая {PINNED_VERSION}", exe.display());
+        let problem = t!("ytdlp-update-missing", version = version.clone(), path = exe.display().to_string(), pinned = PINNED_VERSION);
         return Active { problem: Some(problem), ..pinned };
     }
     Active { exe, version: version.clone(), updated: true, problem: None }
@@ -271,13 +271,13 @@ pub fn start_update(repo_root: &Path) -> bool {
     let root = repo_root.to_path_buf();
     let spawned = std::thread::Builder::new().name("ytdlp-update".into()).spawn(move || {
         if let Err(e) = update(&root) {
-            tracing::warn!("обновление yt-dlp: {e}");
+            tracing::warn!("yt-dlp update: {e}");
         }
         updating().store(false, Ordering::SeqCst);
     });
     if let Err(e) = spawned {
         updating().store(false, Ordering::SeqCst);
-        tracing::warn!("поток обновления yt-dlp не запустился: {e}");
+        tracing::warn!("the yt-dlp update thread did not start: {e}");
         return false;
     }
     true
@@ -287,7 +287,7 @@ fn http() -> Result<reqwest::blocking::Client, UrlError> {
     dub_llm::net::builder()
         .timeout(Duration::from_secs(300))
         .build()
-        .map_err(|e| UrlError::new("network", format!("http-клиент: {e}")))
+        .map_err(|e| UrlError::new("network", t!("ytdlp-http-client", error = e.to_string())))
 }
 
 /// Тег релиза годится в имя файла и путь URL: только цифры и точки.
@@ -319,7 +319,7 @@ fn update(repo_root: &Path) -> Result<(), UrlError> {
 /// `api` — последний релиз (GitHub API), `releases` — откуда качать файлы релиза по тегу.
 fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &str) -> Result<(), UrlError> {
     if !pinned_exe(repo_root).is_file() {
-        return Err(UrlError::new("tool_missing", "компонент ytdlp не скачан"));
+        return Err(UrlError::new("tool_missing", t!("url-ytdlp-missing")));
     }
     let client = http()?;
     let latest: Value = client
@@ -331,7 +331,7 @@ fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &s
         .map_err(|e| UrlError::new("network", format!("{api}: {e}")))?;
     let tag = latest["tag_name"].as_str().unwrap_or_default().to_string();
     if !valid_tag(&tag) {
-        return Err(UrlError::new("update_failed", format!("релиз yt-dlp с тегом «{tag}» — не версия")));
+        return Err(UrlError::new("update_failed", t!("ytdlp-tag-not-version", tag = tag.clone())));
     }
     rec.latest = Some(tag.clone());
     if rec.version.as_deref().is_some_and(|v| !newer(v, PINNED_VERSION)) {
@@ -348,7 +348,7 @@ fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &s
         .and_then(|r| r.error_for_status())
         .and_then(|r| r.text())
         .map_err(|e| UrlError::new("network", format!("{sums_url}: {e}")))?;
-    let want = sum_for(&sums, EXE).ok_or_else(|| UrlError::new("update_failed", format!("в {sums_url} нет {EXE}")))?;
+    let want = sum_for(&sums, EXE).ok_or_else(|| UrlError::new("update_failed", t!("ytdlp-no-checksum", url = sums_url.clone(), file = EXE)))?;
     let dir = updates_dir(repo_root);
     std::fs::create_dir_all(&dir).map_err(|e| UrlError::new("io", format!("{}: {e}", dir.display())))?;
     let file = format!("yt-dlp-{tag}.exe");
@@ -368,10 +368,10 @@ fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &s
     if said.as_deref() != Ok(tag.as_str()) {
         let _ = std::fs::remove_file(&dest);
         let why = match said {
-            Ok(v) => format!("новый yt-dlp {tag} называет себя «{v}»"),
-            Err(e) => format!("новый yt-dlp {tag} не запустился: {e}"),
+            Ok(v) => t!("ytdlp-new-says", tag = tag.clone(), said = v, current = current.version.clone()),
+            Err(e) => t!("ytdlp-new-failed", tag = tag.clone(), error = e, current = current.version.clone()),
         };
-        return Err(UrlError::new("update_failed", format!("{why} — остаётся {}", current.version)));
+        return Err(UrlError::new("update_failed", why));
     }
     rec.version = Some(tag);
     rec.file = Some(file.clone());
@@ -381,7 +381,7 @@ fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &s
         let name = old.file_name().to_string_lossy().into_owned();
         if name != file {
             if let Err(e) = std::fs::remove_file(old.path()) {
-                tracing::warn!("старое обновление yt-dlp {} не удалено (занято идущей загрузкой?): {e}", old.path().display());
+                tracing::warn!("the old yt-dlp update {} was not removed (held by a running download?): {e}", old.path().display());
             }
         }
     }
@@ -394,7 +394,7 @@ fn drop_stale_update(repo_root: &Path, rec: &mut UpdateRecord) {
         let path = updates_dir(repo_root).join(file);
         if path.is_file() {
             if let Err(e) = std::fs::remove_file(&path) {
-                tracing::warn!("устаревшее обновление yt-dlp {} не удалено: {e}", path.display());
+                tracing::warn!("the outdated yt-dlp update {} was not removed: {e}", path.display());
             }
         }
     }
@@ -422,7 +422,7 @@ fn fetch_verified(client: &reqwest::blocking::Client, url: &str, dest: &Path, wa
         }
         size += n as u64;
         if size > EXE_LIMIT {
-            return Err(UrlError::new("update_failed", format!("{url}: больше {EXE_LIMIT} байт")));
+            return Err(UrlError::new("update_failed", t!("ytdlp-too-large", url = url.to_string(), limit = EXE_LIMIT)));
         }
         digest.update(&buf[..n]);
         out.write_all(&buf[..n]).map_err(|e| UrlError::new("io", format!("{}: {e}", dest.display())))?;
@@ -430,7 +430,7 @@ fn fetch_verified(client: &reqwest::blocking::Client, url: &str, dest: &Path, wa
     out.flush().map_err(|e| UrlError::new("io", format!("{}: {e}", dest.display())))?;
     let got: String = digest.finalize().iter().map(|b| format!("{b:02x}")).collect();
     if got != want {
-        return Err(UrlError::new("update_failed", format!("{url}: SHA-256 {got} не совпал с SHA2-256SUMS {want}")));
+        return Err(UrlError::new("update_failed", t!("ytdlp-sha-mismatch", url = url.to_string(), got = got.clone(), want = want.to_string())));
     }
     Ok(size)
 }
@@ -440,7 +440,7 @@ fn run_version(exe: &Path) -> Result<String, String> {
     cmd.arg("--version");
     let out = run_captured(cmd, &|| false, Some(Duration::from_secs(120))).map_err(|e| e.detail)?;
     if !out.success {
-        return Err(format!("код выхода {:?}: {}", out.code, last_error_line(&out.stderr)));
+        return Err(t!("ytdlp-exit-code", code = format!("{:?}", out.code), stderr = last_error_line(&out.stderr)));
     }
     Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
 }
@@ -487,13 +487,13 @@ pub struct Tool {
 pub fn tool(repo_root: &Path) -> Result<Tool, UrlError> {
     let st = status(repo_root);
     if !st.installed {
-        return Err(UrlError::new("tool_missing", "компонент ytdlp (yt-dlp и deno) не скачан"));
+        return Err(UrlError::new("tool_missing", t!("ytdlp-component-missing")));
     }
     let act = active(repo_root, &read_record(repo_root));
     if let Some(problem) = &act.problem {
         tracing::warn!("{problem}");
     }
-    let ffmpeg = ffmpeg_dir(repo_root).ok_or_else(|| UrlError::new("ffmpeg_missing", "нет ffmpeg: ни компонента ffmpeg, ни ffmpeg.exe в PATH"))?;
+    let ffmpeg = ffmpeg_dir(repo_root).ok_or_else(|| UrlError::new("ffmpeg_missing", t!("ytdlp-no-ffmpeg")))?;
     Ok(Tool { exe: act.exe, deno: deno_exe(repo_root), ffmpeg, cache: dir_cache(repo_root), version: act.version })
 }
 
@@ -555,7 +555,7 @@ pub struct Captured {
 /// Запустить и дождаться, читая оба потока; остановка (`stop`) или таймаут гасят всё дерево процессов.
 pub fn run_captured(mut cmd: Command, stop: &dyn Fn() -> bool, timeout: Option<Duration>) -> Result<Captured, UrlError> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| UrlError::new("io", format!("запуск {:?}: {e}", cmd.get_program())))?;
+    let mut child = cmd.spawn().map_err(|e| UrlError::new("io", t!("ytdlp-start", program = format!("{:?}", cmd.get_program()), error = e.to_string())))?;
     let pid = child.id();
     let mut out_pipe = child.stdout.take();
     let mut err_pipe = child.stderr.take();
@@ -581,7 +581,7 @@ pub fn run_captured(mut cmd: Command, stop: &dyn Fn() -> bool, timeout: Option<D
             Ok(None) => {}
             Err(e) => {
                 kill_tree(pid);
-                return Err(UrlError::new("io", format!("ожидание yt-dlp: {e}")));
+                return Err(UrlError::new("io", t!("url-ytdlp-wait", error = e.to_string())));
             }
         }
         if killed.is_none() {
@@ -598,8 +598,8 @@ pub fn run_captured(mut cmd: Command, stop: &dyn Fn() -> bool, timeout: Option<D
     let stdout = out.join().unwrap_or_default();
     let stderr = err.join().unwrap_or_default();
     match killed {
-        Some("cancelled") => Err(UrlError::new("cancelled", "остановлено")),
-        Some(_) => Err(UrlError::new("network", format!("yt-dlp не ответил за {} с: {}", timeout.unwrap_or_default().as_secs(), last_error_line(&stderr)))),
+        Some("cancelled") => Err(UrlError::new("cancelled", t!("url-stopped"))),
+        Some(_) => Err(UrlError::new("network", t!("ytdlp-timeout", seconds = timeout.unwrap_or_default().as_secs(), stderr = last_error_line(&stderr)))),
         None => Ok(Captured { success: status.success(), code: status.code(), stdout, stderr }),
     }
 }
@@ -794,15 +794,15 @@ pub fn parse_probe(info: &Value) -> Result<Probe, UrlError> {
     match info["_type"].as_str() {
         Some("playlist") | Some("multi_video") => {
             let n = info["entries"].as_array().map_or(0, Vec::len);
-            return Err(UrlError::new("playlist", format!("по ссылке плейлист или канал ({n} видео), а не одно видео")));
+            return Err(UrlError::new("playlist", t!("ytdlp-playlist", count = n)));
         }
         Some("url") | Some("url_transparent") => {
-            return Err(UrlError::new("unsupported_url", "по ссылке нет самого видео, только ссылка дальше"));
+            return Err(UrlError::new("unsupported_url", t!("ytdlp-redirect-only")));
         }
         _ => {}
     }
     if info["is_live"] == true || matches!(info["live_status"].as_str(), Some("is_live") | Some("is_upcoming")) {
-        return Err(UrlError::new("live", format!("эфир ({})", info["live_status"].as_str().unwrap_or("is_live"))));
+        return Err(UrlError::new("live", t!("ytdlp-live", status = info["live_status"].as_str().unwrap_or("is_live").to_string())));
     }
     let formats = info["formats"].as_array().cloned().unwrap_or_default();
     // Кодек null — сайт его не назвал (прямой файл): такой формат может нести и видео, и звук. Поля *_ext тут не
@@ -863,12 +863,12 @@ pub fn thumbnail_data(url: &str) -> Result<String, String> {
         .map(|v| v.split(';').next().unwrap_or_default().trim().to_string())
         .unwrap_or_default();
     if !mime.starts_with("image/") {
-        return Err(format!("превью не картинка ({mime})"));
+        return Err(t!("ytdlp-thumbnail-not-image", mime = mime.to_string()));
     }
     let mut bytes = Vec::new();
     resp.take(4 * 1024 * 1024 + 1).read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     if bytes.len() > 4 * 1024 * 1024 {
-        return Err("превью больше 4 МБ".into());
+        return Err(t!("ytdlp-thumbnail-too-large"));
     }
     Ok(format!("data:{mime};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes)))
 }
@@ -985,7 +985,7 @@ pub fn classify(stderr: &str) -> UrlError {
     } else {
         "ytdlp_failed"
     };
-    UrlError::new(code, if detail.is_empty() { "yt-dlp завершился с ошибкой без сообщения".to_string() } else { detail })
+    UrlError::new(code, if detail.is_empty() { t!("ytdlp-failed-silently") } else { detail })
 }
 
 /// Прогресс загрузки из нескольких потоков (видео и звук качаются по очереди, у каждого свой счётчик).

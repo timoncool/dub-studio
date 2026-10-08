@@ -492,3 +492,28 @@ url-no-parent = { $path } has no parent folder
 url-subs-empty = the subtitles { $path } have no lines at all
 url-ytdlp-missing = the ytdlp component is not downloaded
 url-bad-quality = quality “{ $quality }”: best, 1080, 720, 480 or audio
+
+## yt-dlp
+
+ytdlp-update-missing = the yt-dlp update { $version } ({ $path }) is missing; the pinned { $pinned } runs
+ytdlp-http-client = HTTP client: { $error }
+ytdlp-tag-not-version = the yt-dlp release tagged “{ $tag }” is not a version
+ytdlp-no-checksum = { $url } has no { $file }
+ytdlp-new-says = the new yt-dlp { $tag } calls itself “{ $said }”; { $current } stays
+ytdlp-new-failed = the new yt-dlp { $tag } did not start: { $error }; { $current } stays
+ytdlp-too-large = { $url }: more than { $limit } bytes
+ytdlp-sha-mismatch = { $url }: SHA-256 { $got } does not match SHA2-256SUMS { $want }
+ytdlp-exit-code = exit code { $code }: { $stderr }
+ytdlp-component-missing = the ytdlp component (yt-dlp and deno) is not downloaded
+ytdlp-no-ffmpeg = no ffmpeg: neither the ffmpeg component nor ffmpeg.exe in PATH
+ytdlp-start = starting { $program }: { $error }
+ytdlp-timeout = yt-dlp did not answer in { $seconds } s: { $stderr }
+ytdlp-playlist = the link is a playlist or a channel ({ $count } { $count ->
+    [one] video
+   *[other] videos
+}), not a single video
+ytdlp-redirect-only = the link has no video itself, only a link onward
+ytdlp-live = a live stream ({ $status })
+ytdlp-thumbnail-not-image = the thumbnail is not an image ({ $mime })
+ytdlp-thumbnail-too-large = the thumbnail is larger than 4 MB
+ytdlp-failed-silently = yt-dlp failed without a message

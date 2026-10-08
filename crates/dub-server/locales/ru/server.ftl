@@ -514,3 +514,25 @@ url-no-parent = { $path } без родителя
 url-subs-empty = в субтитрах { $path } нет ни одной реплики
 url-ytdlp-missing = компонент ytdlp не скачан
 url-bad-quality = качество «{ $quality }»: best, 1080, 720, 480 или audio
+
+## yt-dlp
+
+ytdlp-update-missing = обновление yt-dlp { $version } ({ $path }) не на месте — работает закреплённая { $pinned }
+ytdlp-http-client = http-клиент: { $error }
+ytdlp-tag-not-version = релиз yt-dlp с тегом «{ $tag }» — не версия
+ytdlp-no-checksum = в { $url } нет { $file }
+ytdlp-new-says = новый yt-dlp { $tag } называет себя «{ $said }» — остаётся { $current }
+ytdlp-new-failed = новый yt-dlp { $tag } не запустился: { $error } — остаётся { $current }
+ytdlp-too-large = { $url }: больше { $limit } байт
+ytdlp-sha-mismatch = { $url }: SHA-256 { $got } не совпал с SHA2-256SUMS { $want }
+ytdlp-exit-code = код выхода { $code }: { $stderr }
+ytdlp-component-missing = компонент ytdlp (yt-dlp и deno) не скачан
+ytdlp-no-ffmpeg = нет ffmpeg: ни компонента ffmpeg, ни ffmpeg.exe в PATH
+ytdlp-start = запуск { $program }: { $error }
+ytdlp-timeout = yt-dlp не ответил за { $seconds } с: { $stderr }
+ytdlp-playlist = по ссылке плейлист или канал ({ $count } видео), а не одно видео
+ytdlp-redirect-only = по ссылке нет самого видео, только ссылка дальше
+ytdlp-live = эфир ({ $status })
+ytdlp-thumbnail-not-image = превью не картинка ({ $mime })
+ytdlp-thumbnail-too-large = превью больше 4 МБ
+ytdlp-failed-silently = yt-dlp завершился с ошибкой без сообщения

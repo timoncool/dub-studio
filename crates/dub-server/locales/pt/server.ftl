@@ -492,3 +492,28 @@ url-no-parent = { $path } não tem pasta pai
 url-subs-empty = as legendas { $path } não têm nenhuma fala
 url-ytdlp-missing = o componente ytdlp não foi baixado
 url-bad-quality = qualidade “{ $quality }”: best, 1080, 720, 480 ou audio
+
+## yt-dlp
+
+ytdlp-update-missing = a atualização do yt-dlp { $version } ({ $path }) não está no lugar; roda a fixada { $pinned }
+ytdlp-http-client = cliente HTTP: { $error }
+ytdlp-tag-not-version = o lançamento do yt-dlp com a tag “{ $tag }” não é uma versão
+ytdlp-no-checksum = { $url } não contém { $file }
+ytdlp-new-says = o novo yt-dlp { $tag } diz ser “{ $said }”; continua o { $current }
+ytdlp-new-failed = o novo yt-dlp { $tag } não iniciou: { $error }; continua o { $current }
+ytdlp-too-large = { $url }: mais de { $limit } bytes
+ytdlp-sha-mismatch = { $url }: o SHA-256 { $got } não coincide com SHA2-256SUMS { $want }
+ytdlp-exit-code = código de saída { $code }: { $stderr }
+ytdlp-component-missing = o componente ytdlp (yt-dlp e deno) não foi baixado
+ytdlp-no-ffmpeg = sem ffmpeg: nem o componente ffmpeg nem ffmpeg.exe no PATH
+ytdlp-start = iniciando { $program }: { $error }
+ytdlp-timeout = o yt-dlp não respondeu em { $seconds } s: { $stderr }
+ytdlp-playlist = o link é uma playlist ou um canal ({ $count } { $count ->
+    [one] vídeo
+   *[other] vídeos
+}), não um único vídeo
+ytdlp-redirect-only = o link não tem o vídeo em si, só outro link
+ytdlp-live = uma transmissão ao vivo ({ $status })
+ytdlp-thumbnail-not-image = a miniatura não é uma imagem ({ $mime })
+ytdlp-thumbnail-too-large = a miniatura passa de 4 MB
+ytdlp-failed-silently = o yt-dlp falhou sem mensagem

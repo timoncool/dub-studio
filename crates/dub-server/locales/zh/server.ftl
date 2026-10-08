@@ -378,3 +378,25 @@ url-no-parent = { $path } 没有上级文件夹
 url-subs-empty = 字幕 { $path } 中没有任何台词
 url-ytdlp-missing = 尚未下载 ytdlp 组件
 url-bad-quality = 画质“{ $quality }”：应为 best、1080、720、480 或 audio
+
+## yt-dlp
+
+ytdlp-update-missing = yt-dlp 更新 { $version }（{ $path }）缺失；正在使用固定版本 { $pinned }
+ytdlp-http-client = HTTP 客户端：{ $error }
+ytdlp-tag-not-version = 标签为“{ $tag }”的 yt-dlp 发布不是版本号
+ytdlp-no-checksum = { $url } 中没有 { $file }
+ytdlp-new-says = 新的 yt-dlp { $tag } 自称“{ $said }”；保留 { $current }
+ytdlp-new-failed = 新的 yt-dlp { $tag } 未能启动：{ $error }；保留 { $current }
+ytdlp-too-large = { $url }：超过 { $limit } 字节
+ytdlp-sha-mismatch = { $url }：SHA-256 { $got } 与 SHA2-256SUMS { $want } 不符
+ytdlp-exit-code = 退出码 { $code }：{ $stderr }
+ytdlp-component-missing = 尚未下载 ytdlp 组件（yt-dlp 和 deno）
+ytdlp-no-ffmpeg = 没有 ffmpeg：既没有 ffmpeg 组件，PATH 中也没有 ffmpeg.exe
+ytdlp-start = 启动 { $program }：{ $error }
+ytdlp-timeout = yt-dlp 在 { $seconds } 秒内无响应：{ $stderr }
+ytdlp-playlist = 该链接是播放列表或频道（{ $count } 个视频），不是单个视频
+ytdlp-redirect-only = 该链接中没有视频本身，只有指向别处的链接
+ytdlp-live = 直播（{ $status }）
+ytdlp-thumbnail-not-image = 缩略图不是图片（{ $mime }）
+ytdlp-thumbnail-too-large = 缩略图超过 4 MB
+ytdlp-failed-silently = yt-dlp 出错退出，没有消息
