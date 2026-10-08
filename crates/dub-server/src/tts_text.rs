@@ -207,7 +207,7 @@ pub fn synthesis_view(proj: &Project, progress: &crate::analyze::Progress) -> Pr
     if !skipped.is_empty() {
         progress(serde_json::json!({
             "stage": "tts",
-            "msg": format!("без речи после чистки текста — тишина: {} фраз ({})", skipped.len(), skipped.join("; ")),
+            "msg": t!("tts-silent-after-cleanup", count = skipped.len(), lines = skipped.join("; ")),
         }));
     }
     view

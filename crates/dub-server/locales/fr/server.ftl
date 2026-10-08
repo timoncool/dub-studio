@@ -208,3 +208,40 @@ settings-unknown-field = champ inconnu des réglages de lancement : { $key }
 settings-read-failed = lecture des réglages de lancement : { $error }
 settings-patch-not-object = le corps de PATCH /settings/launch est un objet de champs
 settings-write-failed = écriture des réglages de lancement : { $error }
+
+## Takes, translation, TTS text, MCP arguments
+
+takes-delete-old = suppression de l’ancienne prise { $path } : { $error }
+takes-missing = la prise { $take } n’est pas dans l’historique de la réplique { $line }
+translate-no-vision = le type de contenu n’a pas été déterminé : la vision est indisponible ({ $error })
+translate-subs-already-translated = les sous-titres sont déjà dans la langue cible -> pas de traduction automatique (voix seulement)
+translate-transcribe-only = transcription : tgt=le texte source, sans traduction
+translate-same-language = même langue -> pas de traduction automatique (tgt=la source)
+translate-no-llm = la traduction a échoué : le LLM est indisponible : { $error }
+translate-ctx-pass = passe de contexte : vision mise en page/scène + traduction de la transcription
+translate-failed = la traduction a échoué : { $error }
+translate-untranslated = la traduction a échoué : { $left } { $total ->
+    [one] ligne
+   *[other] lignes
+} sur { $total } sont restées dans la langue source (détails dans le journal et logs/llama-server.log)
+translate-untranslated-auto = la traduction a échoué : { $left } { $total ->
+    [one] ligne
+   *[other] lignes
+} sur { $total } sont restées dans la langue source ; si la parole de la vidéo est déjà dans la langue cible, indiquez la langue d’origine et aucune traduction ne sera nécessaire (détails dans le journal et logs/llama-server.log)
+translate-done = traduction prête : { $done }/{ $total } lignes, titres={ $titles }
+translate-left-untranslated = { $left } { $total ->
+    [one] ligne
+   *[other] lignes
+} sur { $total } sont restées dans la langue source (détails dans logs/llama-server.log)
+translate-coverage-retry = couverture de la traduction : { $count } { $count ->
+    [one] ligne
+   *[other] lignes
+} sans traduction ; je les retraduis
+translate-coverage-failed = couverture de la traduction : la retraduction a échoué ({ $error })
+translate-coverage-left = couverture de la traduction : { $count } restent sans traduction
+tts-silent-after-cleanup = plus de parole après le nettoyage du texte, donc silence : { $count } { $count ->
+    [one] réplique
+   *[other] répliques
+} ({ $lines })
+mcp-bad-speaker-count = speaker_count : un entier de 0 à { $max } est attendu
+mcp-speakers-without-diarize = speaker_count supérieur à 1 est incompatible avec diarize=false

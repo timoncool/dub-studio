@@ -77,7 +77,7 @@ pub(super) fn tools() -> Vec<Tool> {
                         "path": path_arg(),
                         "src_lang": language_arg("the spoken language, a code of studio://languages; auto by default"),
                         "diarize": { "type": "boolean", "description": "tell the speakers apart (default true)" },
-                        "speaker_count": { "type": "integer", "minimum": 0, "maximum": 8, "description": "Ожидаемое число спикеров на всю запись; 0 — автоматически." },
+                        "speaker_count": { "type": "integer", "minimum": 0, "maximum": 8, "description": "the expected number of speakers in the whole recording; 0 means automatic" },
                         "format": { "type": "string", "enum": ["text", "srt", "vtt", "json"] },
                         "seconds": seconds_arg(),
                     }),
@@ -489,10 +489,10 @@ async fn transcribe(args: &Value, until: Instant) -> Result<Value, String> {
     let count = match args.get("speaker_count") {
         None => 0,
         Some(value) => value.as_u64().filter(|n| *n <= 8)
-            .ok_or_else(|| "speaker_count: ожидается целое число от 0 до 8".to_string())?,
+            .ok_or_else(|| t!("mcp-bad-speaker-count", max = 8))?,
     };
     if !diarize && count > 1 {
-        return Err("speaker_count больше 1 несовместим с diarize=false".into());
+        return Err(t!("mcp-speakers-without-diarize"));
     }
     // A transcript with speakers is the studio's transcribe mode; without them it is the
     // subtitles mode in the original language, which neither separates nor tells speakers apart.

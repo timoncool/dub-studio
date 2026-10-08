@@ -208,3 +208,40 @@ settings-unknown-field = campo de valores de inicio desconocido: { $key }
 settings-read-failed = leyendo los valores de inicio: { $error }
 settings-patch-not-object = el cuerpo de PATCH /settings/launch es un objeto de campos
 settings-write-failed = guardando los valores de inicio: { $error }
+
+## Takes, translation, TTS text, MCP arguments
+
+takes-delete-old = eliminando la toma anterior { $path }: { $error }
+takes-missing = la toma { $take } no está en el historial de la frase { $line }
+translate-no-vision = no se determinó el tipo de contenido: la visión no está disponible ({ $error })
+translate-subs-already-translated = los subtítulos ya están en el idioma de destino -> sin traducción automática (solo voz)
+translate-transcribe-only = transcribir: tgt=el texto original, sin traducción
+translate-same-language = mismo idioma -> sin traducción automática (tgt=el original)
+translate-no-llm = la traducción falló: el LLM no está disponible: { $error }
+translate-ctx-pass = pasada de contexto: visión de composición/escena + traducción de la transcripción
+translate-failed = la traducción falló: { $error }
+translate-untranslated = la traducción falló: { $left } de { $total } { $total ->
+    [one] línea
+   *[other] líneas
+} quedaron en el idioma original (detalles en el registro y en logs/llama-server.log)
+translate-untranslated-auto = la traducción falló: { $left } de { $total } { $total ->
+    [one] línea
+   *[other] líneas
+} quedaron en el idioma original; si el habla del vídeo ya está en el idioma de destino, indica el idioma original y no hará falta traducir (detalles en el registro y en logs/llama-server.log)
+translate-done = traducción lista: { $done }/{ $total } líneas, títulos={ $titles }
+translate-left-untranslated = { $left } de { $total } { $total ->
+    [one] línea
+   *[other] líneas
+} quedaron en el idioma original (detalles en logs/llama-server.log)
+translate-coverage-retry = cobertura de la traducción: { $count } { $count ->
+    [one] línea
+   *[other] líneas
+} sin traducir; las vuelvo a traducir
+translate-coverage-failed = cobertura de la traducción: la nueva traducción falló ({ $error })
+translate-coverage-left = cobertura de la traducción: quedan { $count } sin traducir
+tts-silent-after-cleanup = no queda habla tras limpiar el texto, así que silencio: { $count } { $count ->
+    [one] frase
+   *[other] frases
+} ({ $lines })
+mcp-bad-speaker-count = speaker_count: se espera un número entero de 0 a { $max }
+mcp-speakers-without-diarize = speaker_count mayor que 1 no es compatible con diarize=false

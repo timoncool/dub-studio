@@ -169,3 +169,25 @@ settings-unknown-field = 未知的启动默认值字段：{ $key }
 settings-read-failed = 读取启动默认值：{ $error }
 settings-patch-not-object = PATCH /settings/launch 的请求体应为字段对象
 settings-write-failed = 写入启动默认值：{ $error }
+
+## Takes, translation, TTS text, MCP arguments
+
+takes-delete-old = 删除旧录音 { $path }：{ $error }
+takes-missing = 句子 { $line } 的历史中没有第 { $take } 条录音
+translate-no-vision = 未确定内容类型：视觉不可用（{ $error }）
+translate-subs-already-translated = 字幕已是目标语言 -> 不做机器翻译（仅配音）
+translate-transcribe-only = 转写：tgt=原文，不翻译
+translate-same-language = 同一语言 -> 不做机器翻译（tgt=原文）
+translate-no-llm = 翻译失败：LLM 不可用：{ $error }
+translate-ctx-pass = 上下文处理：视觉版面/场景 + 翻译转写
+translate-failed = 翻译失败：{ $error }
+translate-untranslated = 翻译失败：{ $total } 行中有 { $left } 行仍为原语言（详情见日志和 logs/llama-server.log）
+translate-untranslated-auto = 翻译失败：{ $total } 行中有 { $left } 行仍为原语言；如果视频中的语音已是目标语言，请指定原始语言，这样就无需翻译（详情见日志和 logs/llama-server.log）
+translate-done = 翻译完成：{ $done }/{ $total } 行，标题={ $titles }
+translate-left-untranslated = { $total } 行中有 { $left } 行仍为原语言（详情见 logs/llama-server.log）
+translate-coverage-retry = 翻译覆盖：{ $count } 行未翻译；正在补译
+translate-coverage-failed = 翻译覆盖：补译失败（{ $error }）
+translate-coverage-left = 翻译覆盖：仍有 { $count } 行未翻译
+tts-silent-after-cleanup = 清理文本后没有可读内容，保持静音：{ $count } 句（{ $lines }）
+mcp-bad-speaker-count = speaker_count：应为 0 到 { $max } 的整数
+mcp-speakers-without-diarize = speaker_count 大于 1 时不能与 diarize=false 同用

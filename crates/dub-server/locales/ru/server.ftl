@@ -217,3 +217,45 @@ settings-unknown-field = незнакомое поле дефолтов запу
 settings-read-failed = чтение дефолтов запуска: { $error }
 settings-patch-not-object = тело PATCH /settings/launch — объект полей
 settings-write-failed = запись дефолтов запуска: { $error }
+
+## Takes, translation, TTS text, MCP arguments
+
+takes-delete-old = удаление старого дубля { $path }: { $error }
+takes-missing = дубля { $take } нет в истории фразы { $line }
+translate-no-vision = тип контента не определён: vision недоступен ({ $error })
+translate-subs-already-translated = субтитры уже на языке перевода -> без MT (только озвучка)
+translate-transcribe-only = transcribe: tgt=исходный текст, без перевода
+translate-same-language = same-lang -> без MT (tgt=исходник)
+translate-no-llm = перевод не выполнен: LLM недоступен: { $error }
+translate-ctx-pass = ctx-проход: vision layout/scene + перевод транскрипта
+translate-failed = перевод не выполнен: { $error }
+translate-untranslated = перевод не выполнен: { $left } из { $total } { $total ->
+    [one] строки
+    [few] строк
+   *[many] строк
+} остались на исходном языке (подробности — в журнале и logs/llama-server.log)
+translate-untranslated-auto = перевод не выполнен: { $left } из { $total } { $total ->
+    [one] строки
+    [few] строк
+   *[many] строк
+} остались на исходном языке; если речь в ролике уже на языке перевода, укажите язык оригинала — тогда перевод не нужен (подробности — в журнале и logs/llama-server.log)
+translate-done = перевод готов: { $done }/{ $total } строк, тайтлов={ $titles }
+translate-left-untranslated = { $left } из { $total } { $total ->
+    [one] строки
+    [few] строк
+   *[many] строк
+} остались на исходном языке (подробности — в logs/llama-server.log)
+translate-coverage-retry = покрытие перевода: { $count } { $count ->
+    [one] строка
+    [few] строки
+   *[many] строк
+} без перевода — доперевожу
+translate-coverage-failed = покрытие перевода: доперевод не удался ({ $error })
+translate-coverage-left = покрытие перевода: осталось { $count } без перевода
+tts-silent-after-cleanup = без речи после чистки текста — тишина: { $count } { $count ->
+    [one] фраза
+    [few] фразы
+   *[many] фраз
+} ({ $lines })
+mcp-bad-speaker-count = speaker_count: ожидается целое число от 0 до { $max }
+mcp-speakers-without-diarize = speaker_count больше 1 несовместим с diarize=false

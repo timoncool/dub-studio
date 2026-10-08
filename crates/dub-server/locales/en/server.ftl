@@ -208,3 +208,40 @@ settings-unknown-field = unknown launch defaults field: { $key }
 settings-read-failed = reading the launch defaults: { $error }
 settings-patch-not-object = the PATCH /settings/launch body is an object of fields
 settings-write-failed = writing the launch defaults: { $error }
+
+## Takes, translation, TTS text, MCP arguments
+
+takes-delete-old = deleting the old take { $path }: { $error }
+takes-missing = take { $take } is not in the history of line { $line }
+translate-no-vision = the content type was not determined: vision is unavailable ({ $error })
+translate-subs-already-translated = the subtitles are already in the target language -> no machine translation (voicing only)
+translate-transcribe-only = transcribe: tgt=the source text, no translation
+translate-same-language = same language -> no machine translation (tgt=the source)
+translate-no-llm = translation failed: the LLM is unavailable: { $error }
+translate-ctx-pass = context pass: vision layout/scene + translating the transcript
+translate-failed = translation failed: { $error }
+translate-untranslated = translation failed: { $left } of { $total } { $total ->
+    [one] line
+   *[other] lines
+} stayed in the source language (details in the log and logs/llama-server.log)
+translate-untranslated-auto = translation failed: { $left } of { $total } { $total ->
+    [one] line
+   *[other] lines
+} stayed in the source language; if the speech in the video is already in the target language, set the original language and no translation is needed (details in the log and logs/llama-server.log)
+translate-done = translation ready: { $done }/{ $total } lines, titles={ $titles }
+translate-left-untranslated = { $left } of { $total } { $total ->
+    [one] line
+   *[other] lines
+} stayed in the source language (details in logs/llama-server.log)
+translate-coverage-retry = translation coverage: { $count } { $count ->
+    [one] line
+   *[other] lines
+} without a translation; translating them again
+translate-coverage-failed = translation coverage: translating again failed ({ $error })
+translate-coverage-left = translation coverage: { $count } left without a translation
+tts-silent-after-cleanup = no speech left after cleaning the text, so silence: { $count } { $count ->
+    [one] line
+   *[other] lines
+} ({ $lines })
+mcp-bad-speaker-count = speaker_count: a whole number from 0 to { $max } is expected
+mcp-speakers-without-diarize = speaker_count above 1 does not go with diarize=false

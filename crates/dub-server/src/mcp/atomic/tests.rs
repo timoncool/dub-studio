@@ -58,6 +58,7 @@ async fn a_transcript_without_speakers_is_the_subtitles_mode_in_its_own_language
 
 #[tokio::test]
 async fn expected_speaker_count_reaches_analysis_and_changes_the_saved_result_key() {
+    let _language = crate::i18n::test_language("ru");
     studio::plan("spk8", Plan::default());
     let args = json!({ "path": media("spk8"), "src_lang": "ru", "speaker_count": 8 });
     let first = answer("transcribe_file", args.clone()).await.unwrap();
