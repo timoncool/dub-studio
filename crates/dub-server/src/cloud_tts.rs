@@ -41,10 +41,10 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str,
         return Err("Google TTS must use the journalled project synthesis stage; no untracked standard request is allowed".into());
     }
     let key = crate::models::openrouter_key()
-        .ok_or("облачный TTS включён, но ключ OpenRouter не задан")?;
+        .ok_or_else(|| t!("cloud-tts-no-key"))?;
     let model = crate::models::openrouter_model(models_root, "tts");
     if model.is_empty() {
-        return Err("TTS-модель не выбрана в настройках (Облачные модели · OpenRouter)".into());
+        return Err(t!("cloud-tts-no-model"));
     }
     let v = if voice.trim().is_empty() {
         crate::models::openrouter_tts_voice(models_root)
@@ -52,16 +52,16 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str,
         voice.trim().to_string()
     };
     if v.is_empty() {
-        return Err("голос TTS не задан в настройках (у каждой модели свои голоса)".into());
+        return Err(t!("cloud-tts-no-voice"));
     }
-    let client = OpenRouter::new(Some(key)).map_err(|e| format!("облачный TTS: {e:#}"))?;
-    let bytes = match client.speech_with_style(&model, text, &v, style).map_err(|e| format!("облачный TTS: {e:#}"))? {
+    let client = OpenRouter::new(Some(key)).map_err(|e| t!("cloud-tts-failed", error = format!("{e:#}")))?;
+    let bytes = match client.speech_with_style(&model, text, &v, style).map_err(|e| t!("cloud-tts-failed", error = format!("{e:#}")))? {
         SpeechAudio::Wav(wav) if is_seg_format(&wav) => wav,
         SpeechAudio::Wav(wav) => to_seg_wav("audio/wav", &wav)?,
         SpeechAudio::Encoded { mime, bytes } => to_seg_wav(&mime, &bytes)?,
     };
     if bytes.len() < 200 {
-        return Err(format!("облачный TTS: слишком короткое аудио ({} байт)", bytes.len()));
+        return Err(t!("cloud-tts-too-short", bytes = bytes.len()));
     }
     Ok(bytes)
 }
@@ -101,7 +101,7 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let uid = TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = std::env::temp_dir().join(format!("dub_cloud_tts_{}_{}.bin", std::process::id(), uid));
     let wav_tmp = tmp.with_extension("wav");
-    std::fs::write(&tmp, bytes).map_err(|e| format!("облачный TTS ({mime}): {e}"))?;
+    std::fs::write(&tmp, bytes).map_err(|e| t!("cloud-tts-failed", error = format!("{mime}: {e}")))?;
     let out = dub_core::proc::output(Command::new(FFMPEG).args([
         "-v", "error", "-i", &tmp.to_string_lossy(), "-ar", &SEG_RATE.to_string(), "-ac", "1", "-c:a", "pcm_s16le", "-y", &wav_tmp.to_string_lossy(),
     ]));
@@ -111,7 +111,7 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
         let _ = std::fs::remove_file(&wav_tmp);
         return Err(format!("ffmpeg {mime}->wav: {}", String::from_utf8_lossy(&out.stderr).trim()));
     }
-    let wav = std::fs::read(&wav_tmp).map_err(|e| format!("чтение облачного wav: {e}"));
+    let wav = std::fs::read(&wav_tmp).map_err(|e| t!("cloud-tts-read-wav", error = e.to_string()));
     let _ = std::fs::remove_file(&wav_tmp);
     wav
 }
