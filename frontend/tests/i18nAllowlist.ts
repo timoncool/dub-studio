@@ -19,7 +19,7 @@ export const ALLOW: Allow = {
  * spelled the same in the language. "*" applies to every language.
  */
 export const SAME_AS_EN: Record<"*" | "ru" | "zh" | "es" | "pt" | "fr", string[]> = {
-  "*": ["app.name", "bilingual.pct", "keepOrig.mp4", "keepOrig.mkv", "casting.gender.unknown", "asrVariant.int8", "asrVariant.fp32", "asrVariant.ultra", "jobs.atStage", "downloads.speed", "providers.localGemma", "providers.serverUrlPlaceholder", "url.qHeight", "url.tool.version"],
+  "*": ["app.name", "bilingual.pct", "keepOrig.mp4", "keepOrig.mkv", "casting.gender.unknown", "asrVariant.int8", "asrVariant.fp32", "asrVariant.ultra", "asrVariant.ultraInt8", "jobs.atStage", "downloads.speed", "providers.localGemma", "providers.serverUrlPlaceholder", "url.qHeight", "url.tool.version"],
   ru: [],
   zh: ["units.gb", "units.mb", "units.kb", "units.b"],
   es: [
