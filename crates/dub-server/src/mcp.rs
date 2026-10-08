@@ -1036,7 +1036,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "models_select",
-                description: "Use a downloaded variant for its stage (id from models_status): a quantisation of Higgs (higgs, higgs-q6_k, higgs-q4_k_m), of Gemma (gemma, gemma-q5_0, gemma-q6_k, gemma-q8_0) or of the separator (roformer, roformer-q5, roformer-q4), or a speech recogniser (parakeet, parakeet-fp32, parakeet-ultra, whisper-tiny ... whisper-large-v3-turbo). Applies from the next job, no restart.",
+                description: "Use a downloaded variant for its stage (id from models_status): a quantisation of Higgs (higgs, higgs-q6_k, higgs-q4_k_m), of Gemma (gemma, gemma-q5_0, gemma-q6_k, gemma-q8_0) or of the separator (roformer, roformer-q5, roformer-q4), or a speech recogniser (parakeet, parakeet-fp32, parakeet-ultra, parakeet-ultra-int8, whisper-tiny ... whisper-large-v3-turbo). Applies from the next job, no restart.",
                 schema: || id_only("id", "component id from models_status"),
                 call: |args| post("/engine/select".into(), json!({ "id": text(args, "id")? })),
             },
@@ -2724,6 +2724,7 @@ mod tests {
         ("GET", "/jobs/{job_id}/events", "the page's progress stream: job_get and studio_wait"),
         ("POST", "/url/probe", "the page's probe with cookies.txt as its content (a browser does not know file paths): url_probe passes the path"),
         ("POST", "/mcp", "the MCP server itself"),
+        ("PUT", "/settings/ui-lang", "the window reports the language it is shown in, so the server speaks it"),
         ("GET", "/mcp/status", "the settings page's view of the agent"),
         ("GET", "/mcp/window", "the window's own stream of commands: the ui_* and editor_* tools go through it"),
         ("POST", "/mcp/window/result", "the window's answers to those commands"),

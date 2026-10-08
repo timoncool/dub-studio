@@ -785,7 +785,9 @@
     "fp32": "fp32",
     "fp32Hint": "NVIDIA 基础模型，完整 fp32 精度（约 2.6 GB）",
     "ultra": "Ultra · fp32",
-    "ultraHint": "Moondream 在基础模型上微调的版本：识别错误更少，同样支持 25 种语言 · fp32 约 2.6 GB"
+    "ultraHint": "Moondream 在基础模型上微调的版本：识别错误更少，同样支持 25 种语言 · fp32 约 2.6 GB",
+    "ultraInt8": "Ultra · int8",
+    "ultraInt8Hint": "Moondream 在基础模型上微调并量化的版本：识别错误更少，同样支持 25 种语言 · int8 约 0.7 GB"
   },
   "units": {
     "gb": "GB",

@@ -807,7 +807,9 @@
     "fp32": "fp32",
     "fp32Hint": "Modelo base de NVIDIA con precisión completa fp32 (~2,6 GB)",
     "ultra": "Ultra · fp32",
-    "ultraHint": "Versión del modelo base ajustada por Moondream: menos errores de reconocimiento, los mismos 25 idiomas · fp32 ~2,6 GB"
+    "ultraHint": "Versión del modelo base ajustada por Moondream: menos errores de reconocimiento, los mismos 25 idiomas · fp32 ~2,6 GB",
+    "ultraInt8": "Ultra · int8",
+    "ultraInt8Hint": "Versión del modelo base ajustada por Moondream, cuantizada: menos errores de reconocimiento, los mismos 25 idiomas · int8 ~0,7 GB"
   },
   "units": {
     "gb": "GB",

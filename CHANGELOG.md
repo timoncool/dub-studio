@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Added
 
+- **Parakeet Ultra int8.** The Moondream fine-tune of Parakeet, quantized to int8 (about 0.7 GB instead of 2.6 GB), is a recogniser of its own in the variant picker and in the model list. The base int8 model stays the default and the fp32 Ultra stays where it is; the importer no longer takes the base int8 files for the Ultra ones or the other way round, though their sizes are nearly the same.
 - **Direct Google Gemini TTS and Batch.** Choose Google alongside local voices and OpenRouter, with a separate API key and a live TTS model list. Batch runs use the `rust-genai` SDK and persist their Google job name; continuing a stopped render retrieves the same paid batch. MCP exposes the key settings, model list and project usage report with audio duration, wall time and tariff-based cost estimates.
 - **The number of speakers in a recording.** The launch form leaves it automatic or takes 1 to 8 people. With a number given, voices are matched across the parts of a long recording with WeSpeaker; the choice is saved and available through MCP. From [pull request #13](https://github.com/timoncool/dub-studio/pull/13) by lostintired.
 

@@ -390,6 +390,30 @@ pub fn manifest() -> Vec<Component> {
             ],
             external_url: None,
         },
+        // Parakeet Ultra int8 (Masterx): та же дообученная Moondream модель, квантованная тем же рецептом, что
+        // istupakov int8 базовой. Своя папка: энкодер в пределах допуска по размеру от базового int8, а декодер
+        // и словарь совпадают с ним по размеру при других байтах.
+        Component {
+            id: "parakeet-ultra-int8",
+            name: "Parakeet Ultra 0.6B (int8)",
+            purpose: "Распознавание речи (ASR) — дообученная Moondream версия, меньше ошибок",
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: 670_619_018,
+            files: &[
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/encoder-model.int8.onnx", dest_rel: "models/tdt-ultra-int8/encoder-model.int8.onnx", size: 652_183_214, sha256: "46e78f85f1ae43b43bd359889c966da5c7ca401df60a42eeffc2e7699b357ba6", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/decoder_joint-model.int8.onnx", dest_rel: "models/tdt-ultra-int8/decoder_joint-model.int8.onnx", size: 18_202_004, sha256: "2276a335d4c8dc48686e931475a634595954956427d485830e1214c0d1a18d07", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx", dest_rel: "models/tdt-ultra-int8/nemo128.onnx", size: 139_764, sha256: "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/vocab.txt", dest_rel: "models/tdt-ultra-int8/vocab.txt", size: 93_939, sha256: "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/config.json", dest_rel: "models/tdt-ultra-int8/config.json", size: 97, sha256: "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466", extract: Extract::None },
+            ],
+            markers: &[
+                Marker { rel: "models/tdt-ultra-int8/encoder-model.int8.onnx", expect: 652_183_214 },
+                Marker { rel: "models/tdt-ultra-int8/decoder_joint-model.int8.onnx", expect: 18_202_004 },
+                Marker { rel: "models/tdt-ultra-int8/vocab.txt", expect: 93_939 },
+            ],
+            external_url: None,
+        },
         // ── АЛЬТЕРНАТИВНЫЙ ASR-ДВИЖОК: Whisper (Purfview standalone faster-whisper) ──────────
         // Бинарь-onefile (CTranslate2 CPU из коробки; GPU опц. с CUDA11-либами). Выбор в настройках:
         // движок Parakeet/Whisper + РАЗНЫЕ модели (tiny…large-v3-turbo) + РАЗНЫЕ кванты (compute_type).
@@ -841,6 +865,7 @@ fn vram_estimate(id: &str) -> u64 {
         "parakeet" => gb(1.1),
         "parakeet-fp32" => gb(2.7),
         "parakeet-ultra" => gb(2.7),
+        "parakeet-ultra-int8" => gb(1.1),
         "sortformer" => gb(0.5),
         "roformer" => gb(0.5),
         "roformer-q5" => gb(0.45),
@@ -1267,6 +1292,11 @@ fn pick_import_source<'a>(
         Path::new(rel).file_name().and_then(|s| s.to_str()).map(|s| s.to_lowercase())
     };
     let cands = map.get(&base_of(m.rel)?)?;
+    let others: Vec<Marker> = manifest().into_iter().filter(|o| o.id != c.id).flat_map(|o| o.markers.iter().copied()).collect();
+    let fits = |marker: &Marker, sz: u64| {
+        import_size_fits(marker, sz)
+            && !others.iter().any(|o| o.expect == sz && o.expect != marker.expect && base_of(o.rel) == base_of(marker.rel))
+    };
     let dest_dir = Path::new(m.rel).parent();
     let siblings: Vec<&Marker> = c
         .markers
@@ -1278,13 +1308,13 @@ fn pick_import_source<'a>(
             base_of(s.rel)
                 .and_then(|b| map.get(&b))
                 .is_some_and(|files| {
-                    files.iter().any(|(p, sz)| p.parent() == dir && !import_size_fits(s, *sz))
+                    files.iter().any(|(p, sz)| p.parent() == dir && !fits(s, *sz))
                 })
         })
     };
     let ok: Vec<&(PathBuf, u64)> = cands
         .iter()
-        .filter(|(p, sz)| import_size_fits(m, *sz) && !dir_conflicts(p.parent()))
+        .filter(|(p, sz)| fits(m, *sz) && !dir_conflicts(p.parent()))
         .collect();
     ok.iter()
         .find(|(_, sz)| m.expect != 0 && *sz == m.expect)
@@ -2617,7 +2647,7 @@ mod tests {
 
     #[test]
     fn new_model_components_pinned_and_sized() {
-        for id in ["sortformer", "parakeet-ultra"] {
+        for id in ["sortformer", "parakeet-ultra", "parakeet-ultra-int8"] {
             let c = comp(id);
             let sum: u64 = c.files.iter().map(|f| f.size).sum();
             assert_eq!(c.size, sum, "{id}: size != сумме файлов");
@@ -2727,6 +2757,32 @@ mod tests {
         let map = index(ULTRA_DIR);
         assert!(picks("parakeet-fp32", &map).iter().all(Option::is_none), "{:?}", picks("parakeet-fp32", &map));
         assert!(picks("parakeet-ultra", &map).iter().all(Option::is_some));
+    }
+
+    const INT8_DIR: &[(&str, u64)] = &[
+        ("src/int8/encoder-model.int8.onnx", 652_183_999),
+        ("src/int8/decoder_joint-model.int8.onnx", 18_202_004),
+        ("src/int8/vocab.txt", 93_939),
+    ];
+    const ULTRA_INT8_DIR: &[(&str, u64)] = &[
+        ("src/ultra-int8/encoder-model.int8.onnx", 652_183_214),
+        ("src/ultra-int8/decoder_joint-model.int8.onnx", 18_202_004),
+        ("src/ultra-int8/vocab.txt", 93_939),
+    ];
+
+    #[test]
+    fn import_never_mixes_base_int8_and_ultra_int8() {
+        let map = index(INT8_DIR);
+        assert!(picks("parakeet-ultra-int8", &map).iter().all(Option::is_none), "{:?}", picks("parakeet-ultra-int8", &map));
+        let map = index(ULTRA_INT8_DIR);
+        assert!(picks("parakeet", &map).iter().all(Option::is_none), "{:?}", picks("parakeet", &map));
+        let both: Vec<(&str, u64)> = INT8_DIR.iter().chain(ULTRA_INT8_DIR).copied().collect();
+        let map = index(&both);
+        for (id, dir) in [("parakeet", "src/int8/"), ("parakeet-ultra-int8", "src/ultra-int8/")] {
+            for p in picks(id, &map) {
+                assert!(p.as_deref().is_some_and(|p| p.starts_with(dir)), "{id}: {p:?}");
+            }
+        }
     }
 
     #[test]
