@@ -390,3 +390,74 @@ analyze-profile-voices-applied = as vozes do perfil foram aplicadas à dublagem 
 })
 analyze-audio-no-casting = modo áudio: sem vídeo, o casting de personagens não é necessário
 analyze-cache-not-saved = não foi possível salvar cache.json: { $error } (não é grave)
+
+## Casting, recording, voice library
+
+casting-relabel = rerrotulagem por voz: { $count } { $count ->
+    [one] personagem
+   *[other] personagens
+} por voz (a diarização encontrou { $found })
+casting-skipped-no-speech = casting pulado: não há segmentos de fala
+casting-skipped-no-speakers = casting pulado: não há falantes
+casting-speakers-ranked = personagens que falam: { $count } (ordenados por tempo de fala)
+casting-faces-bound = rostos vinculados a falantes: { $count } de { $total }
+casting-bit-part-skipped = { $character }: o falante { $speaker } tem 1 fala e nem rosto nem voz -> pulado (ponta sem casting)
+casting-character-face = { $character }: falante { $speaker }, { $lines } { $lines ->
+    [one] fala
+   *[other] falas
+}, { $seconds } s de fala, rosto: sim
+casting-character-no-face = { $character }: falante { $speaker }, { $lines } { $lines ->
+    [one] fala
+   *[other] falas
+}, { $seconds } s de fala, rosto: não
+casting-profile-other-type = o perfil é de outro tipo ({ $previous } ≠ { $current }); correspondência cruzada pulada
+casting-cross-episode = entre episódios: nomes/vozes transferidos: { $count }
+casting-saved = casting.json pronto: { $count } { $count ->
+    [one] personagem
+   *[other] personagens
+}
+casting-save-failed = não foi possível gravar casting.json: { $error }
+casting-faces-collected = rostos coletados: { $faces } ({ $samples } amostras)
+casting-face-clusters = identidades de rosto (agrupamentos por vetor): { $count }
+casting-anime-detector-missing = o detector de anime não foi encontrado ({ $path }); sem avatares
+casting-anime-detector-failed = o detector de anime não carregou: { $error }; sem avatares
+casting-scrfd-missing = o SCRFD não foi encontrado; sem avatares (casting por voz)
+casting-scrfd-failed = o SCRFD não carregou: { $error }; sem avatares
+casting-embedder-missing = { $model } não foi encontrado ({ $path }); avatares sem embedding
+casting-embedder-failed = { $model } não carregou: { $error }; avatares sem embedding
+casting-no-frame = o ffmpeg não extraiu o quadro
+casting-voice-no-vocals = embedding de voz pulado: não há voz limpa
+casting-voice-no-model = voz pulada: não há o modelo WeSpeaker ({ $path })
+casting-voice-model-failed = o WeSpeaker não carregou: { $error }; voz pulada
+casting-voice-trim-failed = amostra de voz { $speaker }: o corte falhou: { $error }
+casting-voice-embedding-failed = voz { $speaker }: o embedding falhou: { $error }
+casting-voice-embeddings = embeddings de voz: { $count }
+casting-applying-profile = aplicando o perfil da biblioteca: { $slug }
+casting-library-profile-missing = o perfil da biblioteca “{ $slug }” não foi encontrado; nada aplicado
+record-busy = Já há uma gravação em andamento
+record-mic-not-found = O microfone “{ $name }” não foi encontrado: está desconectado ou foi renomeado; escolha outro
+record-no-mic = Nenhum microfone encontrado
+record-mic-config = configuração do microfone: { $error }
+record-create-wav = criando o wav: { $error }
+record-format-unsupported = o formato { $format } não é suportado
+record-mic-open = abrindo o microfone: { $error }
+record-mic-start = iniciando o microfone: { $error }
+record-not-recording = Nada está sendo gravado
+voices-not-file-list = { $page }: não é uma lista de arquivos: { $error }
+voices-list-endless = { $page }: a lista de arquivos do dataset não termina
+voices-too-large = { $url }: mais do que os { $size } bytes fixados
+voices-size-mismatch = { $url }: chegaram { $got } bytes, foram fixados { $size }
+voices-sha-mismatch = { $url }: o SHA-256 { $got } não coincide com o fixado { $want }
+voices-bad-name = nome inválido
+voices-not-in-dataset = a voz { $name } não está no dataset { $dataset }
+voices-bad-size = { $name }: o tamanho no catálogo não é válido
+voices-no-sha = { $name }: não há SHA-256 no catálogo
+voices-pack-downloading = baixando o pacote de vozes
+voices-pack-unpacking = descompactando
+voices-open-zip = abrindo o zip: { $error }
+voices-create-file = criando { $name }: { $error }
+voices-unpack-file = descompactando { $name }: { $error }
+voices-pack-done = pronto: { $count } { $count ->
+    [one] arquivo
+   *[other] arquivos
+}

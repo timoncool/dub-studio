@@ -390,3 +390,74 @@ analyze-profile-voices-applied = the carried-over profile voices are applied to 
 })
 analyze-audio-no-casting = audio mode: no video, so no character casting is needed
 analyze-cache-not-saved = cache.json could not be saved: { $error } (not critical)
+
+## Casting, recording, voice library
+
+casting-relabel = relabelling by voice: { $count } { $count ->
+    [one] character
+   *[other] characters
+} by voice (diarization found { $found })
+casting-skipped-no-speech = casting skipped: no speech segments
+casting-skipped-no-speakers = casting skipped: no speakers
+casting-speakers-ranked = speaking characters: { $count } (ranked by speaking time)
+casting-faces-bound = faces bound to speakers: { $count } of { $total }
+casting-bit-part-skipped = { $character }: speaker { $speaker } has 1 line and neither a face nor a voice -> skipped (a bit part not worth casting)
+casting-character-face = { $character }: speaker { $speaker }, { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}, { $seconds }s of speech, face: yes
+casting-character-no-face = { $character }: speaker { $speaker }, { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}, { $seconds }s of speech, face: no
+casting-profile-other-type = the profile is of another type ({ $previous } ≠ { $current }); cross-matching skipped
+casting-cross-episode = across episodes: names/voices carried over: { $count }
+casting-saved = casting.json is ready: { $count } { $count ->
+    [one] character
+   *[other] characters
+}
+casting-save-failed = casting.json could not be written: { $error }
+casting-faces-collected = faces collected: { $faces } ({ $samples } samples)
+casting-face-clusters = face identities (clusters by vector): { $count }
+casting-anime-detector-missing = the anime detector was not found ({ $path }); no avatars
+casting-anime-detector-failed = the anime detector did not load: { $error }; no avatars
+casting-scrfd-missing = SCRFD was not found; no avatars (casting by voice)
+casting-scrfd-failed = SCRFD did not load: { $error }; no avatars
+casting-embedder-missing = { $model } was not found ({ $path }); avatars without an embedding
+casting-embedder-failed = { $model } did not load: { $error }; avatars without an embedding
+casting-no-frame = ffmpeg did not extract the frame
+casting-voice-no-vocals = voice embedding skipped: no clean vocals
+casting-voice-no-model = voice skipped: no WeSpeaker model ({ $path })
+casting-voice-model-failed = WeSpeaker did not load: { $error }; voice skipped
+casting-voice-trim-failed = voice sample { $speaker }: trimming failed: { $error }
+casting-voice-embedding-failed = voice { $speaker }: embedding failed: { $error }
+casting-voice-embeddings = voice embeddings: { $count }
+casting-applying-profile = applying the library profile: { $slug }
+casting-library-profile-missing = the library profile “{ $slug }” was not found; nothing applied
+record-busy = Recording is already running
+record-mic-not-found = Microphone “{ $name }” was not found: it is unplugged or renamed; choose another one
+record-no-mic = No microphone found
+record-mic-config = microphone configuration: { $error }
+record-create-wav = creating the wav: { $error }
+record-format-unsupported = format { $format } is not supported
+record-mic-open = opening the microphone: { $error }
+record-mic-start = starting the microphone: { $error }
+record-not-recording = Nothing is being recorded
+voices-not-file-list = { $page }: not a file list: { $error }
+voices-list-endless = { $page }: the dataset file list does not end
+voices-too-large = { $url }: more than the pinned { $size } bytes
+voices-size-mismatch = { $url }: { $got } bytes arrived, { $size } are pinned
+voices-sha-mismatch = { $url }: SHA-256 { $got } does not match the pinned { $want }
+voices-bad-name = a bad name
+voices-not-in-dataset = voice { $name } is not in the dataset { $dataset }
+voices-bad-size = { $name }: the size in the catalogue is not valid
+voices-no-sha = { $name }: no SHA-256 in the catalogue
+voices-pack-downloading = downloading the voice pack
+voices-pack-unpacking = unpacking
+voices-open-zip = opening the zip: { $error }
+voices-create-file = creating { $name }: { $error }
+voices-unpack-file = unpacking { $name }: { $error }
+voices-pack-done = done: { $count } { $count ->
+    [one] file
+   *[other] files
+}

@@ -415,3 +415,71 @@ analyze-profile-voices-applied = перенесённые голоса проф�
 })
 analyze-audio-no-casting = аудио-режим: без видео, кастинг персонажей не нужен
 analyze-cache-not-saved = не удалось сохранить cache.json: { $error } (не критично)
+
+## Casting, recording, voice library
+
+casting-relabel = голосовая переразметка: { $count } { $count ->
+    [one] персонаж
+    [few] персонажа
+   *[many] персонажей
+} по голосу (диаризация нашла { $found })
+casting-skipped-no-speech = кастинг пропущен: нет речевых сегментов
+casting-skipped-no-speakers = кастинг пропущен: нет спикеров
+casting-speakers-ranked = персонажей-спикеров: { $count } (ранжированы по времени речи)
+casting-faces-bound = лиц привязано к спикерам: { $count } из { $total }
+casting-bit-part-skipped = { $character }: спикер { $speaker } — 1 реплика, ни лица ни голоса -> пропуск (не кастуемый бит-парт)
+casting-character-face = { $character }: спикер { $speaker }, реплик { $lines }, речь { $seconds }с, лицо: да
+casting-character-no-face = { $character }: спикер { $speaker }, реплик { $lines }, речь { $seconds }с, лицо: нет
+casting-profile-other-type = профиль другого типа ({ $previous } ≠ { $current }) — кросс-матч пропущен
+casting-cross-episode = cross-episode: перенесено имён/голосов: { $count }
+casting-saved = casting.json готов: { $count } { $count ->
+    [one] персонаж
+    [few] персонажа
+   *[many] персонажей
+}
+casting-save-failed = не удалось записать casting.json: { $error }
+casting-faces-collected = лиц собрано: { $faces } (сэмплов { $samples })
+casting-face-clusters = лиц-персон (кластеров по вектору): { $count }
+casting-anime-detector-missing = аниме-детектор не найден ({ $path }) — без аватаров
+casting-anime-detector-failed = аниме-детектор не загрузился: { $error } — без аватаров
+casting-scrfd-missing = SCRFD не найден — без аватаров (кастинг по голосу)
+casting-scrfd-failed = SCRFD не загрузился: { $error } — без аватаров
+casting-embedder-missing = { $model } не найден ({ $path }) — аватар без эмбеддинга
+casting-embedder-failed = { $model } не загрузился: { $error } — аватар без эмбеддинга
+casting-no-frame = ffmpeg не извлёк кадр
+casting-voice-no-vocals = голосовой эмбеддинг пропущен: нет чистого вокала
+casting-voice-no-model = голос пропущен: нет модели WeSpeaker ({ $path })
+casting-voice-model-failed = WeSpeaker не загрузился: { $error }; голос пропущен
+casting-voice-trim-failed = образец голоса { $speaker }: обрезка не удалась: { $error }
+casting-voice-embedding-failed = голос { $speaker }: эмбеддинг не удался: { $error }
+casting-voice-embeddings = голосовых эмбеддингов: { $count }
+casting-applying-profile = применяю профиль библиотеки: { $slug }
+casting-library-profile-missing = профиль библиотеки «{ $slug }» не найден — без применения
+record-busy = Уже идёт запись
+record-mic-not-found = Микрофон «{ $name }» не найден — он отключён или переименован; выберите другой
+record-no-mic = Микрофон не найден
+record-mic-config = конфиг микрофона: { $error }
+record-create-wav = создать wav: { $error }
+record-format-unsupported = формат { $format } не поддержан
+record-mic-open = открыть микрофон: { $error }
+record-mic-start = старт микрофона: { $error }
+record-not-recording = Запись не идёт
+voices-not-file-list = { $page }: не список файлов: { $error }
+voices-list-endless = { $page }: список файлов датасета не кончается
+voices-too-large = { $url }: больше закреплённых { $size } байт
+voices-size-mismatch = { $url }: пришло { $got } байт, закреплено { $size }
+voices-sha-mismatch = { $url }: SHA-256 { $got } не совпал с закреплённым { $want }
+voices-bad-name = плохое имя
+voices-not-in-dataset = голоса { $name } нет в датасете { $dataset }
+voices-bad-size = { $name }: размер в каталоге не годится
+voices-no-sha = { $name }: нет SHA-256 в каталоге
+voices-pack-downloading = скачивание пака голосов
+voices-pack-unpacking = распаковка
+voices-open-zip = открыть zip: { $error }
+voices-create-file = создать { $name }: { $error }
+voices-unpack-file = распаковка { $name }: { $error }
+voices-pack-done = готово: { $count } { $count ->
+    [one] файл
+    [few] файла
+   *[many] файлов
+}
