@@ -653,3 +653,103 @@ render-speaker-ref-unchecked = référence du locuteur { $speaker } : « { $text
     [one] candidat
    *[other] candidats
 }, vérification ⚠ échouée)
+
+## Setup: components
+
+setup-comp-higgs-purpose = Synthèse du doublage et clonage de voix (TTS)
+setup-comp-higgs-engine-name = Moteur Higgs (audiocpp_engine.dll)
+setup-comp-higgs-engine-purpose = Moteur TTS natif de Higgs (ABI C)
+setup-comp-gemma-purpose = Traduction et orchestrateur de vision des sous-titres/titres
+setup-comp-gemma-q5-0-purpose = Traduction et vision, plus précise que q4_0
+setup-comp-gemma-q6-k-purpose = Traduction et vision, encore plus précise
+setup-comp-gemma-q8-0-purpose = Traduction et vision, précision maximale
+setup-comp-parakeet-purpose = Reconnaissance de la parole avec horodatage des mots (ASR)
+setup-comp-higgs-q6-k-purpose = Synthèse du doublage et clonage de voix (TTS), plus léger que Q8_0
+setup-comp-higgs-q4-k-m-purpose = Synthèse du doublage et clonage de voix (TTS), la variante la plus légère
+setup-comp-parakeet-fp32-purpose = Reconnaissance de la parole (ASR), pleine précision fp32
+setup-comp-parakeet-ultra-purpose = Reconnaissance de la parole (ASR), la version affinée de Moondream, moins d’erreurs
+setup-comp-whisper-engine-name = Whisper-Faster (moteur ASR)
+setup-comp-whisper-engine-purpose = Un autre moteur de reconnaissance de la parole (faster-whisper) à la place de Parakeet
+setup-comp-whisper-cuda-name = Accélération CUDA de Whisper (cuBLAS + cuDNN)
+setup-comp-whisper-cuda-purpose = Inférence de Whisper sur le GPU (sinon la reconnaissance tourne sur le CPU, plusieurs fois plus lentement)
+setup-comp-whisper-tiny-name = Whisper tiny (modèle ASR)
+setup-comp-whisper-tiny-purpose = ASR Whisper, le modèle le plus léger et le plus rapide
+setup-comp-whisper-base-name = Whisper base (modèle ASR)
+setup-comp-whisper-base-purpose = ASR Whisper, un modèle léger, plus précis que tiny
+setup-comp-whisper-small-name = Whisper small (modèle ASR)
+setup-comp-whisper-small-purpose = ASR Whisper, un modèle équilibré
+setup-comp-whisper-medium-name = Whisper medium (modèle ASR)
+setup-comp-whisper-medium-purpose = ASR Whisper, haute précision
+setup-comp-whisper-large-v3-name = Whisper large-v3 (modèle ASR)
+setup-comp-whisper-large-v3-purpose = ASR Whisper, précision maximale (large-v3)
+setup-comp-whisper-large-v3-turbo-name = Whisper large-v3-turbo (modèle ASR)
+setup-comp-whisper-large-v3-turbo-purpose = ASR Whisper, presque large-v3 mais nettement plus rapide (turbo)
+setup-comp-sortformer-name = Nemotron 3 Diarization (jusqu’à 8 locuteurs)
+setup-comp-sortformer-purpose = Distinction des locuteurs (qui parle quand), jusqu’à 8 voix
+setup-comp-roformer-purpose = Modèle de séparation voix/instrumental
+setup-comp-roformer-q5-purpose = Séparation, plus légère que Q8_0
+setup-comp-roformer-q4-purpose = Séparation, la variante la plus légère
+setup-comp-casting-name = Modèles de casting des personnages (visages + voix)
+setup-comp-casting-purpose = Détection/embedding des visages (réels + anime) + embedding vocal pour le casting
+setup-comp-bsroformer-engine-name = Moteur BSRoformer.cpp (CUDA)
+setup-comp-bsroformer-engine-purpose = Moteur natif de séparation (bs_roformer-cli + ggml-CUDA)
+setup-comp-bsroformer-engine-cpu-name = Moteur BSRoformer.cpp (CPU)
+setup-comp-bsroformer-engine-cpu-purpose = Séparation sur le processeur, le mode sans NVIDIA (plus lent, fonction complète)
+setup-comp-llama-name = Serveur llama.cpp (CUDA 13.4)
+setup-comp-llama-purpose = Serveur annexe pour Gemma (traduction/vision)
+setup-comp-onnxruntime-purpose = Environnement d’exécution ASR/OCR/diarisation (strictement 1.28.x)
+setup-comp-onnxruntime-gpu-purpose = Fournisseur CUDA pour la diarisation/Parakeet sur le GPU (mode local_backend=gpu)
+setup-comp-ffmpeg-purpose = Décodage/encodage vidéo et audio (NVENC)
+setup-comp-ytdlp-name = Téléchargement par lien (yt-dlp + deno)
+setup-comp-ytdlp-purpose = Télécharger une vidéo par lien (YouTube et les autres sites de yt-dlp) dans un nouveau projet
+setup-comp-cuda-runtime-purpose = DLL CUDA redistribuables pour les moteurs et le CUDA EP d’onnxruntime (sans CUDA Toolkit)
+setup-comp-cudnn-purpose = Nécessaire au fournisseur CUDA d’onnxruntime pour la diarisation/Parakeet sur le GPU
+setup-comp-vcruntime-purpose = DLL système des moteurs (incluses)
+setup-comp-ocr-name = Modèles OCR (PP-OCR ONNX)
+setup-comp-ocr-purpose = Détection du texte incrusté → flou (inclus)
+setup-comp-nvidia-driver-name = Pilote NVIDIA
+setup-comp-nvidia-driver-purpose = Accélération GPU (installé à part, pas par l’application)
+
+## Setup: downloads and installation
+
+setup-http-status = { $url } : statut { $status }
+setup-write = écriture : { $error }
+setup-not-zip = ce n’est pas un zip : { $error }
+setup-zip-entry = entrée du zip : { $error }
+setup-open = ouverture de { $path } : { $error }
+setup-verifying = Vérification du SHA-256 de { $file }…
+setup-install-record = l’enregistrement d’installation : { $error }
+setup-disk-space = espace insuffisant : { $need } Go nécessaires, { $free } Go libres ({ $path })
+setup-unknown-component = le composant { $id } n’existe pas
+setup-not-removable = { $id } n’est pas installé par l’application
+setup-component-busy = le composant est en cours de téléchargement ; mettez le téléchargement en pause
+setup-paused = le téléchargement est en pause
+setup-rate-limited = { $url } : le serveur répond { $status } depuis { $minutes } min
+setup-proxy-scheme = proxy { $proxy } : le schéma { $scheme } ne convient pas aux téléchargements (http, https, socks4, socks5)
+setup-proxy-no-host = proxy { $proxy } : pas d’hôte
+setup-proxy-no-port = proxy { $proxy } : pas de port
+setup-proxy-credentials = proxy { $proxy } : le téléchargement des modèles (ureq) ne peut pas transmettre au proxy cet identifiant ou ce mot de passe : il contient / ? #, une espace, du non-ASCII ou (pour SOCKS5) deux-points dans le mot de passe ; les requêtes cloud via ce proxy fonctionnent, le téléchargement demande un mot de passe sans ces caractères
+setup-start-failed = { $url } : impossible de démarrer en { $retries } essais : { $error }
+setup-chunk-manifest = le manifeste des blocs : { $error }
+setup-range-incomplete = plage incomplète : { $got }/{ $want } octets
+setup-range-failed = plage { $start }-{ $end } après { $retries } essais : { $error }
+setup-range-status = plage { $start }-{ $end } : statut { $status } (206 attendu)
+setup-range-read = lecture de la plage : { $error }
+setup-create = création de { $path } : { $error }
+setup-read = lecture : { $error }
+setup-download-failed = { $url } après { $retries } essais : { $error }
+setup-size-mismatch = { $file } : { $got } octets téléchargés, { $want } fixés ; le fichier est supprimé, le prochain essai repartira de zéro
+setup-hash-mismatch = { $file } : le SHA-256 { $got } ne correspond pas au { $want } fixé ; le fichier est supprimé, le prochain essai repartira de zéro
+setup-unpacking = Décompression de { $file }…
+setup-rename = renommage de { $path } : { $error }
+setup-waiting-other = En attente d’un autre téléchargement des mêmes composants…
+setup-delete = suppression de { $path } : { $error }
+setup-downloading = Téléchargement des modèles…
+setup-source-changed = { $url } : le serveur fournit { $got } octets, { $want } fixés ; la source a changé
+setup-manifest-write = manifeste { $path } : { $error }
+setup-archive-no-files = l’archive { $path } ne contient aucun des fichiers nécessaires
+setup-wheel-not-zip = le wheel n’est pas un zip : { $error }
+setup-wheel-entry = entrée du wheel : { $error }
+setup-archive-no-dll = l’archive { $path } ne contient pas de DLL
+setup-unpack = décompression de { $path } : { $error }
+setup-finalize = finalisation de { $path } : { $error }

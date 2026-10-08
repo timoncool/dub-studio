@@ -662,3 +662,103 @@ render-speaker-ref-unchecked = реф спикера { $speaker }: «{ $text }»
     [few] кандидата
    *[many] кандидатов
 }, сверка ⚠ не пройдена)
+
+## Setup: components
+
+setup-comp-higgs-purpose = Синтез дубляжа и клон голоса (TTS)
+setup-comp-higgs-engine-name = Higgs движок (audiocpp_engine.dll)
+setup-comp-higgs-engine-purpose = Нативный TTS-движок Higgs (C-ABI)
+setup-comp-gemma-purpose = Перевод и vision-оркестратор субтитров/титров
+setup-comp-gemma-q5-0-purpose = Перевод и vision — точнее q4_0
+setup-comp-gemma-q6-k-purpose = Перевод и vision — ещё точнее
+setup-comp-gemma-q8-0-purpose = Перевод и vision — максимальная точность
+setup-comp-parakeet-purpose = Распознавание речи со словными таймстемпами (ASR)
+setup-comp-higgs-q6-k-purpose = Синтез дубляжа и клон голоса (TTS) — вариант полегче Q8_0
+setup-comp-higgs-q4-k-m-purpose = Синтез дубляжа и клон голоса (TTS) — самый лёгкий вариант
+setup-comp-parakeet-fp32-purpose = Распознавание речи (ASR) — полная точность fp32
+setup-comp-parakeet-ultra-purpose = Распознавание речи (ASR) — дообученная Moondream версия, меньше ошибок
+setup-comp-whisper-engine-name = Whisper-Faster (движок ASR)
+setup-comp-whisper-engine-purpose = Альтернативный движок распознавания речи (faster-whisper) вместо Parakeet
+setup-comp-whisper-cuda-name = CUDA-ускорение Whisper (cuBLAS + cuDNN)
+setup-comp-whisper-cuda-purpose = GPU-инференс Whisper (иначе распознавание идёт на CPU, в разы медленнее)
+setup-comp-whisper-tiny-name = Whisper tiny (модель ASR)
+setup-comp-whisper-tiny-purpose = ASR Whisper — самая лёгкая и быстрая модель
+setup-comp-whisper-base-name = Whisper base (модель ASR)
+setup-comp-whisper-base-purpose = ASR Whisper — лёгкая модель, точнее tiny
+setup-comp-whisper-small-name = Whisper small (модель ASR)
+setup-comp-whisper-small-purpose = ASR Whisper — сбалансированная модель
+setup-comp-whisper-medium-name = Whisper medium (модель ASR)
+setup-comp-whisper-medium-purpose = ASR Whisper — высокая точность
+setup-comp-whisper-large-v3-name = Whisper large-v3 (модель ASR)
+setup-comp-whisper-large-v3-purpose = ASR Whisper — максимальная точность (large-v3)
+setup-comp-whisper-large-v3-turbo-name = Whisper large-v3-turbo (модель ASR)
+setup-comp-whisper-large-v3-turbo-purpose = ASR Whisper — почти large-v3, но заметно быстрее (turbo)
+setup-comp-sortformer-name = Nemotron 3 Diarization (до 8 спикеров)
+setup-comp-sortformer-purpose = Разделение спикеров (кто когда говорит), до 8 голосов
+setup-comp-roformer-purpose = Модель вокал/инструментал сепарации
+setup-comp-roformer-q5-purpose = Сепарация — вариант полегче Q8_0
+setup-comp-roformer-q4-purpose = Сепарация — самый лёгкий вариант
+setup-comp-casting-name = Модели кастинга персонажей (лица + голос)
+setup-comp-casting-purpose = Детект/эмбеддинг лиц (реальные + аниме) + голосовой эмбеддинг для кастинга
+setup-comp-bsroformer-engine-name = BSRoformer.cpp движок (CUDA)
+setup-comp-bsroformer-engine-purpose = Нативный движок сепарации (bs_roformer-cli + ggml-CUDA)
+setup-comp-bsroformer-engine-cpu-name = BSRoformer.cpp движок (CPU)
+setup-comp-bsroformer-engine-cpu-purpose = Сепарация на процессоре — режим без NVIDIA (медленнее, полная функция)
+setup-comp-llama-name = llama.cpp сервер (CUDA 13.4)
+setup-comp-llama-purpose = Сайдкар-сервер для Gemma (перевод/vision)
+setup-comp-onnxruntime-purpose = Рантайм ASR/OCR/диаризации (строго 1.28.x)
+setup-comp-onnxruntime-gpu-purpose = CUDA-провайдер для диаризации/Parakeet на GPU (режим local_backend=gpu)
+setup-comp-ffmpeg-purpose = Декод/энкод видео и аудио (NVENC)
+setup-comp-ytdlp-name = Загрузка по ссылке (yt-dlp + deno)
+setup-comp-ytdlp-purpose = Скачать видео по ссылке (YouTube и другие сайты yt-dlp) в новый проект
+setup-comp-cuda-runtime-purpose = Редистрибутивные CUDA-DLL для движков и CUDA-EP onnxruntime (без CUDA Toolkit)
+setup-comp-cudnn-purpose = Нужен CUDA-провайдеру onnxruntime для диаризации/Parakeet на GPU
+setup-comp-vcruntime-purpose = Системные DLL движков (идут в комплекте)
+setup-comp-ocr-name = OCR-модели (PP-OCR ONNX)
+setup-comp-ocr-purpose = Детекция вшитого текста → блюр (идут в комплекте)
+setup-comp-nvidia-driver-name = Драйвер NVIDIA
+setup-comp-nvidia-driver-purpose = GPU-ускорение (ставится отдельно, не приложением)
+
+## Setup: downloads and installation
+
+setup-http-status = { $url }: статус { $status }
+setup-write = запись: { $error }
+setup-not-zip = не zip: { $error }
+setup-zip-entry = запись zip: { $error }
+setup-open = открыть { $path }: { $error }
+setup-verifying = Проверяю SHA-256 { $file }…
+setup-install-record = запись об установке: { $error }
+setup-disk-space = не хватает места: нужно { $need } ГБ, свободно { $free } ГБ ({ $path })
+setup-unknown-component = нет компонента { $id }
+setup-not-removable = { $id } ставится не приложением
+setup-component-busy = компонент сейчас качается — поставьте закачку на паузу
+setup-paused = закачка поставлена на паузу
+setup-rate-limited = { $url }: сервер отвечает { $status } уже { $minutes } мин
+setup-proxy-scheme = прокси { $proxy }: схема { $scheme } закачке не подходит (http, https, socks4, socks5)
+setup-proxy-no-host = прокси { $proxy }: нет хоста
+setup-proxy-no-port = прокси { $proxy }: нет порта
+setup-proxy-credentials = прокси { $proxy }: закачка моделей (ureq) не может передать прокси такой логин или пароль — в нём / ? #, пробел, не-ASCII или (для SOCKS5) двоеточие в пароле; облачные запросы через этот прокси работают, для закачки нужен пароль без этих символов
+setup-start-failed = { $url }: не удалось начать за { $retries } попыток: { $error }
+setup-chunk-manifest = манифест чанков: { $error }
+setup-range-incomplete = неполный range: { $got }/{ $want } байт
+setup-range-failed = range { $start }-{ $end } после { $retries } попыток: { $error }
+setup-range-status = range { $start }-{ $end }: статус { $status } (ждали 206)
+setup-range-read = чтение range: { $error }
+setup-create = создать { $path }: { $error }
+setup-read = чтение: { $error }
+setup-download-failed = { $url } после { $retries } попыток: { $error }
+setup-size-mismatch = { $file }: скачано { $got } байт, закреплено { $want } — файл удалён, следующая попытка начнёт заново
+setup-hash-mismatch = { $file }: SHA-256 { $got } не совпал с закреплённым { $want } — файл удалён, следующая попытка начнёт заново
+setup-unpacking = Распаковываю { $file }…
+setup-rename = переименовать { $path }: { $error }
+setup-waiting-other = Жду другую закачку этих же компонентов…
+setup-delete = удалить { $path }: { $error }
+setup-downloading = Скачиваю модели…
+setup-source-changed = { $url }: сервер отдаёт { $got } байт, закреплено { $want } — источник изменился
+setup-manifest-write = манифест { $path }: { $error }
+setup-archive-no-files = в архиве { $path } не найдено нужных файлов
+setup-wheel-not-zip = wheel не zip: { $error }
+setup-wheel-entry = запись wheel: { $error }
+setup-archive-no-dll = в архиве { $path } нет DLL
+setup-unpack = распаковка { $path }: { $error }
+setup-finalize = финализация { $path }: { $error }
