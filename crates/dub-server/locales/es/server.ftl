@@ -27,3 +27,40 @@ cloud-tts-too-short = TTS en la nube: el audio es demasiado corto ({ $bytes } { 
    *[other] bytes
 })
 cloud-tts-read-wav = leyendo el wav de la nube: { $error }
+
+## Shared messages, compositing, downloads, dub timing, endpoints, preview frame
+
+common-read = leyendo { $path }: { $error }
+common-parse = analizando { $path }: { $error }
+common-ffmpeg-start = iniciando ffmpeg: { $error }
+compose-summary = composición: títulos={ $titles } (bbox), desenfoque de { $boxes } { $boxes ->
+    [one] caja
+   *[other] cajas
+}, sub_px={ $sub_px }
+compose-taglines-no-mt = lemas: la traducción automática no está disponible ({ $error }) -> solo desenfoque
+compose-taglines-translating = lemas: traduciendo los textos del rótulo
+compose-taglines-failed = lemas: la traducción falló; solo desenfoque
+downloads-interrupted = la descarga se interrumpió al cerrarse la aplicación; lo descargado se guardó en .part y se reanudará desde ahí
+downloads-nothing-to-download = ninguno de los id seleccionados es un componente descargable
+downloads-busy = ya hay una descarga en curso
+downloads-thread-failed = el hilo de descarga no se inició: { $error }
+timing-words-not-recognized = no se reconocieron los tiempos por palabra del doblaje en { $count } { $count ->
+    [one] frase
+   *[other] frases
+} ({ $examples }); sus palabras se resaltan por longitud
+openrouter-catalog-failed = catálogo de OpenRouter: { $error }
+openrouter-empty-key = la clave está vacía
+llm-server-no-address = no se ha indicado la dirección del servidor
+llm-server-no-answer = el servidor { $base } no respondió: { $reason }
+llm-server-status = { $endpoint } respondió { $status }
+llm-server-not-json = { $endpoint } no devolvió JSON: { $error }
+llm-server-not-model-list = { $endpoint } no devolvió una lista de modelos de OpenAI (falta el campo data)
+remix-start = remezclando { $count } { $count ->
+    [one] línea
+   *[other] líneas
+} → { $instruction }
+remix-no-llm = remezcla: el LLM no está disponible: { $error }
+remix-lines-changed = remezcla: las frases cambiaron mientras se hacía la remezcla; el proyecto no se modificó, vuelve a ejecutarla
+frame-empty-ass = ASS vacío: { $error }
+frame-read-preview = leyendo el fotograma de vista previa: { $error }
+frame-read-source = leyendo el fotograma original: { $error }

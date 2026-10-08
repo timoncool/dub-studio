@@ -161,10 +161,10 @@ pub fn record(
                 }
             }
             if !failed.is_empty() {
-                warn(format!(
-                    "пословные тайминги дубляжа не распознаны для {} фраз ({}) — у них подсветка слов по длине",
-                    failed.len(),
-                    failed.iter().take(3).cloned().collect::<Vec<_>>().join("; ")
+                warn(t!(
+                    "timing-words-not-recognized",
+                    count = failed.len(),
+                    examples = failed.iter().take(3).cloned().collect::<Vec<_>>().join("; ")
                 ));
             }
             write_json_atomic(&cache_path, &cache)?;
