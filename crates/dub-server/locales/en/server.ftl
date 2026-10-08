@@ -129,3 +129,27 @@ ocr-summary = OCR: { $regions } { $regions ->
     [one] span
    *[other] spans
 }, sub_y={ $sub_y }
+
+## Hardware presets
+
+common-write = writing { $what }: { $error }
+preset-rtx5090-title = RTX 5090 (32 GB)
+preset-rtx4090-title = RTX 4090 (24 GB)
+preset-top-subtitle = Maximum quality: the top quants locally
+preset-gpu16-title = 16 GB GPU
+preset-gpu16-subtitle = High quality (4080/4070 Ti and similar)
+preset-gpu12-title = 12 GB GPU
+preset-gpu12-subtitle = Balanced (3060/4070 and similar)
+preset-gpu8-title = 8 GB GPU
+preset-gpu8-subtitle = Economical: light quants (3060 Ti/4060)
+preset-weak-nvidia-cloud-title = Weak NVIDIA + cloud
+preset-weak-nvidia-cloud-subtitle = The heavy work (translation/vision/voicing) in OpenRouter, separation and ASR on your GPU
+preset-cloud-title = CPU + cloud (no NVIDIA)
+preset-cloud-subtitle = The heavy work in OpenRouter, the local work on the processor; runs without a graphics card (a key is needed)
+preset-custom-title = Custom
+preset-custom-subtitle = I will set every parameter myself
+preset-reason-no-gpu = No NVIDIA GPU found, so the “CPU + cloud” mode: the heavy work in OpenRouter, the local work on the processor (slower, but it works)
+preset-reason-top-card = { $gpu } detected: the maximum quants
+preset-reason-by-vram = { $gpu } · { $vram } GB VRAM: { $preset }
+preset-reason-low-vram = { $gpu } · { $vram } GB VRAM is little for local models; the cloud is more reliable
+preset-unknown = unknown preset: { $id }

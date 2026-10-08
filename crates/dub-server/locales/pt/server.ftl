@@ -129,3 +129,27 @@ ocr-summary = OCR: { $regions } { $regions ->
     [one] faixa
    *[other] faixas
 }, sub_y={ $sub_y }
+
+## Hardware presets
+
+common-write = gravando { $what }: { $error }
+preset-rtx5090-title = RTX 5090 (32 GB)
+preset-rtx4090-title = RTX 4090 (24 GB)
+preset-top-subtitle = Qualidade máxima: os melhores quants localmente
+preset-gpu16-title = GPU de 16 GB
+preset-gpu16-subtitle = Alta qualidade (4080/4070 Ti e similares)
+preset-gpu12-title = GPU de 12 GB
+preset-gpu12-subtitle = Equilibrado (3060/4070 e similares)
+preset-gpu8-title = GPU de 8 GB
+preset-gpu8-subtitle = Econômico: quants leves (3060 Ti/4060)
+preset-weak-nvidia-cloud-title = NVIDIA fraca + nuvem
+preset-weak-nvidia-cloud-subtitle = O pesado (tradução/visão/voz) no OpenRouter, separação e ASR na sua GPU
+preset-cloud-title = CPU + nuvem (sem NVIDIA)
+preset-cloud-subtitle = O pesado no OpenRouter, o local no processador; roda sem placa de vídeo (é preciso uma chave)
+preset-custom-title = Personalizado
+preset-custom-subtitle = Vou ajustar cada parâmetro manualmente
+preset-reason-no-gpu = Nenhuma GPU NVIDIA encontrada: modo “CPU + nuvem”, o pesado no OpenRouter e o local no processador (mais lento, mas funciona)
+preset-reason-top-card = { $gpu } detectada: quants máximos
+preset-reason-by-vram = { $gpu } · { $vram } GB de VRAM: { $preset }
+preset-reason-low-vram = { $gpu } · { $vram } GB de VRAM é pouco para modelos locais; a nuvem é mais confiável
+preset-unknown = predefinição desconhecida: { $id }

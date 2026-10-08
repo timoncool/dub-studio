@@ -99,3 +99,27 @@ ocr-no-blur = { $error }；不模糊
 ocr-models-missing = 未找到 OCR 模型
 ocr-detection-failed = OCR 检测失败（{ $error }）
 ocr-summary = OCR：{ $regions } 个区域，{ $localize } 个待本地化，{ $bands } 个条带，sub_y={ $sub_y }
+
+## Hardware presets
+
+common-write = 写入 { $what }：{ $error }
+preset-rtx5090-title = RTX 5090（32 GB）
+preset-rtx4090-title = RTX 4090（24 GB）
+preset-top-subtitle = 最高质量：本地运行最高量化
+preset-gpu16-title = 16 GB GPU
+preset-gpu16-subtitle = 高质量（4080/4070 Ti 等）
+preset-gpu12-title = 12 GB GPU
+preset-gpu12-subtitle = 均衡（3060/4070 等）
+preset-gpu8-title = 8 GB GPU
+preset-gpu8-subtitle = 经济：轻量量化（3060 Ti/4060）
+preset-weak-nvidia-cloud-title = 弱 NVIDIA + 云端
+preset-weak-nvidia-cloud-subtitle = 重任务（翻译/视觉/配音）交给 OpenRouter，分离和 ASR 在你的 GPU 上
+preset-cloud-title = CPU + 云端（无 NVIDIA）
+preset-cloud-subtitle = 重任务交给 OpenRouter，本地任务在处理器上运行；无需显卡（需要密钥）
+preset-custom-title = 自定义
+preset-custom-subtitle = 我会手动设置每个参数
+preset-reason-no-gpu = 未找到 NVIDIA GPU，使用“CPU + 云端”模式：重任务交给 OpenRouter，本地任务在处理器上运行（较慢，但可用）
+preset-reason-top-card = 检测到 { $gpu }：使用最高量化
+preset-reason-by-vram = { $gpu } · { $vram } GB 显存：{ $preset }
+preset-reason-low-vram = { $gpu } · { $vram } GB 显存不足以运行本地模型；云端更可靠
+preset-unknown = 未知预设：{ $id }

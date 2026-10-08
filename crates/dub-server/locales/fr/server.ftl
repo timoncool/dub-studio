@@ -129,3 +129,27 @@ ocr-summary = OCR : { $regions } { $regions ->
     [one] bande
    *[other] bandes
 }, sub_y={ $sub_y }
+
+## Hardware presets
+
+common-write = écriture de { $what } : { $error }
+preset-rtx5090-title = RTX 5090 (32 Go)
+preset-rtx4090-title = RTX 4090 (24 Go)
+preset-top-subtitle = Qualité maximale : les meilleurs quants en local
+preset-gpu16-title = GPU 16 Go
+preset-gpu16-subtitle = Haute qualité (4080/4070 Ti et équivalentes)
+preset-gpu12-title = GPU 12 Go
+preset-gpu12-subtitle = Équilibré (3060/4070 et équivalentes)
+preset-gpu8-title = GPU 8 Go
+preset-gpu8-subtitle = Économe : quants légers (3060 Ti/4060)
+preset-weak-nvidia-cloud-title = NVIDIA modeste + cloud
+preset-weak-nvidia-cloud-subtitle = Le lourd (traduction/vision/voix) sur OpenRouter, séparation et ASR sur votre GPU
+preset-cloud-title = CPU + cloud (sans NVIDIA)
+preset-cloud-subtitle = Le lourd sur OpenRouter, le local sur le processeur ; fonctionne sans carte graphique (clé requise)
+preset-custom-title = Personnalisé
+preset-custom-subtitle = Je règle chaque paramètre moi-même
+preset-reason-no-gpu = Aucun GPU NVIDIA trouvé : mode « CPU + cloud », le lourd sur OpenRouter, le local sur le processeur (plus lent, mais ça marche)
+preset-reason-top-card = { $gpu } détectée : quants maximaux
+preset-reason-by-vram = { $gpu } · { $vram } Go de VRAM : { $preset }
+preset-reason-low-vram = { $gpu } · { $vram } Go de VRAM, c’est peu pour le local ; le cloud est plus fiable
+preset-unknown = préréglage inconnu : { $id }

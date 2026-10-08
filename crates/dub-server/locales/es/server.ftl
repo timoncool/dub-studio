@@ -129,3 +129,27 @@ ocr-summary = OCR: { $regions } { $regions ->
     [one] franja
    *[other] franjas
 }, sub_y={ $sub_y }
+
+## Hardware presets
+
+common-write = escribiendo { $what }: { $error }
+preset-rtx5090-title = RTX 5090 (32 GB)
+preset-rtx4090-title = RTX 4090 (24 GB)
+preset-top-subtitle = Máxima calidad: los mejores cuantizados en local
+preset-gpu16-title = GPU de 16 GB
+preset-gpu16-subtitle = Alta calidad (4080/4070 Ti y similares)
+preset-gpu12-title = GPU de 12 GB
+preset-gpu12-subtitle = Equilibrado (3060/4070 y similares)
+preset-gpu8-title = GPU de 8 GB
+preset-gpu8-subtitle = Económico: cuantizados ligeros (3060 Ti/4060)
+preset-weak-nvidia-cloud-title = NVIDIA modesta + nube
+preset-weak-nvidia-cloud-subtitle = Lo pesado (traducción/visión/voz) en OpenRouter, separación y ASR en tu GPU
+preset-cloud-title = CPU + nube (sin NVIDIA)
+preset-cloud-subtitle = Lo pesado en OpenRouter, lo local en el procesador; funciona sin tarjeta gráfica (se necesita clave)
+preset-custom-title = Personalizado
+preset-custom-subtitle = Ajustaré cada parámetro a mano
+preset-reason-no-gpu = No se encontró GPU NVIDIA: modo «CPU + nube», lo pesado en OpenRouter y lo local en el procesador (más lento, pero funciona)
+preset-reason-top-card = Se detectó { $gpu }: cuantizados máximos
+preset-reason-by-vram = { $gpu } · { $vram } GB de VRAM: { $preset }
+preset-reason-low-vram = { $gpu } · { $vram } GB de VRAM son pocos para modelos locales; la nube es más fiable
+preset-unknown = preajuste desconocido: { $id }

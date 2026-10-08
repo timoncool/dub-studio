@@ -135,3 +135,27 @@ ocr-summary = OCR: { $regions } { $regions ->
     [few] спана
    *[many] спанов
 }, sub_y={ $sub_y }
+
+## Hardware presets
+
+common-write = запись { $what }: { $error }
+preset-rtx5090-title = RTX 5090 (32 ГБ)
+preset-rtx4090-title = RTX 4090 (24 ГБ)
+preset-top-subtitle = Максимальное качество — топовые кванты локально
+preset-gpu16-title = GPU 16 ГБ
+preset-gpu16-subtitle = Высокое качество (4080/4070 Ti и подобные)
+preset-gpu12-title = GPU 12 ГБ
+preset-gpu12-subtitle = Сбалансированно (3060/4070 и подобные)
+preset-gpu8-title = GPU 8 ГБ
+preset-gpu8-subtitle = Экономный — лёгкие кванты (3060 Ti/4060)
+preset-weak-nvidia-cloud-title = Слабая NVIDIA + облако
+preset-weak-nvidia-cloud-subtitle = Тяжёлое (перевод/vision/озвучка) в OpenRouter, сепарация и ASR на вашей GPU
+preset-cloud-title = CPU + облако (без NVIDIA)
+preset-cloud-subtitle = Тяжёлое в OpenRouter, локальное на процессоре — запускается без видеокарты (нужен ключ)
+preset-custom-title = Пользовательский
+preset-custom-subtitle = Настрою каждый параметр вручную
+preset-reason-no-gpu = NVIDIA GPU не найдена — режим «CPU + облако»: тяжёлое в OpenRouter, локальное на процессоре (медленнее, но работает)
+preset-reason-top-card = Обнаружена { $gpu } — максимальные кванты
+preset-reason-by-vram = { $gpu } · { $vram } ГБ VRAM — { $preset }
+preset-reason-low-vram = { $gpu } · { $vram } ГБ VRAM маловато для локали — облако надёжнее
+preset-unknown = неизвестный пресет: { $id }
