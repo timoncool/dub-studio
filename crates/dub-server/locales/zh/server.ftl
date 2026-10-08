@@ -594,3 +594,11 @@ setup-wheel-entry = wheel 条目：{ $error }
 setup-archive-no-dll = 压缩包 { $path } 中没有 DLL
 setup-unpack = 解压 { $path }：{ $error }
 setup-finalize = 完成 { $path }：{ $error }
+
+## Settings applied after analysis
+
+post-analyze-bad-vo-gain = vo_gain：应为 dB 数值，收到 { $value }
+post-analyze-bad-flag = { $name }：应为 0 或 1，收到 { $value }
+post-analyze-bad-container = container：应为 mp4 或 mkv，收到 { $value }
+post-analyze-bad-voice-slots = voice_slots：应为对象 {"{"}male:[…], female:[…]{"}"}
+post-analyze-edit-failed = 分析后的设置 { $edit }：{ $error }

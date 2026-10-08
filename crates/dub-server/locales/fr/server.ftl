@@ -753,3 +753,11 @@ setup-wheel-entry = entrée du wheel : { $error }
 setup-archive-no-dll = l’archive { $path } ne contient pas de DLL
 setup-unpack = décompression de { $path } : { $error }
 setup-finalize = finalisation de { $path } : { $error }
+
+## Settings applied after analysis
+
+post-analyze-bad-vo-gain = vo_gain : un nombre de dB était attendu, { $value } est arrivé
+post-analyze-bad-flag = { $name } : 0 ou 1 était attendu, { $value } est arrivé
+post-analyze-bad-container = container : mp4 ou mkv était attendu, { $value } est arrivé
+post-analyze-bad-voice-slots = voice_slots : un objet {"{"}male:[…], female:[…]{"}"} était attendu
+post-analyze-edit-failed = le réglage après analyse { $edit } : { $error }

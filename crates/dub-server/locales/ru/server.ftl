@@ -762,3 +762,11 @@ setup-wheel-entry = запись wheel: { $error }
 setup-archive-no-dll = в архиве { $path } нет DLL
 setup-unpack = распаковка { $path }: { $error }
 setup-finalize = финализация { $path }: { $error }
+
+## Settings applied after analysis
+
+post-analyze-bad-vo-gain = vo_gain: ожидалось число дБ, пришло { $value }
+post-analyze-bad-flag = { $name }: ожидалось 0 или 1, пришло { $value }
+post-analyze-bad-container = container: ожидалось mp4 или mkv, пришло { $value }
+post-analyze-bad-voice-slots = voice_slots: ожидался объект {"{"}male:[…], female:[…]{"}"}
+post-analyze-edit-failed = настройка после анализа { $edit }: { $error }

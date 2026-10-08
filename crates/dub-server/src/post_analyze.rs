@@ -30,29 +30,29 @@ impl PostAnalyze {
                 v.parse::<f64>()
                     .ok()
                     .filter(|g| g.is_finite())
-                    .ok_or_else(|| format!("vo_gain: ожидалось число дБ, пришло {v:?}"))?,
+                    .ok_or_else(|| t!("post-analyze-bad-vo-gain", value = format!("{v:?}")))?,
             ),
         };
         let sub_blur = match q.get("sub_blur").map(String::as_str) {
             None => None,
             Some("1") => Some(true),
             Some("0") => Some(false),
-            Some(v) => return Err(format!("sub_blur: ожидалось 0 или 1, пришло {v:?}")),
+            Some(v) => return Err(t!("post-analyze-bad-flag", name = "sub_blur", value = format!("{v:?}"))),
         };
         let keep_original = match q.get("keep_original").map(String::as_str) {
             None | Some("0") => None,
             Some("1") => match q.get("container").map(String::as_str).unwrap_or("mp4") {
                 c @ ("mp4" | "mkv") => Some(c.to_string()),
-                other => return Err(format!("container: ожидалось mp4 или mkv, пришло {other:?}")),
+                other => return Err(t!("post-analyze-bad-container", value = format!("{other:?}"))),
             },
-            Some(v) => return Err(format!("keep_original: ожидалось 0 или 1, пришло {v:?}")),
+            Some(v) => return Err(t!("post-analyze-bad-flag", name = "keep_original", value = format!("{v:?}"))),
         };
         let voice_slots = match q.get("voice_slots") {
             None => None,
             Some(v) => {
                 let body: Value = serde_json::from_str(v).map_err(|e| format!("voice_slots: {e}"))?;
                 if !body.is_object() {
-                    return Err("voice_slots: ожидался объект {male:[…], female:[…]}".into());
+                    return Err(t!("post-analyze-bad-voice-slots"));
                 }
                 let s = voice_slots::Slots::from_json(&body);
                 Some((s.male, s.female))
@@ -77,7 +77,7 @@ impl PostAnalyze {
             edits.push(json!({ "op": "keep_original", "keep": true, "container": c }));
         }
         for e in &edits {
-            patch::apply(proj, e).map_err(|(_, msg)| format!("настройка после анализа {e}: {msg}"))?;
+            patch::apply(proj, e).map_err(|(_, msg)| t!("post-analyze-edit-failed", edit = e.to_string(), error = msg))?;
         }
         let mut out = serde_json::Map::new();
         if let Some((male, female)) = &self.voice_slots {
