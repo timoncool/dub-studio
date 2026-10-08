@@ -298,3 +298,120 @@ align-no-speech = выравнивание по речи: речь не расп
 align-mismatch = выравнивание по речи: реплики не совпали с речью (сопоставлено { $share }%) — тайминги не менялись
 align-lines-changed = выравнивание по речи: реплики изменились, пока шло распознавание — тайминги не менялись, запустите выравнивание ещё раз
 align-done = выровнено по речи: { $share }% реплик по словам, изменён тайминг у { $changed }; сдвиг { $offset } с
+
+## Analysis
+
+analyze-serialize = сериализация { $what }: { $error }
+analyze-read-model = чтение модели { $path }: { $error }
+analyze-stage-cache-unreadable = кэш стадии { $stage } не читается ({ $error }) — пересчёт
+analyze-checkpoint-not-saved = чекпоинт стадии { $stage } не сохранён: { $error }
+analyze-diarize-continuous = диаризация: ожидается { $speakers } { $speakers ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}, непрерывный проход всей записи без сброса меток на часовых границах
+analyze-diarize-fragments = диаризация: ожидается { $speakers } { $speakers ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}, сопоставление голосов между фрагментами
+analyze-wespeaker-needed = WeSpeaker необходим для заданного числа спикеров: { $error }
+analyze-align-skipped = выравнивание по речи пропущено: субтитры на языке перевода, речь — на языке оригинала
+analyze-align-recognizing = выравнивание субтитров по речи: распознавание слов
+analyze-align-recognition-failed = выравнивание субтитров: распознавание речи: { $error }
+analyze-align-no-speech = выравнивание по речи: речь не распознана — тайминги файла оставлены
+analyze-align-mismatch = субтитры не совпали с речью (сопоставлено { $share }% реплик) — тайминги файла оставлены
+analyze-align-done = субтитры выровнены по речи: { $share }% реплик по словам, остальные сдвинуты вместе с соседями; сдвиг файла { $offset } с
+analyze-more = ещё { $count }
+analyze-window-plan = длинная дорожка { $duration }с: план { $windows } { $windows ->
+    [one] окна
+    [few] окон
+   *[many] окон
+} (первое ~{ $first }с) — оконный ASR ещё не активен, обработка монолитная
+analyze-audio-cached = аудио из кэша (источник не менялся) — пропуск ffmpeg
+analyze-extracting-audio = извлечение аудио (ffmpeg -> 16k mono)
+analyze-stems-stale = стемы посчитаны из звука прежнего извлечения — сепарация заново
+analyze-separating = сепарация вокала ({ $model }) — чистый голос для диаризации/ASR
+analyze-separation-cached = сепарация из кэша (stems уже посчитаны)
+analyze-separation-failed = сепарация не удалась ({ $error }) — диаризация/ASR по сырому аудио
+analyze-separator-missing = { $model } не найден — диаризация/ASR по сырому аудио
+analyze-diarizing = диаризация ({ $model })
+analyze-diarization-cached = диаризация из кэша
+analyze-diarization-count-failed = диаризация с заданным числом спикеров: { $error }
+analyze-diarization-failed = диаризация не удалась ({ $error }); single-speaker путь
+analyze-diarization-model-missing-count = модель { $model } не найдена: заданное число спикеров не может быть применено
+analyze-subs-no-diarization = субтитры: без диаризации (весь клип одним куском)
+analyze-diarization-model-missing = модель диаризации не найдена; single-speaker путь
+analyze-fewer-speakers = ожидалось { $expected } { $expected ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}, различено { $found }: отсутствующие голоса не добавлены
+analyze-speakers-matched = голоса сопоставлены между фрагментами: { $speakers } { $speakers ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}
+analyze-transcript-cached = транскрипт из кэша: { $segments } { $segments ->
+    [one] сегмент
+    [few] сегмента
+   *[many] сегментов
+}
+analyze-read-subs = чтение субтитров { $path }: { $error }
+analyze-subs-empty = субтитры не распознаны/пусты: { $path }
+analyze-subs-imported = субтитры импортированы: { $lines } { $lines ->
+    [one] реплика
+    [few] реплики
+   *[many] реплик
+}, { $speakers } { $speakers ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}
+analyze-cloud-asr = транскрипция через облако (OpenRouter STT)
+analyze-cloud-stt-failed = облачный STT: { $error }
+analyze-cloud-done = облако: { $lines } { $lines ->
+    [one] реплика
+    [few] реплики
+   *[many] реплик
+}, { $speakers } { $speakers ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}
+analyze-hallucination-filter = фильтр галлюцинаций ASR: { $error }
+analyze-hidden-hallucinations = скрыто фраз-галлюцинаций ASR (голоса нет): { $count } — { $lines }
+analyze-hidden-by-text = скрыто титров и звуков ASR по тексту (на интервале звук, голос от музыки не отделён): { $count } — { $lines }
+analyze-voiced-suspects = похожи на галлюцинацию, но голос есть — оставлены с пометкой: { $count } — { $lines }
+analyze-merged-fragments = слияние огрызков: { $before } -> { $after } сегментов
+analyze-characters-by-voice = персонажей по голосу: { $count }
+analyze-segments-speakers = { $segments } { $segments ->
+    [one] сегмент
+    [few] сегмента
+   *[many] сегментов
+}, { $speakers } { $speakers ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}
+analyze-project-unparsable = project.json не разбирается ({ $error }): в нём глоссарий проекта — анализ остановлен, чтобы его не потерять
+analyze-glossary-fixed = глоссарий: исправлено ошибок распознавания терминов — { $count }
+analyze-no-speech-nodub = нет речевых сегментов; оставляю оригинальную дорожку (nodub)
+analyze-auto-nodub = auto: нет дубляж-годной речи -> NODUB (оригинал + локализация экранного текста)
+analyze-casting-style = описания персонажей из профиля кастинга -> стиль перевода ({ $chars } симв.)
+analyze-empty-removed = убрано сегментов без слов: { $count }
+analyze-translation-cached = перевод из кэша
+analyze-ocr-cached = детекция экранного текста из кэша
+analyze-audio-no-ocr = аудио-режим: без видео, детекция экранного текста не нужна
+analyze-ocr-off = детекция вшитого текста отключена (галочка)
+analyze-content-type = тип контента (авто): { $kind }
+analyze-casting-cached = кастинг из кэша
+analyze-casting-checkpoint = чекпоинт кастинга не сохранён: { $error }
+analyze-profile-voices-missing = голоса профиля не найдены в voices/ -> клон: { $voices }
+analyze-profile-voices-applied = перенесённые голоса профиля применены к дубляжу ({ $count } { $count ->
+    [one] персонаж
+    [few] персонажа
+   *[many] персонажей
+})
+analyze-audio-no-casting = аудио-режим: без видео, кастинг персонажей не нужен
+analyze-cache-not-saved = не удалось сохранить cache.json: { $error } (не критично)

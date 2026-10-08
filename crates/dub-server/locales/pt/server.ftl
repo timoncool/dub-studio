@@ -283,3 +283,110 @@ align-no-speech = alinhamento com a fala: nenhuma fala reconhecida; os tempos n�
 align-mismatch = alinhamento com a fala: as falas não coincidiram com a fala ({ $share }% correspondido); os tempos não foram alterados
 align-lines-changed = alinhamento com a fala: as falas mudaram durante o reconhecimento; os tempos não foram alterados, execute o alinhamento de novo
 align-done = alinhado com a fala: { $share }% das falas por palavras, tempo alterado em { $changed }; deslocamento { $offset } s
+
+## Analysis
+
+analyze-serialize = serializando { $what }: { $error }
+analyze-read-model = lendo o modelo { $path }: { $error }
+analyze-stage-cache-unreadable = o cache da etapa { $stage } não pode ser lido ({ $error }); recalculando
+analyze-checkpoint-not-saved = o ponto de controle da etapa { $stage } não foi salvo: { $error }
+analyze-diarize-continuous = diarização: { $speakers } { $speakers ->
+    [one] falante esperado
+   *[other] falantes esperados
+}, uma passada contínua pela gravação inteira sem reiniciar rótulos a cada hora
+analyze-diarize-fragments = diarização: { $speakers } { $speakers ->
+    [one] falante esperado
+   *[other] falantes esperados
+}, associando vozes entre fragmentos
+analyze-wespeaker-needed = o WeSpeaker é necessário para um número definido de falantes: { $error }
+analyze-align-skipped = alinhamento com a fala pulado: as legendas estão no idioma de destino e a fala no original
+analyze-align-recognizing = alinhando as legendas com a fala: reconhecendo as palavras
+analyze-align-recognition-failed = alinhando as legendas: reconhecimento da fala: { $error }
+analyze-align-no-speech = alinhamento com a fala: nenhuma fala reconhecida; os tempos do arquivo foram mantidos
+analyze-align-mismatch = as legendas não coincidiram com a fala ({ $share }% das falas correspondidas); os tempos do arquivo foram mantidos
+analyze-align-done = legendas alinhadas com a fala: { $share }% das falas por palavras, o resto deslocado junto com as vizinhas; deslocamento do arquivo { $offset } s
+analyze-more = mais { $count }
+analyze-window-plan = faixa longa de { $duration } s: plano de { $windows } { $windows ->
+    [one] janela
+   *[other] janelas
+} (a primeira ~{ $first } s); o ASR por janelas ainda não está ativo, processamento em um bloco
+analyze-audio-cached = áudio do cache (a fonte não mudou); pulando o ffmpeg
+analyze-extracting-audio = extraindo o áudio (ffmpeg -> 16k mono)
+analyze-stems-stale = os stems vieram de uma extração anterior; separando de novo
+analyze-separating = separando a voz ({ $model }): voz limpa para a diarização/ASR
+analyze-separation-cached = separação do cache (os stems já estão prontos)
+analyze-separation-failed = a separação falhou ({ $error }); diarização/ASR no áudio bruto
+analyze-separator-missing = { $model } não foi encontrado; diarização/ASR no áudio bruto
+analyze-diarizing = diarização ({ $model })
+analyze-diarization-cached = diarização do cache
+analyze-diarization-count-failed = diarização com um número definido de falantes: { $error }
+analyze-diarization-failed = a diarização falhou ({ $error }); seguindo com um único falante
+analyze-diarization-model-missing-count = o modelo { $model } não foi encontrado: o número definido de falantes não pode ser aplicado
+analyze-subs-no-diarization = legendas: sem diarização (o clipe inteiro de uma vez)
+analyze-diarization-model-missing = o modelo de diarização não foi encontrado; seguindo com um único falante
+analyze-fewer-speakers = eram esperados { $expected } { $expected ->
+    [one] falante
+   *[other] falantes
+}, { $found } distinguidos: as vozes que faltam não foram adicionadas
+analyze-speakers-matched = vozes associadas entre fragmentos: { $speakers } { $speakers ->
+    [one] falante
+   *[other] falantes
+}
+analyze-transcript-cached = transcrição do cache: { $segments } { $segments ->
+    [one] segmento
+   *[other] segmentos
+}
+analyze-read-subs = lendo as legendas { $path }: { $error }
+analyze-subs-empty = as legendas não foram reconhecidas ou estão vazias: { $path }
+analyze-subs-imported = legendas importadas: { $lines } { $lines ->
+    [one] fala
+   *[other] falas
+}, { $speakers } { $speakers ->
+    [one] falante
+   *[other] falantes
+}
+analyze-cloud-asr = transcrevendo na nuvem (OpenRouter STT)
+analyze-cloud-stt-failed = STT na nuvem: { $error }
+analyze-cloud-done = nuvem: { $lines } { $lines ->
+    [one] fala
+   *[other] falas
+}, { $speakers } { $speakers ->
+    [one] falante
+   *[other] falantes
+}
+analyze-hallucination-filter = filtro de alucinações do ASR: { $error }
+analyze-hidden-hallucinations = falas alucinadas do ASR ocultadas (sem voz): { $count }: { $lines }
+analyze-hidden-by-text = títulos e sons do ASR ocultados pelo texto (há som no intervalo, a voz não está separada da música): { $count }: { $lines }
+analyze-voiced-suspects = parecem alucinações, mas há voz; mantidas com uma marca: { $count }: { $lines }
+analyze-merged-fragments = mesclando fragmentos: { $before } -> { $after } segmentos
+analyze-characters-by-voice = personagens por voz: { $count }
+analyze-segments-speakers = { $segments } { $segments ->
+    [one] segmento
+   *[other] segmentos
+}, { $speakers } { $speakers ->
+    [one] falante
+   *[other] falantes
+}
+analyze-project-unparsable = project.json não pode ser lido ({ $error }): ele contém o glossário do projeto, então a análise parou para não perdê-lo
+analyze-glossary-fixed = glossário: { $count } { $count ->
+    [one] erro corrigido
+   *[other] erros corrigidos
+} no reconhecimento de termos
+analyze-no-speech-nodub = não há segmentos de fala; mantendo a faixa original (nodub)
+analyze-auto-nodub = auto: não há fala adequada para dublagem -> NODUB (o original + texto na tela localizado)
+analyze-casting-style = descrições de personagens do perfil de casting -> estilo de tradução ({ $chars } caract.)
+analyze-empty-removed = segmentos sem palavras removidos: { $count }
+analyze-translation-cached = tradução do cache
+analyze-ocr-cached = detecção de texto na tela do cache
+analyze-audio-no-ocr = modo áudio: sem vídeo, a detecção de texto na tela não é necessária
+analyze-ocr-off = a detecção de texto embutido está desativada (a caixa)
+analyze-content-type = tipo de conteúdo (auto): { $kind }
+analyze-casting-cached = casting do cache
+analyze-casting-checkpoint = o ponto de controle do casting não foi salvo: { $error }
+analyze-profile-voices-missing = as vozes do perfil não foram encontradas em voices/ -> clone: { $voices }
+analyze-profile-voices-applied = as vozes do perfil foram aplicadas à dublagem ({ $count } { $count ->
+    [one] personagem
+   *[other] personagens
+})
+analyze-audio-no-casting = modo áudio: sem vídeo, o casting de personagens não é necessário
+analyze-cache-not-saved = não foi possível salvar cache.json: { $error } (não é grave)

@@ -283,3 +283,110 @@ align-no-speech = alineación con el habla: no se reconoció habla; los tiempos 
 align-mismatch = alineación con el habla: las frases no coincidieron con el habla ({ $share }% emparejado); los tiempos no se cambiaron
 align-lines-changed = alineación con el habla: las frases cambiaron durante el reconocimiento; los tiempos no se cambiaron, vuelve a alinear
 align-done = alineado con el habla: { $share }% de las frases por palabras, tiempos cambiados en { $changed }; desfase { $offset } s
+
+## Analysis
+
+analyze-serialize = serializando { $what }: { $error }
+analyze-read-model = leyendo el modelo { $path }: { $error }
+analyze-stage-cache-unreadable = no se puede leer la caché de la etapa { $stage } ({ $error }); se recalcula
+analyze-checkpoint-not-saved = no se guardó el punto de control de la etapa { $stage }: { $error }
+analyze-diarize-continuous = diarización: se esperan { $speakers } { $speakers ->
+    [one] hablante
+   *[other] hablantes
+}, una pasada continua por toda la grabación sin reiniciar etiquetas en los límites de cada hora
+analyze-diarize-fragments = diarización: se esperan { $speakers } { $speakers ->
+    [one] hablante
+   *[other] hablantes
+}, emparejando voces entre fragmentos
+analyze-wespeaker-needed = WeSpeaker es necesario para un número fijo de hablantes: { $error }
+analyze-align-skipped = alineación con el habla omitida: los subtítulos están en el idioma de destino y el habla en el original
+analyze-align-recognizing = alineando los subtítulos con el habla: reconociendo las palabras
+analyze-align-recognition-failed = alineando los subtítulos: reconocimiento del habla: { $error }
+analyze-align-no-speech = alineación con el habla: no se reconoció habla; se mantienen los tiempos del archivo
+analyze-align-mismatch = los subtítulos no coincidieron con el habla ({ $share }% de las frases emparejadas); se mantienen los tiempos del archivo
+analyze-align-done = subtítulos alineados con el habla: { $share }% de las frases por palabras, el resto desplazado con sus vecinas; desfase del archivo { $offset } s
+analyze-more = { $count } más
+analyze-window-plan = pista larga de { $duration } s: plan de { $windows } { $windows ->
+    [one] ventana
+   *[other] ventanas
+} (la primera ~{ $first } s); el ASR por ventanas aún no está activo, se procesa de una vez
+analyze-audio-cached = audio de la caché (la fuente no cambió); se omite ffmpeg
+analyze-extracting-audio = extrayendo el audio (ffmpeg -> 16k mono)
+analyze-stems-stale = los stems se hicieron con una extracción anterior; se separa de nuevo
+analyze-separating = separando la voz ({ $model }): voz limpia para la diarización/ASR
+analyze-separation-cached = separación de la caché (los stems ya están hechos)
+analyze-separation-failed = la separación falló ({ $error }); diarización/ASR sobre el audio original
+analyze-separator-missing = no se encontró { $model }; diarización/ASR sobre el audio original
+analyze-diarizing = diarización ({ $model })
+analyze-diarization-cached = diarización de la caché
+analyze-diarization-count-failed = diarización con un número fijo de hablantes: { $error }
+analyze-diarization-failed = la diarización falló ({ $error }); se sigue con un solo hablante
+analyze-diarization-model-missing-count = no se encontró el modelo { $model }: no se puede aplicar el número fijo de hablantes
+analyze-subs-no-diarization = subtítulos: sin diarización (todo el clip de una vez)
+analyze-diarization-model-missing = no se encontró el modelo de diarización; se sigue con un solo hablante
+analyze-fewer-speakers = se esperaban { $expected } { $expected ->
+    [one] hablante
+   *[other] hablantes
+}, se distinguieron { $found }: no se añadieron las voces que faltan
+analyze-speakers-matched = voces emparejadas entre fragmentos: { $speakers } { $speakers ->
+    [one] hablante
+   *[other] hablantes
+}
+analyze-transcript-cached = transcripción de la caché: { $segments } { $segments ->
+    [one] segmento
+   *[other] segmentos
+}
+analyze-read-subs = leyendo los subtítulos { $path }: { $error }
+analyze-subs-empty = los subtítulos no se reconocieron o están vacíos: { $path }
+analyze-subs-imported = subtítulos importados: { $lines } { $lines ->
+    [one] frase
+   *[other] frases
+}, { $speakers } { $speakers ->
+    [one] hablante
+   *[other] hablantes
+}
+analyze-cloud-asr = transcribiendo en la nube (OpenRouter STT)
+analyze-cloud-stt-failed = STT en la nube: { $error }
+analyze-cloud-done = nube: { $lines } { $lines ->
+    [one] frase
+   *[other] frases
+}, { $speakers } { $speakers ->
+    [one] hablante
+   *[other] hablantes
+}
+analyze-hallucination-filter = filtro de alucinaciones del ASR: { $error }
+analyze-hidden-hallucinations = frases alucinadas del ASR ocultas (sin voz): { $count }: { $lines }
+analyze-hidden-by-text = títulos y sonidos del ASR ocultos por su texto (hay sonido en el intervalo, la voz no está separada de la música): { $count }: { $lines }
+analyze-voiced-suspects = parecen alucinaciones, pero hay voz; se mantienen marcadas: { $count }: { $lines }
+analyze-merged-fragments = fusionando fragmentos: { $before } -> { $after } segmentos
+analyze-characters-by-voice = personajes por voz: { $count }
+analyze-segments-speakers = { $segments } { $segments ->
+    [one] segmento
+   *[other] segmentos
+}, { $speakers } { $speakers ->
+    [one] hablante
+   *[other] hablantes
+}
+analyze-project-unparsable = no se puede analizar project.json ({ $error }): contiene el glosario del proyecto, así que el análisis se detuvo para no perderlo
+analyze-glossary-fixed = glosario: { $count } { $count ->
+    [one] error corregido
+   *[other] errores corregidos
+} en el reconocimiento de términos
+analyze-no-speech-nodub = no hay segmentos de habla; se mantiene la pista original (nodub)
+analyze-auto-nodub = auto: no hay habla apta para doblaje -> NODUB (el original + texto en pantalla localizado)
+analyze-casting-style = descripciones de personajes del perfil de casting -> estilo de traducción ({ $chars } caract.)
+analyze-empty-removed = segmentos sin palabras eliminados: { $count }
+analyze-translation-cached = traducción de la caché
+analyze-ocr-cached = detección de texto en pantalla de la caché
+analyze-audio-no-ocr = modo audio: sin vídeo, no hace falta detectar texto en pantalla
+analyze-ocr-off = la detección de texto incrustado está desactivada (la casilla)
+analyze-content-type = tipo de contenido (auto): { $kind }
+analyze-casting-cached = casting de la caché
+analyze-casting-checkpoint = no se guardó el punto de control del casting: { $error }
+analyze-profile-voices-missing = no se encontraron las voces del perfil en voices/ -> clon: { $voices }
+analyze-profile-voices-applied = las voces del perfil se aplicaron al doblaje ({ $count } { $count ->
+    [one] personaje
+   *[other] personajes
+})
+analyze-audio-no-casting = modo audio: sin vídeo, no hace falta el casting de personajes
+analyze-cache-not-saved = no se pudo guardar cache.json: { $error } (no es grave)

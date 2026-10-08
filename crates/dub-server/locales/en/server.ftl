@@ -283,3 +283,110 @@ align-no-speech = aligning to speech: no speech was recognized; the timings were
 align-mismatch = aligning to speech: the lines did not match the speech ({ $share }% matched); the timings were not changed
 align-lines-changed = aligning to speech: the lines changed during recognition; the timings were not changed, run the alignment again
 align-done = aligned to speech: { $share }% of the lines by words, timing changed for { $changed }; offset { $offset } s
+
+## Analysis
+
+analyze-serialize = serializing { $what }: { $error }
+analyze-read-model = reading the model { $path }: { $error }
+analyze-stage-cache-unreadable = the cache of stage { $stage } is unreadable ({ $error }); recomputing
+analyze-checkpoint-not-saved = the checkpoint of stage { $stage } was not saved: { $error }
+analyze-diarize-continuous = diarization: { $speakers } { $speakers ->
+    [one] speaker
+   *[other] speakers
+} expected, one continuous pass over the whole recording without resetting labels at hour boundaries
+analyze-diarize-fragments = diarization: { $speakers } { $speakers ->
+    [one] speaker
+   *[other] speakers
+} expected, matching voices across fragments
+analyze-wespeaker-needed = WeSpeaker is needed for a set number of speakers: { $error }
+analyze-align-skipped = aligning to speech skipped: the subtitles are in the target language and the speech in the original one
+analyze-align-recognizing = aligning the subtitles to speech: recognizing the words
+analyze-align-recognition-failed = aligning the subtitles: speech recognition: { $error }
+analyze-align-no-speech = aligning to speech: no speech was recognized; the file’s timings are kept
+analyze-align-mismatch = the subtitles did not match the speech ({ $share }% of the lines matched); the file’s timings are kept
+analyze-align-done = the subtitles are aligned to speech: { $share }% of the lines by words, the rest shifted with their neighbours; file offset { $offset } s
+analyze-more = { $count } more
+analyze-window-plan = a long track of { $duration }s: a plan of { $windows } { $windows ->
+    [one] window
+   *[other] windows
+} (the first ~{ $first }s); windowed ASR is not active yet, processing in one piece
+analyze-audio-cached = audio from the cache (the source did not change); skipping ffmpeg
+analyze-extracting-audio = extracting the audio (ffmpeg -> 16k mono)
+analyze-stems-stale = the stems were made from an earlier extraction; separating again
+analyze-separating = separating the vocals ({ $model }): a clean voice for diarization/ASR
+analyze-separation-cached = separation from the cache (the stems are already made)
+analyze-separation-failed = separation failed ({ $error }); diarization/ASR on the raw audio
+analyze-separator-missing = { $model } was not found; diarization/ASR on the raw audio
+analyze-diarizing = diarization ({ $model })
+analyze-diarization-cached = diarization from the cache
+analyze-diarization-count-failed = diarization with a set number of speakers: { $error }
+analyze-diarization-failed = diarization failed ({ $error }); going on with a single speaker
+analyze-diarization-model-missing-count = the { $model } model was not found: the set number of speakers cannot be applied
+analyze-subs-no-diarization = subtitles: no diarization (the whole clip as one piece)
+analyze-diarization-model-missing = the diarization model was not found; going on with a single speaker
+analyze-fewer-speakers = { $expected } { $expected ->
+    [one] speaker was
+   *[other] speakers were
+} expected, { $found } told apart: the missing voices were not added
+analyze-speakers-matched = voices matched across fragments: { $speakers } { $speakers ->
+    [one] speaker
+   *[other] speakers
+}
+analyze-transcript-cached = transcript from the cache: { $segments } { $segments ->
+    [one] segment
+   *[other] segments
+}
+analyze-read-subs = reading the subtitles { $path }: { $error }
+analyze-subs-empty = the subtitles are unrecognized or empty: { $path }
+analyze-subs-imported = subtitles imported: { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}, { $speakers } { $speakers ->
+    [one] speaker
+   *[other] speakers
+}
+analyze-cloud-asr = transcribing in the cloud (OpenRouter STT)
+analyze-cloud-stt-failed = cloud STT: { $error }
+analyze-cloud-done = cloud: { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}, { $speakers } { $speakers ->
+    [one] speaker
+   *[other] speakers
+}
+analyze-hallucination-filter = ASR hallucination filter: { $error }
+analyze-hidden-hallucinations = ASR hallucination lines hidden (no voice): { $count }: { $lines }
+analyze-hidden-by-text = ASR titles and sounds hidden by their text (there is sound in the interval, the voice is not separated from the music): { $count }: { $lines }
+analyze-voiced-suspects = look like hallucinations, but there is a voice, so they are kept with a mark: { $count }: { $lines }
+analyze-merged-fragments = merging fragments: { $before } -> { $after } segments
+analyze-characters-by-voice = characters by voice: { $count }
+analyze-segments-speakers = { $segments } { $segments ->
+    [one] segment
+   *[other] segments
+}, { $speakers } { $speakers ->
+    [one] speaker
+   *[other] speakers
+}
+analyze-project-unparsable = project.json cannot be parsed ({ $error }): it holds the project glossary, so the analysis stopped to keep it
+analyze-glossary-fixed = glossary: { $count } term recognition { $count ->
+    [one] error
+   *[other] errors
+} fixed
+analyze-no-speech-nodub = no speech segments; keeping the original track (nodub)
+analyze-auto-nodub = auto: no speech worth dubbing -> NODUB (the original + localized on-screen text)
+analyze-casting-style = character descriptions from the casting profile -> translation style ({ $chars } chars)
+analyze-empty-removed = segments without words removed: { $count }
+analyze-translation-cached = translation from the cache
+analyze-ocr-cached = on-screen text detection from the cache
+analyze-audio-no-ocr = audio mode: no video, so no on-screen text detection is needed
+analyze-ocr-off = burned-in text detection is off (the checkbox)
+analyze-content-type = content type (auto): { $kind }
+analyze-casting-cached = casting from the cache
+analyze-casting-checkpoint = the casting checkpoint was not saved: { $error }
+analyze-profile-voices-missing = the profile voices were not found in voices/ -> clone: { $voices }
+analyze-profile-voices-applied = the carried-over profile voices are applied to the dub ({ $count } { $count ->
+    [one] character
+   *[other] characters
+})
+analyze-audio-no-casting = audio mode: no video, so no character casting is needed
+analyze-cache-not-saved = cache.json could not be saved: { $error } (not critical)
