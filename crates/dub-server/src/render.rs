@@ -1972,7 +1972,7 @@ fn build_dub_pass(
         .and_then(|v| v.as_str())
         .map(|v| v == "1")
         .unwrap_or(false);
-    let (laid_spans, (limited_phrases, limited_samples)) = timeline(&placed, total, &dub, breath_on)?;
+    let (laid_spans, (limited_phrases, limited_samples)) = timeline(&placed, total, &dub, breath_on, proj.audio.loudness_normalize)?;
     if limited_phrases > 0 {
         emit(progress, "mix", &format!(
             "лимитер пиков: {limited_phrases} фраз, {limited_samples} сэмплов выше полки {VOICE_CEILING} опущены без клипа"
@@ -2065,10 +2065,13 @@ fn build_dub_pass(
     // (-14 LUFS); финальный true-peak лимитер держит межфразовые суммы и микс с фоном.
     // Все промежуточные стадии — несжатый float WAV (media::lossless_out); единственное кодирование с
     // потерями — в mux (AAC 256k) либо превью dub_audio.m4a.
-    emit(progress, "mix", "нормализация громкости (EBU R128, true-peak)",
-    );
     let final_audio = wd.join("final_audio.wav");
-    let normalized = match media::loudnorm(&mixed, &final_audio, -14.0, -1.0, 11.0) {
+    let normalized = if !proj.audio.loudness_normalize {
+        emit(progress, "mix", "выравнивание громкости выключено: микс как есть");
+        mixed
+    } else {
+        emit(progress, "mix", "нормализация громкости (EBU R128, true-peak)");
+        match media::loudnorm(&mixed, &final_audio, -14.0, -1.0, 11.0) {
         Ok(()) => {
             discard_mix(&mixed, wd);
             final_audio
@@ -2076,6 +2079,7 @@ fn build_dub_pass(
         Err(e) => {
             emit(progress, "mix", &format!("loudnorm пропущен ({e})"));
             mixed
+        }
         }
     };
     for (sid, key) in &fallback_keys {
@@ -2704,7 +2708,7 @@ fn generate_breath_sample(sr: u32, seed: usize) -> Vec<f32> {
 /// Уложить сегменты на полную дорожку по таймкодам, без перекрытия/обрезки. Порт assemble.timeline.
 /// Применяет 10 мс crossfade к краям фраз для устранения кликов. При breath_on=true подставляет вдохи.
 /// Возвращает фактические спаны укладки и сводку лимитера (фраз с пиками выше полки, таких сэмплов).
-fn timeline(placed: &[(f64, PathBuf, f64)], total_dur: f64, out_wav: &Path, breath_on: bool,
+fn timeline(placed: &[(f64, PathBuf, f64)], total_dur: f64, out_wav: &Path, breath_on: bool, level: bool,
 ) -> Result<TimelineOut, String> {
     if placed.is_empty() {
         // тишина total_dur @ 24000.
@@ -2727,7 +2731,7 @@ fn timeline(placed: &[(f64, PathBuf, f64)], total_dur: f64, out_wav: &Path, brea
         } else {
             wavio::read_mono_f32(wav)?
         };
-        let over = normalize_voice(&mut s, ssr); // все фразы/спикеры к одной громкости
+        let over = if level { normalize_voice(&mut s, ssr) } else { 0 }; // все фразы/спикеры к одной громкости
         if over > 0 {
             limited_phrases += 1;
             limited_samples += over;

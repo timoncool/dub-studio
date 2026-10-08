@@ -2842,7 +2842,16 @@ function Editor() {
     try { setProject(await api.patch(pid, { op: "reorder_segments", ids: newIds })); }
     catch (e) { await surfaceErr(e); }
   }
-  async function doGain(gainDb: number) { return applyGain("gain", gainDb, t("voice.gain")); }                 // монтажный гейн всей дорожки
+  async function doGain(gainDb: number) { return applyGain("gain", gainDb, t("voice.gain")); }
+  async function setLoudness(on: boolean) {
+    if (regenId) return;
+    setRegenId("__all__"); pushActivity(t("voice.loudness"));
+    try {
+      const fresh = await api.patch(pid, { op: "loudness", on });
+      setProject(fresh); setRendered(false);
+    } catch (e) { await surfaceErr(e); }
+    finally { setRegenId(null); }
+  }                 // монтажный гейн всей дорожки
   async function doVoiceoverGain(gainDb: number) { return applyGain("voiceover_gain", gainDb, t("voice.origGain")); }  // громкость оригинала под переводом
   async function doRegenAll() {                                      // re-synthesize the WHOLE dub (after switching the pack voice/speaker, or to re-roll)
     if (regenId) return;
@@ -3678,6 +3687,14 @@ function Editor() {
                 className="w-full accent-[var(--color-accent)]" />
               <div className="text-[10px] text-[var(--color-muted)] leading-snug mt-0.5">{t("voice.gainHint")}</div>
             </div>
+            <label className="mt-3 flex items-start gap-2 text-[11px] cursor-pointer">
+              <input type="checkbox" checked={p.audio.loudness_normalize ?? true} onChange={(e) => void setLoudness(e.target.checked)}
+                className="mt-0.5 accent-[var(--color-accent)]" />
+              <span>
+                <span className="text-[var(--color-text)]">{t("voice.loudness")}</span>
+                <span className="block text-[10px] text-[var(--color-muted)] leading-snug mt-0.5">{t("voice.loudnessHint")}</span>
+              </span>
+            </label>
             {p.mode === "voiceover" && (   // закадровый: громкость ОРИГИНАЛЬНОЙ дорожки под переводом (0 = в полную силу, ниже = тише)
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[11px] mb-1">

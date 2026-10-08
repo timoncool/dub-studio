@@ -113,6 +113,8 @@
     "addSpeakerPick": "请先勾选一些句子，或将播放头移到某句上",
     "gain": "轨道增益",
     "gainHint": "增强整条音轨（重新生成/导出时应用）。",
+    "loudness": "响度均衡",
+    "loudnessHint": "将各句统一到同一响度，配音整体调到 -14 LUFS、峰值上限 -1 dBTP，与各平台播放一致。关闭：保持原始混音。",
     "origGain": "原声音量",
     "origGainHint": "旁白：原声轨道在译文下方的音量。",
     "langSearch": "搜索语言…",

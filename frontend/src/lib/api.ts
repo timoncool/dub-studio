@@ -93,7 +93,7 @@ export type Title = {
 export type Project = {
   meta: { video: string; duration: number; width: number; height: number; fps: number; src_codec: string };
   mode: string; tgt_lang: string;
-  audio: { keep_music: boolean; voice: { mode: string; name?: string | null }; rewrite?: string | null; gain_db?: number; voiceover_gain_db?: number; translate_style?: string; keep_original_track?: boolean; container?: string };
+  audio: { keep_music: boolean; voice: { mode: string; name?: string | null }; rewrite?: string | null; gain_db?: number; loudness_normalize?: boolean; voiceover_gain_db?: number; translate_style?: string; keep_original_track?: boolean; container?: string };
   segments: Segment[];
   subs: { mode: string; burn?: boolean; bilingual: Bilingual };
   captions: {

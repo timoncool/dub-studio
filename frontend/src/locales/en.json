@@ -145,6 +145,8 @@
     "addSpeakerPick": "First tick some lines, or move the playhead onto a line",
     "gain": "Track boost",
     "gainHint": "Boost the whole track (applied on regen/export).",
+    "loudness": "Even out loudness",
+    "loudnessHint": "Brings the phrases to one level and the dub to -14 LUFS with a -1 dBTP ceiling, as streaming platforms play it. Off: the mix as it came.",
     "origGain": "Original volume",
     "origGainHint": "Voice-over: how loud the original track sits under the translation.",
     "langSearch": "Search language…",

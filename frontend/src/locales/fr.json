@@ -113,6 +113,8 @@
     "addSpeakerPick": "Cochez d'abord des lignes ou placez la tête de lecture sur une ligne",
     "gain": "Gain",
     "gainHint": "Amplifier toute la piste (au rendu/export).",
+    "loudness": "Égaliser le volume",
+    "loudnessHint": "Met les phrases au même niveau et le doublage à -14 LUFS avec un plafond à -1 dBTP, comme le jouent les plateformes. Désactivé : le mixage tel quel.",
     "origGain": "Volume d’origine",
     "origGainHint": "Voix off : volume de la piste originale sous la traduction.",
     "langSearch": "Rechercher une langue…",

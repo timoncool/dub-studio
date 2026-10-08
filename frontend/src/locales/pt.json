@@ -113,6 +113,8 @@
     "addSpeakerPick": "Primeiro marque algumas falas ou mova o cursor sobre uma fala",
     "gain": "Ganho",
     "gainHint": "Amplificar toda a faixa (ao regenerar/exportar).",
+    "loudness": "Igualar volume",
+    "loudnessHint": "Leva as frases ao mesmo nível e a dublagem a -14 LUFS com teto de -1 dBTP, como as plataformas reproduzem. Desligado: a mixagem como veio.",
     "origGain": "Volume original",
     "origGainHint": "Locução: volume da faixa original sob a tradução.",
     "langSearch": "Buscar idioma…",
