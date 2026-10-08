@@ -64,3 +64,43 @@ remix-lines-changed = remix : les répliques ont changé pendant le remix ; le p
 frame-empty-ass = ASS vide : { $error }
 frame-read-preview = lecture de l’image d’aperçu : { $error }
 frame-read-source = lecture de l’image d’origine : { $error }
+
+## Glossary, hardware, job records, LLM providers
+
+glossary-bad-format = format « { $format } » : json ou tsv
+glossary-series-unreadable = le glossaire de la série est illisible : { $error }
+glossary-no-text = le projet n’a pas de texte : le glossaire se construit à partir de la parole reconnue, lancez d’abord l’analyse
+glossary-lines = glossaire : { $count } { $count ->
+    [one] ligne
+   *[other] lignes
+} de texte
+glossary-no-llm = glossaire : le LLM est indisponible : { $error }
+glossary-failed = glossaire : { $error }
+glossary-proposed = glossaire : { $count } { $count ->
+    [one] entrée proposée
+   *[other] entrées proposées
+}
+glossary-series-profile-missing = profil de série « { $slug } » introuvable ; son glossaire n’est pas appliqué
+glossary-series-slug-unreadable = le glossaire de la série « { $slug } » est illisible : { $error }
+glossary-series-applied = glossaire de la série « { $slug } » : { $count } { $count ->
+    [one] entrée
+   *[other] entrées
+}, { $added } ajoutées au projet
+hw-no-nvidia = pas de GPU NVIDIA
+jobs-serialize-record = sérialisation de job.json : { $error }
+jobs-record-missing = { $file } est absent de { $dir }
+llm-llama-server-missing = llama-server introuvable ({ $path })
+llm-gemma-missing = le GGUF de Gemma est introuvable ({ $path })
+llm-mmproj-missing = le projecteur de vision de Gemma (mmproj) est introuvable ({ $path })
+llm-chat-client = client de chat : { $error }
+llm-local-no-text-model = le serveur local ({ $url }) est choisi pour la traduction, mais aucun modèle n’est sélectionné
+llm-local-no-vision-model = le serveur local ({ $url }) est choisi pour la vision, mais aucun modèle n’est sélectionné
+llm-local-client = client du serveur local : { $error }
+llm-local-label = serveur local { $url } · { $model }
+llm-openrouter-no-key = OpenRouter est choisi, mais aucune clé n’est définie
+llm-openrouter-no-text-model = OpenRouter est choisi pour la traduction, mais aucun modèle n’est sélectionné
+llm-openrouter-no-vision-model = OpenRouter est choisi pour la vision, mais aucun modèle n’est sélectionné
+llm-openrouter-not-text = le modèle OpenRouter { $model } ne répond pas en texte ; choisissez-en un autre pour la traduction
+llm-openrouter-not-vision = le modèle OpenRouter { $model } n’accepte pas les images ; choisissez un modèle de vision
+llm-vision-missing = aucun ({ $reason })
+llm-pair = traduction : { $text } ; vision : { $vision }

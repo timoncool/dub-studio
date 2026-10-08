@@ -360,8 +360,8 @@ pub fn check_cancelled() -> Result<(), String> {
 
 /// Обновить job.json джобы этого потока (пока запись принадлежит ей).
 pub fn update_record(f: impl FnOnce(&mut job_store::JobRecord)) -> Result<(), String> {
-    let ctl = current().ok_or("поток не привязан к джобе")?;
-    let (dir, id) = ctl.store.as_ref().ok_or("у джобы нет job.json")?;
+    let ctl = current().ok_or("the thread is not bound to a job")?;
+    let (dir, id) = ctl.store.as_ref().ok_or("the job has no job.json")?;
     job_store::update_owned(dir, id, f)
 }
 

@@ -69,3 +69,42 @@ remix-lines-changed = ремикс: реплики изменились, пок�
 frame-empty-ass = пустой ASS: { $error }
 frame-read-preview = чтение превью-кадра: { $error }
 frame-read-source = чтение кадра оригинала: { $error }
+
+## Glossary, hardware, job records, LLM providers
+
+glossary-bad-format = format «{ $format }»: json или tsv
+glossary-series-unreadable = глоссарий сериала не читается: { $error }
+glossary-no-text = в проекте нет текста: глоссарий собирается из распознанной речи — сначала анализ
+glossary-lines = глоссарий: { $count } { $count ->
+    [one] строка
+    [few] строки
+   *[many] строк
+} текста
+glossary-no-llm = глоссарий: LLM недоступен — { $error }
+glossary-failed = глоссарий: { $error }
+glossary-proposed = глоссарий: предложено записей — { $count }
+glossary-series-profile-missing = профиль сериала «{ $slug }» не найден — его глоссарий не применён
+glossary-series-slug-unreadable = глоссарий сериала «{ $slug }» не читается: { $error }
+glossary-series-applied = глоссарий сериала «{ $slug }»: { $count } { $count ->
+    [one] запись
+    [few] записи
+   *[many] записей
+}, добавлено в проект { $added }
+hw-no-nvidia = нет NVIDIA GPU
+jobs-serialize-record = сериализация job.json: { $error }
+jobs-record-missing = { $file } нет в { $dir }
+llm-llama-server-missing = llama-server не найден ({ $path })
+llm-gemma-missing = GGUF Gemma не найден ({ $path })
+llm-mmproj-missing = vision-проектор Gemma (mmproj) не найден ({ $path })
+llm-chat-client = клиент чата: { $error }
+llm-local-no-text-model = локальный сервер ({ $url }) выбран для перевода, но модель не выбрана
+llm-local-no-vision-model = локальный сервер ({ $url }) выбран для vision, но модель не выбрана
+llm-local-client = клиент локального сервера: { $error }
+llm-local-label = локальный сервер { $url } · { $model }
+llm-openrouter-no-key = OpenRouter выбран, но ключ не задан
+llm-openrouter-no-text-model = OpenRouter выбран для перевода, но модель не выбрана
+llm-openrouter-no-vision-model = OpenRouter выбран для vision, но модель не выбрана
+llm-openrouter-not-text = модель OpenRouter { $model } не отвечает текстом — выберите другую для перевода
+llm-openrouter-not-vision = модель OpenRouter { $model } не принимает картинки — выберите vision-модель
+llm-vision-missing = нет ({ $reason })
+llm-pair = перевод: { $text }; vision: { $vision }

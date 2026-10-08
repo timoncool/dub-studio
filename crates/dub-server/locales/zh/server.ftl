@@ -49,3 +49,34 @@ remix-lines-changed = 改写：改写期间台词发生了变化；项目未修�
 frame-empty-ass = 空 ASS：{ $error }
 frame-read-preview = 读取预览帧：{ $error }
 frame-read-source = 读取原始帧：{ $error }
+
+## Glossary, hardware, job records, LLM providers
+
+glossary-bad-format = format“{ $format }”：应为 json 或 tsv
+glossary-series-unreadable = 无法读取剧集词汇表：{ $error }
+glossary-no-text = 项目中没有文本：词汇表由识别出的语音生成，请先分析
+glossary-lines = 词汇表：{ $count } 行文本
+glossary-no-llm = 词汇表：LLM 不可用：{ $error }
+glossary-failed = 词汇表：{ $error }
+glossary-proposed = 词汇表：建议了 { $count } 条
+glossary-series-profile-missing = 未找到剧集档案“{ $slug }”；未应用其词汇表
+glossary-series-slug-unreadable = 无法读取剧集“{ $slug }”的词汇表：{ $error }
+glossary-series-applied = 剧集词汇表“{ $slug }”：{ $count } 条，已向项目添加 { $added } 条
+hw-no-nvidia = 没有 NVIDIA GPU
+jobs-serialize-record = 序列化 job.json：{ $error }
+jobs-record-missing = { $dir } 中没有 { $file }
+llm-llama-server-missing = 未找到 llama-server（{ $path }）
+llm-gemma-missing = 未找到 Gemma 的 GGUF（{ $path }）
+llm-mmproj-missing = 未找到 Gemma 视觉投影器（mmproj）（{ $path }）
+llm-chat-client = 聊天客户端：{ $error }
+llm-local-no-text-model = 已选择本地服务器（{ $url }）用于翻译，但未选择模型
+llm-local-no-vision-model = 已选择本地服务器（{ $url }）用于视觉，但未选择模型
+llm-local-client = 本地服务器客户端：{ $error }
+llm-local-label = 本地服务器 { $url } · { $model }
+llm-openrouter-no-key = 已选择 OpenRouter，但未设置密钥
+llm-openrouter-no-text-model = 已选择 OpenRouter 用于翻译，但未选择模型
+llm-openrouter-no-vision-model = 已选择 OpenRouter 用于视觉，但未选择模型
+llm-openrouter-not-text = OpenRouter 模型 { $model } 不能输出文本；请为翻译选择其他模型
+llm-openrouter-not-vision = OpenRouter 模型 { $model } 不接受图片；请选择视觉模型
+llm-vision-missing = 无（{ $reason }）
+llm-pair = 翻译：{ $text }；视觉：{ $vision }

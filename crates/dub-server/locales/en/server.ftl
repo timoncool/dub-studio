@@ -64,3 +64,43 @@ remix-lines-changed = remix: the lines changed while the remix ran; the project 
 frame-empty-ass = empty ASS: { $error }
 frame-read-preview = reading the preview frame: { $error }
 frame-read-source = reading the source frame: { $error }
+
+## Glossary, hardware, job records, LLM providers
+
+glossary-bad-format = format “{ $format }”: json or tsv
+glossary-series-unreadable = the series glossary is unreadable: { $error }
+glossary-no-text = the project has no text: the glossary is built from recognized speech, so analyze first
+glossary-lines = glossary: { $count } { $count ->
+    [one] line
+   *[other] lines
+} of text
+glossary-no-llm = glossary: the LLM is unavailable: { $error }
+glossary-failed = glossary: { $error }
+glossary-proposed = glossary: { $count } { $count ->
+    [one] entry
+   *[other] entries
+} proposed
+glossary-series-profile-missing = series profile “{ $slug }” not found; its glossary is not applied
+glossary-series-slug-unreadable = the glossary of series “{ $slug }” is unreadable: { $error }
+glossary-series-applied = series glossary “{ $slug }”: { $count } { $count ->
+    [one] entry
+   *[other] entries
+}, { $added } added to the project
+hw-no-nvidia = no NVIDIA GPU
+jobs-serialize-record = serializing job.json: { $error }
+jobs-record-missing = { $file } is not in { $dir }
+llm-llama-server-missing = llama-server not found ({ $path })
+llm-gemma-missing = the Gemma GGUF was not found ({ $path })
+llm-mmproj-missing = the Gemma vision projector (mmproj) was not found ({ $path })
+llm-chat-client = chat client: { $error }
+llm-local-no-text-model = the local server ({ $url }) is chosen for translation, but no model is selected
+llm-local-no-vision-model = the local server ({ $url }) is chosen for vision, but no model is selected
+llm-local-client = local server client: { $error }
+llm-local-label = local server { $url } · { $model }
+llm-openrouter-no-key = OpenRouter is chosen, but no key is set
+llm-openrouter-no-text-model = OpenRouter is chosen for translation, but no model is selected
+llm-openrouter-no-vision-model = OpenRouter is chosen for vision, but no model is selected
+llm-openrouter-not-text = the OpenRouter model { $model } does not answer in text; choose another one for translation
+llm-openrouter-not-vision = the OpenRouter model { $model } does not accept images; choose a vision model
+llm-vision-missing = none ({ $reason })
+llm-pair = translation: { $text }; vision: { $vision }

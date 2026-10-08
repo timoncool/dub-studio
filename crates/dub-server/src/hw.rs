@@ -71,7 +71,7 @@ pub fn snapshot() -> HardwareSnapshot {
             Err(e) => snap.message = format!("NVML device: {e}"),
         }
     } else if snap.message.is_empty() {
-        snap.message = "нет NVIDIA GPU".into();
+        snap.message = t!("hw-no-nvidia");
     }
     drop(ng);
 
@@ -171,7 +171,7 @@ fn probe_gpu() -> GpuReport {
         }
         CudaProbe::Failed(what) => {
             r.nvidia = true;
-            tracing::warn!("CUDA-драйвер не отвечает: {what}");
+            tracing::warn!("the CUDA driver does not answer: {what}");
             r.reason = Some("cuda_init");
         }
         CudaProbe::Ok { version, compute } => {
@@ -188,7 +188,7 @@ fn probe_gpu() -> GpuReport {
     if ng.is_none() {
         match Nvml::init() {
             Ok(n) => *ng = Some(n),
-            Err(e) => tracing::warn!("NVML init: {e} — имя карты и версия драйвера не показываются"),
+            Err(e) => tracing::warn!("NVML init: {e}; the card name and driver version are not shown"),
         }
     }
     if let Some(n) = ng.as_ref() {
@@ -226,7 +226,7 @@ fn cuda_driver_probe() -> CudaProbe {
     let sym = |name: &[u8]| -> *mut c_void { unsafe { GetProcAddress(module, name.as_ptr()) } };
     let (init, version, count, attr) = (sym(b"cuInit\0"), sym(b"cuDriverGetVersion\0"), sym(b"cuDeviceGetCount\0"), sym(b"cuDeviceGetAttribute\0"));
     if init.is_null() || version.is_null() || count.is_null() || attr.is_null() {
-        return CudaProbe::Failed("nvcuda.dll без функций driver API".into());
+        return CudaProbe::Failed("nvcuda.dll without the driver API functions".into());
     }
     unsafe {
         let init = std::mem::transmute::<*mut c_void, CuInit>(init);
