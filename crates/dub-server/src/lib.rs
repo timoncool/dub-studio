@@ -112,6 +112,7 @@ pub fn verify_captions_e2e(
     let fonts_dir = repo_root.join("fonts");
     let unused = repo_root.join("nonexistent");
     let args = analyze::AnalyzeArgs {
+        speaker_count: 0,
         tgt_lang: proj.tgt_lang.clone(),
         mode: proj.mode.clone(),
         src_lang: "auto".into(),
@@ -1860,6 +1861,9 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         eprintln!("[analyze] импорт субтитров: {}", p.display());
     }
     let args = analyze::AnalyzeArgs {
+        speaker_count: qget("speaker_count", "0").parse::<usize>()
+            .ok().filter(|n| *n <= dub_asr::MAX_SPEAKERS)
+            .ok_or_else(|| Box::new((StatusCode::BAD_REQUEST, "speaker_count: ожидается целое число от 0 до 8 (0 — автоматически)").into_response()))?,
         tgt_lang: qget("tgt_lang", "en"),
         mode: qget("mode", "auto"),
         src_lang: qget("src_lang", "auto"),

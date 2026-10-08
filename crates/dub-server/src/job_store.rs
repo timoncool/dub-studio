@@ -213,6 +213,26 @@ mod tests {
     }
 
     #[test]
+    fn interrupted_analysis_preserves_speaker_count_when_requeued() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("project");
+        std::fs::create_dir(&dir).unwrap();
+        let args = json!({ "speaker_count": "8", "mode": "transcribe", "src_lang": "ru", "tgt_lang": "ru" });
+        write_queued(&dir, "analyze", &args, "first").unwrap();
+        update(&dir, |r| r.state = STATE_RUNNING.into()).unwrap();
+        assert_eq!(recover(root.path()), 1);
+        let interrupted = read(&dir).unwrap().unwrap();
+        assert!(interrupted.resumable());
+        assert_eq!(interrupted.args, args);
+        write_queued(&dir, &interrupted.kind, &interrupted.args, "resumed").unwrap();
+        let resumed = read(&dir).unwrap().unwrap();
+        assert_eq!(resumed.kind, "analyze");
+        assert_eq!(resumed.args["speaker_count"], "8");
+        assert_eq!(resumed.args, args);
+        assert_eq!(resumed.resumes, 1);
+    }
+
+    #[test]
     fn resume_counter_carries_over_same_kind() {
         let d = tmp_dir("resumes");
         write_queued(&d, "render", &json!({}), "j1").unwrap();

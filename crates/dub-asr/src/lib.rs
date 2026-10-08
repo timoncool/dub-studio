@@ -9,6 +9,7 @@
 //! dubengine/asr.py и dubengine/diarize.py: паузы >0.6с, конец предложения .!?…, макс 8.0с.
 
 mod hallucination;
+mod known_speakers;
 mod reconcile;
 mod resample;
 mod segment;
@@ -583,6 +584,55 @@ pub struct DiarTurns {
     pub ref_windows: std::collections::HashMap<i32, RefWindow>,
 }
 
+pub fn continuous_diarization_enabled() -> Result<bool, String> {
+    match std::env::var("DUB_STUDIO_DIAR_CONTINUOUS") {
+        Ok(value) => parse_continuous_diarization(Some(&value)),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(error) => Err(format!("DUB_STUDIO_DIAR_CONTINUOUS: {error}")),
+    }
+}
+
+fn parse_continuous_diarization(value: Option<&str>) -> Result<bool, String> {
+    match value {
+        None | Some("0") => Ok(false),
+        Some("1") => Ok(true),
+        Some(_) => Err("DUB_STUDIO_DIAR_CONTINUOUS: ожидается 0 или 1".into()),
+    }
+}
+
+fn known_diarization_window(total: f64, continuous: bool) -> f64 {
+    if continuous || total <= DIAR_WINDOW_GATE_SECS {
+        total.max(1.0)
+    } else {
+        DIAR_WIN_SECS
+    }
+}
+
+#[cfg(test)]
+mod continuous_diarization_tests {
+    use super::*;
+
+    #[test]
+    fn continuous_mode_keeps_the_entire_six_hour_recording_in_one_window() {
+        let total = 6.0 * 3600.0 - 180.0;
+        let windows = known_speakers::diar_windows(total, known_diarization_window(total, true), DIAR_OVERLAP_SECS);
+        assert_eq!(windows.len(), 1);
+        assert_eq!((windows[0].start, windows[0].end, windows[0].keep_start, windows[0].keep_end), (0.0, total, 0.0, total));
+        assert_eq!(known_diarization_window(total, false), 3600.0);
+        assert_eq!(known_diarization_window(60.0, false), 60.0);
+    }
+
+    #[test]
+    fn continuous_mode_rejects_invalid_values_without_enabling_another_path() {
+        assert!(!parse_continuous_diarization(None).unwrap());
+        assert!(!parse_continuous_diarization(Some("0")).unwrap());
+        assert!(parse_continuous_diarization(Some("1")).unwrap());
+        for value in ["", "true", "2", " 1"] {
+            assert!(parse_continuous_diarization(Some(value)).unwrap_err().contains("ожидается 0 или 1"));
+        }
+    }
+}
+
 /// DIARIZE-FIRST: порт diarize.turns() — слить подряд идущие реплики одного спикера (merge_gap),
 /// и если «настоящих» спикеров (суммарно >= min_speaker_dur) меньше двух, схлопнуть в single-speaker
 /// (turns=[], n=1) — это ШТАТНАЯ graceful-деградация питона, не отсебятина. Иначе перенумеровать
@@ -595,6 +645,37 @@ pub fn turns(
 ) -> Result<DiarTurns, AsrError> {
     let raw = diarize(wav, diar_onnx)?;
     Ok(merge_turns(&raw, merge_gap, min_speaker_dur))
+}
+
+pub fn turns_with_speaker_count(
+    wav: impl AsRef<Path>,
+    diar_onnx: impl AsRef<Path>,
+    count: usize,
+    embed: &mut impl FnMut(&[f32]) -> Result<Vec<f32>, String>,
+) -> Result<DiarTurns, AsrError> {
+    if !(1..=MAX_SPEAKERS).contains(&count) {
+        return Err(AsrError::Parakeet(format!("число спикеров должно быть от 1 до {MAX_SPEAKERS}")));
+    }
+    if count == 1 {
+        return Ok(DiarTurns { turns: Vec::new(), n_speakers: 1, ref_windows: Default::default() });
+    }
+    ensure_ort_dylib();
+    let (audio, sr) = load_wav_16k_mono(wav.as_ref())?;
+    let mut sf = Sortformer::with_config(diar_onnx.as_ref(), Some(exec_config()), DiarizationConfig::default())
+        .map_err(|e| AsrError::Parakeet(e.to_string()))?;
+    sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+    let total = audio.len() as f64 / sr as f64;
+    let window = known_diarization_window(total, continuous_diarization_enabled().map_err(AsrError::Parakeet)?);
+    let mut tracker = known_speakers::VoiceTracker::new(count);
+    let mut out = Vec::new();
+    for range in known_speakers::diar_windows(total, window, DIAR_OVERLAP_SECS) {
+        let a0 = (range.start * sr as f64) as usize;
+        let a1 = ((range.end * sr as f64) as usize).min(audio.len());
+        let segs = sf.diarize(audio[a0..a1].to_vec(), sr, 1).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+        let local = segments_to_turns(&segs, range.start);
+        out.extend(tracker.process_window(&local, &audio[a0..a1], sr, range, embed).map_err(AsrError::Parakeet)?);
+    }
+    Ok(known_speakers::finish_turns(out))
 }
 
 /// Порог «настоящего» спикера: 10% всей речи ролика, не меньше 1.5 с и не больше `cap`. Ложные спикеры

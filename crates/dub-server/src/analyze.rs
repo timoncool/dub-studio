@@ -189,6 +189,21 @@ mod cache {
         h.finalize().to_hex().to_string()
     }
 
+    pub fn hash_model(path: &Path) -> Result<String, String> {
+        use std::io::Read;
+        let mut file = std::fs::File::open(path)
+            .map_err(|e| format!("чтение модели {}: {e}", path.display()))?;
+        let mut hash = blake3::Hasher::new();
+        let mut buffer = [0u8; 64 * 1024];
+        loop {
+            let size = file.read(&mut buffer)
+                .map_err(|e| format!("чтение модели {}: {e}", path.display()))?;
+            if size == 0 { break; }
+            hash.update(&buffer[..size]);
+        }
+        Ok(hash.finalize().to_hex().to_string())
+    }
+
     fn read_up_to(f: &mut std::fs::File, buf: &mut [u8]) -> usize {
         use std::io::Read;
         let mut filled = 0;
@@ -251,6 +266,8 @@ mod cache {
 /// Параметры analyze (из query POST /projects/{pid}/analyze). tgt_lang/mode/src_lang/subs/rewrite —
 /// как в app.py.analyze_project. В этой стадии влияют только на mode-дефолты Project и mode/subs поля.
 pub struct AnalyzeArgs {
+    /// 0 — автоматическое определение; 1–8 — ожидаемое число голосов на всю запись.
+    pub speaker_count: usize,
     pub tgt_lang: String,
     pub mode: String,   // auto | dub | nodub | transcribe (auto -> dub по умолчанию, до vision-стадии)
     pub src_lang: String,
@@ -377,7 +394,7 @@ fn resolve_modes(args: &AnalyzeArgs) -> (String, String) {
 
 /// Нужна ли этому анализу диаризация: всё, кроме nodub (только субтитры идут whole-clip, как питон).
 pub fn wants_diarization(args: &AnalyzeArgs) -> bool {
-    args.mode != "nodub"
+    args.speaker_count != 1 && (args.speaker_count > 1 || args.mode != "nodub")
 }
 
 /// Спикер для импортированной реплики субтитров — по максимальному перекрытию по времени с
@@ -602,6 +619,67 @@ fn stage_store<T: serde::Serialize>(
 fn file_tag(p: &std::path::Path) -> String {
     let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
     format!("{}:{size}", p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default())
+}
+
+fn diar_cache_key(input: &str, detector: &std::path::Path, voice_model: &std::path::Path, count: usize) -> Result<String, String> {
+    let continuous = count > 1 && dub_asr::continuous_diarization_enabled()?;
+    diar_cache_key_with_mode(input, detector, voice_model, count, continuous)
+}
+
+fn diar_cache_key_with_mode(input: &str, detector: &std::path::Path, voice_model: &std::path::Path, count: usize, continuous: bool) -> Result<String, String> {
+    if count == 0 {
+        return Ok(cache::hash_stage(&[DIAR_VER, input, &file_tag(detector)]));
+    }
+    let version = if count > 1 && continuous { "known-voices-continuous-v1" } else { "known-voices-v3" };
+    Ok(cache::hash_stage(&[DIAR_VER, version, input, &file_tag(detector), &count.to_string(),
+        &if count > 1 { cache::hash_model(voice_model)? } else { "none".into() }]))
+}
+
+fn diarization_fingerprint(diar: &dub_asr::DiarTurns, key: &str, count: usize) -> Result<String, String> {
+    let output = serde_json::to_string(&DiarOut::of(diar)).map_err(|e| format!("сериализация диаризации: {e}"))?;
+    Ok(if count == 0 { cache::hash_stage(&[&output]) } else { cache::hash_stage(&[key, &output]) })
+}
+
+#[cfg(test)]
+mod continuous_diarization_cache_tests {
+    use super::*;
+
+    #[test]
+    fn switching_mode_invalidates_diarization_and_asr_but_not_single_speaker_or_auto() {
+        let dir = tempfile::tempdir().unwrap();
+        let detector = dir.path().join("detector.onnx");
+        let voice = dir.path().join("voice.onnx");
+        std::fs::write(&voice, b"voice-model").unwrap();
+        let normal = diar_cache_key_with_mode("audio", &detector, &voice, 8, false).unwrap();
+        let continuous = diar_cache_key_with_mode("audio", &detector, &voice, 8, true).unwrap();
+        assert_ne!(normal, continuous);
+        let diar = dub_asr::DiarTurns { turns: Vec::new(), n_speakers: 8, ref_windows: Default::default() };
+        assert_ne!(diarization_fingerprint(&diar, &normal, 8).unwrap(), diarization_fingerprint(&diar, &continuous, 8).unwrap());
+        for count in [0, 1] {
+            assert_eq!(diar_cache_key_with_mode("audio", &detector, &voice, count, false).unwrap(), diar_cache_key_with_mode("audio", &detector, &voice, count, true).unwrap());
+        }
+    }
+}
+
+fn known_speaker_turns(
+    wav: &std::path::Path,
+    detector: &std::path::Path,
+    voice_model: &std::path::Path,
+    count: usize,
+    progress: &Progress,
+) -> Result<dub_asr::DiarTurns, String> {
+    let msg = if dub_asr::continuous_diarization_enabled()? {
+        format!("диаризация: ожидается {count} спикер(ов), непрерывный проход всей записи без сброса меток на часовых границах")
+    } else {
+        format!("диаризация: ожидается {count} спикер(ов), сопоставление голосов между фрагментами")
+    };
+    emit(progress, "diarize", &msg);
+    let mut embedder = dub_faces::VoiceEmbedder::load(voice_model)
+        .map_err(|e| format!("WeSpeaker необходим для заданного числа спикеров: {e}"))?;
+    dub_asr::turns_with_speaker_count(wav, detector, count, &mut |samples| {
+        crate::jobs::check_cancelled()?;
+        embedder.embed_samples(samples)
+    }).map_err(|e| e.to_string())
 }
 
 /// Кто переводит (stage "llm") или смотрит кадры (stage "vision") — для ключа стадии перевода: своя Gemma
@@ -896,18 +974,31 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     emit(progress, "diarize", "диаризация (Nemotron 3 Diarization)");
     // Вход диаризации и ASR — asr_wav (чистый вокал или сырое аудио): ключи стадий от его отпечатка.
     let asr_in_hash = cache::hash_file_prefix(&asr_wav);
-    let diar_key = cache::hash_stage(&[DIAR_VER, &asr_in_hash, &file_tag(&paths.sortformer_onnx)]);
-    let diar = if want_diar && paths.sortformer_onnx.is_file() {
+    let voice_model = dub_faces::wespeaker_path(&paths.models_root);
+    let diar_key = diar_cache_key(&asr_in_hash, &paths.sortformer_onnx, &voice_model, args.speaker_count)?;
+    let diar = if args.speaker_count == 1 {
+        let d = dub_asr::DiarTurns { turns: Vec::new(), n_speakers: 1, ref_windows: Default::default() };
+        stage_store(&mut cache, &paths.work_dir, "diarize", &diar_key, DIAR_FILE, &DiarOut::of(&d), progress);
+        Some(d)
+    } else if want_diar && paths.sortformer_onnx.is_file() {
         if let Some(d) = stage_load::<DiarOut>(&cache, &paths.work_dir, "diarize", &diar_key, DIAR_FILE, progress) {
             crate::jobs::emit_resumed(progress, "diarize", "диаризация из кэша");
             Some(d.into_turns())
         } else {
-            match dub_asr::turns(&asr_wav, &paths.sortformer_onnx, 0.8, 2.5) {
+            let result = if args.speaker_count > 0 {
+                known_speaker_turns(&asr_wav, &paths.sortformer_onnx, &voice_model, args.speaker_count, progress)
+            } else {
+                dub_asr::turns(&asr_wav, &paths.sortformer_onnx, 0.8, 2.5).map_err(|e| e.to_string())
+            };
+            match result {
                 Ok(d) => {
                     stage_store(&mut cache, &paths.work_dir, "diarize", &diar_key, DIAR_FILE, &DiarOut::of(&d), progress);
                     Some(d)
                 }
                 Err(e) => {
+                    if args.speaker_count > 0 {
+                        return Err(format!("диаризация с заданным числом спикеров: {e}"));
+                    }
                     emit(
                         progress,
                         "diarize",
@@ -918,6 +1009,9 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             }
         }
     } else {
+        if args.speaker_count > 1 {
+            return Err("модель Nemotron 3 Diarization не найдена: заданное число спикеров не может быть применено".into());
+        }
         emit(
             progress,
             "diarize",
@@ -925,13 +1019,21 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         );
         None
     };
+    if args.speaker_count > 0 {
+        let found = diar.as_ref().map_or(1, |d| d.n_speakers);
+        emit(progress, "diarize", &if found < args.speaker_count {
+            format!("ожидалось {} спикеров, различено {found}: отсутствующие голоса не добавлены", args.speaker_count)
+        } else {
+            format!("голоса сопоставлены между фрагментами: {found} спикер(ов)")
+        });
+    }
     // 4) сегменты: из импортированных субтитров (точный текст+тайминг, ASR пропущен) ЛИБО через ASR.
     //    Импорт: спикеров всё равно раздаём — по максимальному перекрытию реплики с диаризацией.
     //    Транскрипт (после слияния огрызков) — durable-выход стадии: ключ от входа ASR, движка, языка,
     //    источника реплик и диаризации (спикеры раздаются по ней).
     crate::jobs::check_cancelled()?;
     let diar_fp = match &diar {
-        Some(d) => cache::hash_stage(&[&serde_json::to_string(&DiarOut::of(d)).unwrap_or_default()]),
+        Some(d) => diarization_fingerprint(d, &diar_key, args.speaker_count)?,
         None => "none".to_string(),
     };
     let asr_source = match &paths.import_subs {
@@ -1249,6 +1351,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // Язык оригинала (для метки 2-й дорожки при keep_original_track). "auto" не детектится типизированно —
     // храним как есть; render маппит непустой не-auto код через iso639, иначе "und". Инвариант extra=allow.
     proj.meta.extra.insert("src_lang".into(), Value::String(args.src_lang.clone()));
+    proj.meta.extra.insert("speaker_count".into(), json!(args.speaker_count));
     proj.subs.mode = subs_mode;
     proj.subs.burn = args.burn; // композируемость: вжигать субтитры/титры или нет
     proj.glossary = glossary;
@@ -1654,6 +1757,7 @@ mod segment_rules_tests {
 
     fn args(mode: &str, subs: &str) -> AnalyzeArgs {
         AnalyzeArgs {
+            speaker_count: 0,
             tgt_lang: "ru".into(),
             mode: mode.into(),
             src_lang: "auto".into(),
@@ -1668,6 +1772,63 @@ mod segment_rules_tests {
             import_translated: false,
             align_subs: false,
         }
+    }
+
+    #[test]
+    fn speaker_count_invalidates_diarization_but_auto_keeps_the_old_key() {
+        let detector = std::path::Path::new("missing_detector.onnx");
+        let dir = tempfile::tempdir().unwrap();
+        let voice = dir.path().join("voice.onnx");
+        std::fs::write(&voice, b"model").unwrap();
+        assert_eq!(diar_cache_key("audio", detector, &voice, 0).unwrap(), cache::hash_stage(&[DIAR_VER, "audio", &file_tag(detector)]));
+        assert_ne!(diar_cache_key("audio", detector, &voice, 8).unwrap(), diar_cache_key("audio", detector, &voice, 4).unwrap());
+        let mut options = args("nodub", "transcribe");
+        assert!(!wants_diarization(&options));
+        options.speaker_count = 8;
+        assert!(wants_diarization(&options));
+        options.speaker_count = 1;
+        assert!(!wants_diarization(&options));
+    }
+
+    #[test]
+    fn middle_of_voice_model_invalidates_diarization_and_asr() {
+        use std::io::{Seek, SeekFrom, Write};
+        let dir = tempfile::tempdir().unwrap();
+        let voice = dir.path().join("voice.onnx");
+        let detector = dir.path().join("detector.onnx");
+        let file = std::fs::File::create(&voice).unwrap();
+        file.set_len(16 * 1024 * 1024 + 1).unwrap();
+        drop(file);
+        let first = diar_cache_key("audio", &detector, &voice, 8).unwrap();
+        let prefix = cache::hash_file_prefix(&voice);
+        let diar = dub_asr::DiarTurns { turns: Vec::new(), n_speakers: 0, ref_windows: Default::default() };
+        let first_asr = diarization_fingerprint(&diar, &first, 8).unwrap();
+        let mut file = std::fs::OpenOptions::new().write(true).open(&voice).unwrap();
+        file.seek(SeekFrom::Start(8 * 1024 * 1024)).unwrap();
+        file.write_all(&[1]).unwrap();
+        drop(file);
+        assert_eq!(prefix, cache::hash_file_prefix(&voice));
+        let second = diar_cache_key("audio", &detector, &voice, 8).unwrap();
+        assert_ne!(first, second);
+        assert_ne!(first_asr, diarization_fingerprint(&diar, &second, 8).unwrap());
+        assert!(diar_cache_key("audio", &detector, &dir.path().join("missing.onnx"), 8).is_err());
+    }
+
+    #[test]
+    fn voice_model_change_invalidates_diarization_and_asr_even_with_identical_turns() {
+        let dir = tempfile::tempdir().unwrap();
+        let detector = dir.path().join("detector.onnx");
+        let voice = dir.path().join("voice.onnx");
+        std::fs::write(&voice, b"model-a").unwrap();
+        let first = diar_cache_key("audio", &detector, &voice, 8).unwrap();
+        let diar = dub_asr::DiarTurns { turns: vec![dub_asr::Turn { start: 0.0, end: 1.0, speaker: 0 }], n_speakers: 1, ref_windows: Default::default() };
+        let first_asr = diarization_fingerprint(&diar, &first, 8).unwrap();
+        std::fs::write(&voice, b"model-b").unwrap();
+        let second = diar_cache_key("audio", &detector, &voice, 8).unwrap();
+        assert_ne!(first, second);
+        assert_ne!(first_asr, diarization_fingerprint(&diar, &second, 8).unwrap());
+        let fewer = diar_cache_key("audio", &detector, &voice, 4).unwrap();
+        assert_ne!(diarization_fingerprint(&diar, &second, 8).unwrap(), diarization_fingerprint(&diar, &fewer, 4).unwrap());
     }
 
     #[test]

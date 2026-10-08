@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "Doublez et traduisez n'importe quelle vidéo — en local."
   },
+  "speakers": {
+    "count": "Nombre de locuteurs",
+    "countHint": "Si vous connaissez le nombre de participants, indiquez-le. Les mêmes voix seront reconnues entre les différents passages de l’enregistrement."
+  },
   "drop": {
     "title": "Déposez une vidéo à doubler",
     "hint": "MP4 ou MOV — tout tourne sur votre machine",

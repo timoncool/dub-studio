@@ -125,7 +125,7 @@ async fn analyze_rejects_malformed_post_options_before_queueing() {
     std::fs::write(dir.join("source.txt"), src.to_string_lossy().as_bytes()).unwrap();
     let app = build_router(AppState::new(&root));
 
-    for q in ["vo_gain=loud", "sub_blur=yes", "keep_original=1&container=avi", "voice_slots=%5B1%5D"] {
+    for q in ["vo_gain=loud", "sub_blur=yes", "keep_original=1&container=avi", "voice_slots=%5B1%5D", "speaker_count=-1", "speaker_count=9", "speaker_count=1.5", "speaker_count=eight"] {
         let (st, body) = call(&app, "POST", &format!("/projects/{PID}/analyze?mode=dub&{q}")).await;
         assert_eq!(st, StatusCode::BAD_REQUEST, "{q}: {body}");
     }

@@ -849,6 +849,8 @@ function DropZone() {
   useEffect(() => () => { void launch.flush(); }, [launch]);
   const [tgt, setTgt] = useState<string>((i18n.language as string) || "ru");   // translate TO (default = UI lang)
   const [src, setSrc] = useState("auto");                                       // translate FROM (auto-detect)
+  const [speakerCount, setSpeakerCount] = useState(0);
+  const chooseSpeakerCount = (count: number) => { setSpeakerCount(count); saveLaunch({ speaker_count: count }); };
   const chooseTgt = (lang: string) => { setTgt(lang); saveLaunch({ tgt_lang: lang }); };
   const chooseSrc = (lang: string) => { pickSrc(lang); saveLaunch({ src_lang: lang }); };
   const [asrNote, setAsrNote] = useState<string | null>(null);                  // «Parakeet не знает язык → переключили на Whisper»
@@ -960,6 +962,7 @@ function DropZone() {
         setAudio(d.audio); setSubs(d.subs); setBurn(d.burn); setDetectText(d.detect_text);
         if (d.tgt_lang) setTgt(d.tgt_lang);
         pickSrc(d.src_lang);
+        setSpeakerCount(d.speaker_count ?? 0);
         setCastingOn(d.casting); setCastingRef(d.casting_ref); setContentType(d.content_type);
         setVoGain(d.vo_gain_db); setTrStyle(d.tr_style); setTrStyleCustom(d.tr_style_custom);
         setSubBlur(d.sub_blur); setKeepOrig(d.keep_orig); setContainer(d.container);
@@ -1104,7 +1107,7 @@ function DropZone() {
         keepOriginal: keepOrig && !audioOnly && voiced ? { container } : undefined,
         voiceSlots: voiceSrc === "library" && voiced && (slotsM.length || slotsF.length) ? { male: slotsM, female: slotsF } : undefined,
       };
-      const { job_id } = await api.analyze(project_id, tgt, eMode, src, eSubs, eRewrite, eBurn, audioOnly ? false : detectText, hasSubs && subsTranslated, trStyleText, effCasting, effCastingRef, effContentType, hasSubs && !subsTranslated && subsAlign, post);
+      const { job_id } = await api.analyze(project_id, tgt, eMode, src, eSubs, eRewrite, eBurn, audioOnly ? false : detectText, hasSubs && subsTranslated, trStyleText, effCasting, effCastingRef, effContentType, hasSubs && !subsTranslated && subsAlign, post, speakerCount);
       // Ошибка -> «Продолжить» с места остановки, не сброс. Для dub/voiceover озвучка готовится здесь же, на
       // экране загрузки (rendered остаётся false: /dub отдаёт готовый дуб, кадры — покадровое превью).
       await finishAnalyze(project_id, await watchWithResume(project_id, "analyze", job_id));
@@ -1252,6 +1255,18 @@ function DropZone() {
           {asrNote
             ? <p className="mt-1 text-center text-[10px] text-[var(--color-accent-2)] leading-tight">{t("comp.asrSwitched", { lang: asrNote })}</p>
             : <p className="mt-1 text-center text-[10px] text-[var(--color-muted)] leading-tight">{t("comp.langHint")}</p>}
+          <div className="mt-3 flex flex-col items-center gap-1">
+            <label className="flex items-center gap-2 text-[12px] text-[var(--color-muted)]">
+              {t("speakers.count")}
+              <select value={speakerCount} onChange={(e) => chooseSpeakerCount(Number(e.target.value))}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-[var(--color-text)]">
+                <option value={0}>{t("settings.auto")}</option>
+                {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{new Intl.NumberFormat(i18n.language).format(n)}</option>)}
+              </select>
+            </label>
+            <p className="max-w-sm text-center text-[10px] text-[var(--color-muted)] leading-tight">{t("speakers.countHint")}</p>
+          </div>
+
           {/* Импорт готовых субтитров (SRT/ASS): точный текст+тайминг вместо авто-распознавания (ASR skip). */}
           {(() => {
             const subsChoice = (

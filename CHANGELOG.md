@@ -9,10 +9,13 @@ release notes on GitHub are taken from the release's section.
 ### Added
 
 - **Direct Google Gemini TTS and Batch.** Choose Google alongside local voices and OpenRouter, with a separate API key and a live TTS model list. Batch runs use the `rust-genai` SDK and persist their Google job name; continuing a stopped render retrieves the same paid batch. MCP exposes the key settings, model list and project usage report with audio duration, wall time and tariff-based cost estimates.
+- **The number of speakers in a recording.** The launch form leaves it automatic or takes 1 to 8 people. With a number given, voices are matched across the parts of a long recording with WeSpeaker; the choice is saved and available through MCP. From [pull request #13](https://github.com/timoncool/dub-studio/pull/13) by lostintired.
 
 ### Fixed
 
 - **Per-line Gemini voice direction.** The renderer forwards `tts_style` as speech metadata and includes it, the provider and request mode in take cache keys. Style instructions are never prepended to spoken dialogue.
+- **Long recordings are transcribed in windows** of about 90 seconds cut at pauses; one pass over more than about ten minutes failed with a broadcast error or ran out of memory (#4, #9, #11).
+- **Speaker labels of a long recording.** With a number of voices given, continuous diarization can be turned on with `DUB_STUDIO_DIAR_CONTINUOUS=1`: the model keeps its state across the whole track, and the results of this mode have a cache of their own. It needs memory for the whole recording. From pull request #13 by lostintired.
 
 ## 2026-10-01 — 4.0.0
 

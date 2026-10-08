@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "Dub & translate any video — locally."
   },
+  "speakers": {
+    "count": "Number of speakers",
+    "countHint": "If you know how many people are speaking, enter that number. The same voices will be matched across recording sections."
+  },
   "drop": {
     "title": "Drop a video to dub",
     "hint": "MP4, MOV, MKV, WEBM, AVI and more — everything runs on your machine",
