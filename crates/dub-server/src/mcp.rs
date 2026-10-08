@@ -1390,7 +1390,7 @@ fn tools() -> &'static [Tool] {
                             "tgt_lang": { "type": "string", "description": "language code to dub into (studio://languages); not needed for mode transcribe" },
                             "mode": { "type": "string", "enum": ["auto", "dub", "voiceover", "nodub", "transcribe"] },
                             "src_lang": { "type": "string" },
-                            "speaker_count": { "type": "integer", "minimum": 0, "maximum": 8, "description": "Ожидаемое число спикеров на всю запись; 0 — автоматически. Голоса сопоставляются между фрагментами через WeSpeaker." },
+                            "speaker_count": { "type": "integer", "minimum": 0, "maximum": 8, "description": "the expected number of speakers in the whole recording; 0 means automatic. Voices are matched across fragments with WeSpeaker." },
                             "subs": { "type": "string", "enum": ["auto", "none", "transcribe", "translate", "bilingual"] },
                             "burn": { "type": "boolean" },
                             "detect": { "type": "boolean", "description": "read on-screen text to blur and translate it (default on)" },

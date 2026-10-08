@@ -55,7 +55,7 @@ pub(crate) async fn origin_guard(request: Request, next: Next) -> Response {
             request.headers().get(name).map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned()).unwrap_or_default()
         };
         tracing::warn!(
-            "отклонён запрос {} {}: Origin={:?} Host={:?}",
+            "rejected request {} {}: Origin={:?} Host={:?}",
             request.method(),
             request.uri().path(),
             shown(header::ORIGIN),

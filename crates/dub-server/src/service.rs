@@ -41,7 +41,7 @@ pub fn listen_port() -> Result<u16, String> {
         Ok(v) => parse_port(Some(&v)),
         Err(std::env::VarError::NotPresent) => parse_port(None),
         Err(std::env::VarError::NotUnicode(v)) => {
-            Err(format!("{PORT_ENV}={v:?}: не номер порта (ожидается 1..65535)"))
+            Err(t!("service-bad-port", value = format!("{PORT_ENV}={v:?}")))
         }
     }
 }
@@ -66,13 +66,13 @@ fn parse_port(value: Option<&str>) -> Result<u16, String> {
             .parse::<u16>()
             .ok()
             .filter(|p| *p != 0)
-            .ok_or_else(|| format!("{PORT_ENV}={s}: не номер порта (ожидается 1..65535)")),
+            .ok_or_else(|| t!("service-bad-port", value = format!("{PORT_ENV}={s}"))),
     }
 }
 
 /// Тело `/health`.
 pub fn health_json(repo_root: &Path) -> Result<Value, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("путь к exe сервиса: {e}"))?;
+    let exe = std::env::current_exe().map_err(|e| t!("service-exe-path", error = e.to_string()))?;
     Ok(json!({
         "status": "ok",
         "app": APP_ID,
@@ -124,12 +124,12 @@ pub fn probe(port: u16, timeout: Duration) -> Occupant {
         "GET /health HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
     );
     if let Err(e) = stream.write_all(request.as_bytes()) {
-        return Occupant::Other(format!("соединение принято, но запрос не ушёл: {e}"));
+        return Occupant::Other(t!("service-request-not-sent", error = e.to_string()));
     }
     let mut raw = Vec::new();
     if let Err(e) = stream.read_to_end(&mut raw) {
         if raw.is_empty() {
-            return Occupant::Other(format!("соединение принято, ответа на /health нет: {e}"));
+            return Occupant::Other(t!("service-no-health-answer", error = e.to_string()));
         }
     }
     classify_response(&raw)
@@ -138,16 +138,16 @@ pub fn probe(port: u16, timeout: Duration) -> Occupant {
 fn classify_response(raw: &[u8]) -> Occupant {
     let text = String::from_utf8_lossy(raw);
     let Some((head, body)) = text.split_once("\r\n\r\n") else {
-        return Occupant::Other("ответ не по HTTP".into());
+        return Occupant::Other(t!("service-not-http"));
     };
     let status_line = head.lines().next().unwrap_or_default();
     let mut parts = status_line.split_whitespace();
     let (proto, code) = (parts.next().unwrap_or_default(), parts.next().unwrap_or_default());
     if !proto.starts_with("HTTP/") {
-        return Occupant::Other("ответ не по HTTP".into());
+        return Occupant::Other(t!("service-not-http"));
     }
     if code != "200" {
-        return Occupant::Other(format!("HTTP-сервер, /health ответил {code}"));
+        return Occupant::Other(t!("service-health-status", code = code.to_string()));
     }
     let chunked = head.lines().skip(1).any(|l| {
         l.split_once(':').is_some_and(|(k, v)| {
@@ -155,18 +155,18 @@ fn classify_response(raw: &[u8]) -> Occupant {
         })
     });
     if chunked {
-        return Occupant::Other("HTTP-сервер, /health ответил не телом Dub Studio".into());
+        return Occupant::Other(t!("service-health-not-dub-studio"));
     }
     let Ok(v) = serde_json::from_str::<Value>(body.trim()) else {
-        return Occupant::Other("HTTP-сервер, /health ответил не JSON".into());
+        return Occupant::Other(t!("service-health-not-json"));
     };
     match v.get("app").and_then(Value::as_str) {
         Some(APP_ID) => match serde_json::from_value::<Running>(v) {
             Ok(r) => Occupant::DubStudio(r),
-            Err(e) => Occupant::Other(format!("/health называет себя {APP_ID}, но без полей сервиса: {e}")),
+            Err(e) => Occupant::Other(t!("service-health-no-fields", app = APP_ID, error = e.to_string())),
         },
-        Some(other) => Occupant::Other(format!("другое приложение ({other})")),
-        None => Occupant::Other("HTTP-сервер, /health без имени приложения".into()),
+        Some(other) => Occupant::Other(t!("service-other-app", app = other.to_string())),
+        None => Occupant::Other(t!("service-health-no-app")),
     }
 }
 
@@ -191,22 +191,19 @@ pub struct PortBusy {
 impl std::fmt::Display for PortBusy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let who = match &self.occupant {
-            Occupant::Nobody => "система не отдаёт порт, хотя соединений на нём никто не принимает (возможно, \
-                                 он в зарезервированном диапазоне Windows: netsh interface ipv4 show \
-                                 excludedportrange protocol=tcp)"
-                .to_string(),
-            Occupant::DubStudio(r) => format!("на нём Dub Studio {} ({})", r.version, r.service_executable),
-            Occupant::Other(what) => format!("его занял другой процесс: {what}"),
+            Occupant::Nobody => t!("service-port-reserved", command = "netsh interface ipv4 show excludedportrange protocol=tcp"),
+            Occupant::DubStudio(r) => t!("service-port-dub-studio", version = r.version.clone(), executable = r.service_executable.clone()),
+            Occupant::Other(what) => t!("service-port-other", what = what.clone()),
         };
-        write!(
-            f,
-            "Порт 127.0.0.1:{} занят уже {} с: {who}. Ошибка: {}.\n\nЗакройте программу, которая его держит, \
-             или задайте другой порт переменной окружения {PORT_ENV} (например {PORT_ENV}={}).",
-            self.port,
-            self.waited.as_secs(),
-            self.error,
-            self.port.checked_add(10).unwrap_or(self.port - 10),
-        )
+        f.write_str(&t!(
+            "service-port-busy",
+            port = self.port,
+            seconds = self.waited.as_secs(),
+            who = who,
+            error = self.error.to_string(),
+            env = PORT_ENV,
+            other_port = self.port.checked_add(10).unwrap_or(self.port - 10)
+        ))
     }
 }
 

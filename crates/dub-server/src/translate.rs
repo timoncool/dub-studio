@@ -52,7 +52,7 @@ pub fn classify_content_type_standalone(
     ) {
         Ok(provider) => provider,
         Err(e) => {
-            emit(progress, "vision", &format!("тип контента не определён: vision недоступен ({e})"));
+            emit(progress, "vision", &t!("translate-no-vision", error = e));
             return None;
         }
     };
@@ -84,7 +84,7 @@ pub fn stage(
     // Импортированы субтитры УЖЕ на языке перевода: tgt заполнен из cues (analyze import-ветка),
     // MT и vision-раскладка не нужны — Даб Студио только озвучивает готовый текст.
     if args.import_translated {
-        emit(progress, "translate", "субтитры уже на языке перевода -> без MT (только озвучка)");
+        emit(progress, "translate", &t!("translate-subs-already-translated"));
         return Ok(());
     }
     let rewrite = if args.rewrite.is_empty() { None } else { Some(args.rewrite.as_str()) };
@@ -92,7 +92,7 @@ pub fn stage(
     if !do_translate {
         // transcribe-режим: tgt = исходный текст, БЕЗ MT (parity с pipeline «transcribe» веткой).
         copy_src_to_tgt(proj);
-        emit(progress, "translate", "transcribe: tgt=исходный текст, без перевода");
+        emit(progress, "translate", &t!("translate-transcribe-only"));
         return Ok(());
     }
 
@@ -104,7 +104,7 @@ pub fn stage(
     let same_lang = !src.is_empty() && src_lc != "auto" && src_lc == proj.tgt_lang.to_lowercase();
     if same_lang && rewrite.is_none() {
         copy_src_to_tgt(proj);
-        emit(progress, "translate", "same-lang -> без MT (tgt=исходник)");
+        emit(progress, "translate", &t!("translate-same-language"));
         return Ok(());
     }
 
@@ -121,7 +121,7 @@ pub fn stage(
             emit(progress, "translate", &pair.describe());
             pair
         }
-        Err(e) => return Err(format!("перевод не выполнен: LLM недоступен: {e}")),
+        Err(e) => return Err(t!("translate-no-llm", error = e)),
     };
     let client = pair.text();
 
@@ -171,7 +171,7 @@ pub fn stage(
         glossary: proj.glossary.clone(),
     };
 
-    emit(progress, "vision", "ctx-проход: vision layout/scene + перевод транскрипта");
+    emit(progress, "vision", &t!("translate-ctx-pass"));
     let contract = dub_translate::Contract::for_client(client);
     let res = ctx_run(client, pair.vision(), &cfg, &contract, &mut segs, rewrite, |m| {
         emit(progress, "vision", m);
@@ -188,7 +188,7 @@ pub fn stage(
 
     let extra = match res {
         Ok(r) => r.extra,
-        Err(e) => return Err(format!("перевод не выполнен: {e}")),
+        Err(e) => return Err(t!("translate-failed", error = e.to_string())),
     };
 
     // Перенести tgt в сегменты Project. segs строился 1:1 из proj.segments и дальше не используется —
@@ -210,20 +210,16 @@ pub fn stage(
     if rewrite.is_none() && !spoken.is_empty() {
         let share = untranslated as f64 / spoken.len() as f64;
         if share >= UNTRANSLATED_FAIL_SHARE {
-            let hint = if src.is_empty() || src_lc == "auto" {
-                "; если речь в ролике уже на языке перевода, укажите язык оригинала — тогда перевод не нужен"
+            return Err(if src.is_empty() || src_lc == "auto" {
+                t!("translate-untranslated-auto", left = untranslated, total = spoken.len())
             } else {
-                ""
-            };
-            return Err(format!(
-                "перевод не выполнен: {untranslated} из {} строк остались на исходном языке{hint} (подробности — в журнале и logs/llama-server.log)",
-                spoken.len()
-            ));
+                t!("translate-untranslated", left = untranslated, total = spoken.len())
+            });
         }
     }
-    emit(progress, "translate", &format!(
-        "перевод готов: {}/{} строк, тайтлов={}",
-        spoken.len() - untranslated, spoken.len(), proj.captions.titles.len()));
+    emit(progress, "translate", &t!(
+        "translate-done",
+        done = spoken.len() - untranslated, total = spoken.len(), titles = proj.captions.titles.len()));
     Ok(())
 }
 
@@ -241,7 +237,7 @@ pub(crate) fn untranslated_note<'a>(
             left += 1;
         }
     }
-    (left > 0).then(|| format!("{left} из {total} строк остались на исходном языке (подробности — в logs/llama-server.log)"))
+    (left > 0).then(|| t!("translate-left-untranslated", left = left, total = total))
 }
 
 /// extra (ctx_extra.json) -> типизированные captions.sub_style/sub_y/titles/brands + raw_ctx.
@@ -299,7 +295,7 @@ fn ensure_translation_coverage(
     if bad.is_empty() {
         return;
     }
-    emit(progress, "translate", &format!("покрытие перевода: {} строк без перевода — доперевожу", bad.len()));
+    emit(progress, "translate", &t!("translate-coverage-retry", count = bad.len()));
     for _ in 0..2 {
         let mut sub: Vec<Seg> = bad
             .iter()
@@ -313,7 +309,7 @@ fn ensure_translation_coverage(
             .collect();
         let opts = FlatOpts { src, tgt: tgt_lang, spoken: true, style: "", glossary, contract };
         if let Err(e) = dub_translate::flat_run_with(client, &mut sub, &opts, &mut |m: &str| emit(progress, "translate", m)) {
-            emit(progress, "translate", &format!("покрытие перевода: доперевод не удался ({e})"));
+            emit(progress, "translate", &t!("translate-coverage-failed", error = e.to_string()));
             break;
         }
         for (k, &i) in bad.iter().enumerate() {
@@ -325,7 +321,7 @@ fn ensure_translation_coverage(
             .iter()
             .filter(|&&i| looks_untranslated(&segs[i].text, &segs[i].tgt, tgt_lang, glossary))
             .count();
-        emit(progress, "translate", &format!("покрытие перевода: осталось {still} без перевода"));
+        emit(progress, "translate", &t!("translate-coverage-left", count = still));
         if still == 0 {
             break;
         }

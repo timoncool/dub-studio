@@ -128,7 +128,7 @@ fn recover_interrupted(list: &mut [Fetch]) -> bool {
     for f in list.iter_mut().filter(|f| f.status == FetchStatus::Downloading) {
         f.status = FetchStatus::Interrupted;
         f.error_code = Some("interrupted".into());
-        f.error = Some("загрузка оборвалась вместе со студией; скачанное лежит в её папке и докачается с места".into());
+        f.error = Some(t!("url-interrupted"));
         f.hint = Some(ytdlp::hint("interrupted").into());
         f.speed_bps = 0;
         f.eta_s = None;
@@ -140,9 +140,9 @@ fn recover_interrupted(list: &mut [Fetch]) -> bool {
 /// Проверенная ссылка: http(s) с хостом.
 fn check_url(url: &str) -> Result<String, UrlError> {
     let url = url.trim();
-    let parsed = reqwest::Url::parse(url).map_err(|e| UrlError::new("bad_url", format!("«{url}» не ссылка: {e}")))?;
+    let parsed = reqwest::Url::parse(url).map_err(|e| UrlError::new("bad_url", t!("url-not-a-link", url = url.to_string(), error = e.to_string())))?;
     if !matches!(parsed.scheme(), "http" | "https") || parsed.host_str().is_none_or(str::is_empty) {
-        return Err(UrlError::new("bad_url", format!("«{url}» — не http(s)-ссылка")));
+        return Err(UrlError::new("bad_url", t!("url-not-http", url = url.to_string())));
     }
     Ok(parsed.to_string())
 }
@@ -151,7 +151,7 @@ fn check_url(url: &str) -> Result<String, UrlError> {
 fn check_lang(lang: &str) -> Result<String, UrlError> {
     let lang = lang.trim();
     if lang.is_empty() || lang.len() > 24 || !lang.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_') {
-        return Err(UrlError::new("bad_url", format!("«{lang}» — не код языка субтитров")));
+        return Err(UrlError::new("bad_url", t!("url-bad-subs-lang", lang = lang.to_string())));
     }
     Ok(lang.to_string())
 }
@@ -162,14 +162,14 @@ fn place_cookies(c: &Cookies, dest: &Path) -> Result<(), UrlError> {
         Cookies::Path(p) => {
             let meta = std::fs::metadata(p).map_err(|e| UrlError::new("cookies_invalid", format!("{}: {e}", p.display())))?;
             if !meta.is_file() || meta.len() > COOKIES_LIMIT {
-                return Err(UrlError::new("cookies_invalid", format!("{} — не файл cookies.txt до 1 МБ", p.display())));
+                return Err(UrlError::new("cookies_invalid", t!("url-cookies-not-file", path = p.display().to_string())));
             }
             std::fs::read_to_string(p).map_err(|e| UrlError::new("cookies_invalid", format!("{}: {e}", p.display())))?
         }
         Cookies::Text(t) => t.clone(),
     };
     if text.trim().is_empty() || text.len() as u64 > COOKIES_LIMIT {
-        return Err(UrlError::new("cookies_invalid", "cookies.txt пуст или больше 1 МБ"));
+        return Err(UrlError::new("cookies_invalid", t!("url-cookies-empty-or-large")));
     }
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent).map_err(|e| UrlError::new("io", format!("{}: {e}", parent.display())))?;
@@ -197,7 +197,7 @@ impl Fetches {
         let state_path = root.join("fetches.json");
         let mut state: Persistent = match std::fs::read_to_string(&state_path) {
             Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-                tracing::warn!("{} не читается ({e}) — прошлые загрузки по ссылке забыты", state_path.display());
+                tracing::warn!("{} is unreadable ({e}); the previous link downloads are forgotten", state_path.display());
                 Persistent::default()
             }),
             Err(_) => Persistent::default(),
@@ -289,7 +289,7 @@ impl Fetches {
         {
             let mut list = lock(&self.inner.list);
             if let Some(busy) = list.iter().find(|f| f.status == FetchStatus::Downloading && f.url == fetch.url) {
-                return Err(UrlError::new("busy", format!("эта ссылка уже качается: {}", busy.id)));
+                return Err(UrlError::new("busy", t!("url-already-downloading", id = busy.id.clone())));
             }
             list.insert(0, fetch.clone());
             self.evict(&mut list);
@@ -311,7 +311,7 @@ impl Fetches {
     fn drop_unstarted(&self, id: &str, dir: &Path) {
         if dir.is_dir() {
             if let Err(e) = std::fs::remove_dir_all(dir) {
-                tracing::warn!("папка несостоявшейся загрузки {} не удалена: {e}", dir.display());
+                tracing::warn!("the folder of a download that did not start, {}, was not removed: {e}", dir.display());
             }
         }
         let mut list = lock(&self.inner.list);
@@ -327,7 +327,7 @@ impl Fetches {
             let dir = self.dir(&old.id);
             if dir.is_dir() {
                 if let Err(e) = std::fs::remove_dir_all(&dir) {
-                    tracing::warn!("папка старой загрузки {} не удалена: {e}", dir.display());
+                    tracing::warn!("the folder of an old download, {}, was not removed: {e}", dir.display());
                 }
             }
         }
@@ -343,8 +343,8 @@ impl Fetches {
             .spawn(move || me.run(&job, tool, stop))
             .map(|_| ())
             .map_err(|e| {
-                self.finish(id, Err(UrlError::new("io", format!("поток загрузки не запустился: {e}"))), false);
-                UrlError::new("io", format!("поток загрузки не запустился: {e}"))
+                self.finish(id, Err(UrlError::new("io", t!("url-thread-failed", error = e.to_string()))), false);
+                UrlError::new("io", t!("url-thread-failed", error = e.to_string()))
             })
     }
 
@@ -369,12 +369,12 @@ impl Fetches {
                 let dir = self.dir(id);
                 if dir.is_dir() {
                     if let Err(e) = std::fs::remove_dir_all(&dir) {
-                        tracing::warn!("папка отменённой загрузки {} не удалена: {e}", dir.display());
+                        tracing::warn!("the folder of a cancelled download, {}, was not removed: {e}", dir.display());
                     }
                 }
             }
             Err(e) => {
-                tracing::warn!("загрузка по ссылке {}: {} ({})", f.url, e.detail, e.code);
+                tracing::warn!("link download {}: {} ({})", f.url, e.detail, e.code);
                 f.status = FetchStatus::Failed;
                 f.hint = Some(e.hint().into());
                 f.error_code = Some(e.code.into());
@@ -386,7 +386,7 @@ impl Fetches {
         match std::fs::remove_file(&conf) {
             Ok(()) => {}
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => tracing::error!("{} с паролем прокси не удалён: {e}", conf.display()),
+            Err(e) => tracing::error!("{} with the proxy password was not removed: {e}", conf.display()),
         }
         self.save(&list);
     }
@@ -402,7 +402,7 @@ impl Fetches {
             }
         };
         if fetch.cookies && !cookies.is_file() {
-            return Err(UrlError::new("cookies_invalid", "cookies.txt этой загрузки пропал из её папки — начните загрузку заново с cookies"));
+            return Err(UrlError::new("cookies_invalid", t!("url-cookies-gone")));
         }
 
         // Проба: свежие адреса форматов (у YouTube они живут часы), название, размер, субтитры.
@@ -417,7 +417,7 @@ impl Fetches {
             return Err(ytdlp::classify(&out.stderr));
         }
         let info: Value = serde_json::from_slice(&out.stdout)
-            .map_err(|e| UrlError::new("ytdlp_failed", format!("ответ yt-dlp -J не JSON: {e}; {}", ytdlp::last_error_line(&out.stderr))))?;
+            .map_err(|e| UrlError::new("ytdlp_failed", t!("url-probe-not-json", error = e.to_string(), stderr = ytdlp::last_error_line(&out.stderr))))?;
         let probe = ytdlp::parse_probe(&info)?;
         let info_path = dir.join("info.json");
         std::fs::write(&info_path, &out.stdout).map_err(|e| UrlError::new("io", format!("{}: {e}", info_path.display())))?;
@@ -425,14 +425,18 @@ impl Fetches {
         if let (Some(need), Some(free)) = (expected, crate::setup::free_bytes(&dir)) {
             // Слияние видео и звука держит на диске и части, и итог.
             if free < need.saturating_mul(2) {
-                return Err(UrlError::new("disk_space", format!("нужно около {} МБ, свободно {} МБ", need * 2 / 1_000_000, free / 1_000_000)));
+                return Err(UrlError::new("disk_space", t!("url-disk-space", need = need * 2 / 1_000_000, free = free / 1_000_000)));
             }
         }
         let mut subs_lang = fetch.subs_lang.clone();
         if let Some(lang) = &fetch.subs_lang {
             if !probe.subtitles.iter().any(|t| &t.lang == lang) {
                 let have: Vec<&str> = probe.subtitles.iter().map(|t| t.lang.as_str()).collect();
-                let detail = format!("у видео нет субтитров «{lang}», загруженных людьми (есть: {})", if have.is_empty() { "никаких".to_string() } else { have.join(", ") });
+                let detail = if have.is_empty() {
+                    t!("url-no-subs-none", lang = lang.to_string())
+                } else {
+                    t!("url-no-subs", lang = lang.to_string(), have = have.join(", "))
+                };
                 self.update(id, |f| {
                     f.warning = Some("subs_missing".into());
                     f.warning_detail = Some(detail);
@@ -456,11 +460,11 @@ impl Fetches {
         cmd.args(["--newline", "--progress", "--progress-template", ytdlp::PROGRESS_TEMPLATE, "--progress-template", ytdlp::POSTPROCESS_TEMPLATE, "--print", ytdlp::FILE_TEMPLATE]);
         let (media, stderr) = self.download(id, cmd, expected, stop)?;
         if stop.load(Ordering::SeqCst) {
-            return Err(UrlError::new("cancelled", "остановлено"));
+            return Err(UrlError::new("cancelled", t!("url-stopped")));
         }
         let media = match media.filter(|p| p.is_file()) {
             Some(p) => p,
-            None => find_media(&dir).ok_or_else(|| UrlError::new("ytdlp_failed", format!("yt-dlp закончил, но файла видео нет в {}: {}", dir.display(), ytdlp::last_error_line(&stderr))))?,
+            None => find_media(&dir).ok_or_else(|| UrlError::new("ytdlp_failed", t!("url-no-media-file", path = dir.display().to_string(), stderr = ytdlp::last_error_line(&stderr))))?,
         };
 
         // Субтитры площадки — отдельным вызовом после видео: в общем вызове yt-dlp пишет их до медиа, и их ошибка
@@ -496,8 +500,8 @@ impl Fetches {
                     Ok(p) => Some(p),
                     Err(e) if e.code == "cancelled" => return Err(e),
                     Err(e) => {
-                        tracing::warn!("субтитры «{lang}» загрузки {id}: {} ({})", e.detail, e.code);
-                        let detail = format!("субтитры «{lang}» не скачались ({}): {}", e.code, e.detail);
+                        tracing::warn!("subtitles {lang} of download {id}: {} ({})", e.detail, e.code);
+                        let detail = t!("url-subs-failed", lang = lang.to_string(), code = e.code, error = e.detail.clone());
                         self.update(id, |f| {
                             f.warning = Some("subs_failed".into());
                             f.warning_detail = Some(detail);
@@ -509,7 +513,7 @@ impl Fetches {
             None => None,
         };
         if stop.load(Ordering::SeqCst) {
-            return Err(UrlError::new("cancelled", "остановлено"));
+            return Err(UrlError::new("cancelled", t!("url-stopped")));
         }
         self.update(id, |f| f.phase = "project".into());
         let made = make_project(&self.inner.root, media, title, subs.as_deref())?;
@@ -536,7 +540,7 @@ impl Fetches {
         }
         crate::mcp::tell_windows(json!({ "changed": "projects", "pid": made.pid, "by": "studio" }));
         if let Err(e) = std::fs::remove_dir_all(&dir) {
-            tracing::warn!("папка загрузки {} не удалена после переноса в проект: {e}", dir.display());
+            tracing::warn!("the download folder {} was not removed after moving into the project: {e}", dir.display());
         }
         Ok(())
     }
@@ -544,7 +548,7 @@ impl Fetches {
     /// Запустить загрузку yt-dlp и вести прогресс по его строкам. Возвращает путь итогового файла и stderr.
     fn download(&self, id: &str, mut cmd: std::process::Command, expected: Option<u64>, stop: &Arc<AtomicBool>) -> Result<(Option<PathBuf>, String), UrlError> {
         cmd.stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-        let mut child = cmd.spawn().map_err(|e| UrlError::new("io", format!("запуск yt-dlp: {e}")))?;
+        let mut child = cmd.spawn().map_err(|e| UrlError::new("io", t!("url-ytdlp-start", error = e.to_string())))?;
         let pid = child.id();
         let (tx, rx) = mpsc::channel::<(bool, String)>();
         let readers: Vec<_> = [
@@ -609,7 +613,7 @@ impl Fetches {
                 Ok(None) => {}
                 Err(e) => {
                     ytdlp::kill_tree(pid);
-                    return Err(UrlError::new("io", format!("ожидание yt-dlp: {e}")));
+                    return Err(UrlError::new("io", t!("url-ytdlp-wait", error = e.to_string())));
                 }
             }
             if !killed && stop.load(Ordering::SeqCst) {
@@ -626,7 +630,7 @@ impl Fetches {
         }
         let stderr = stderr.join("\n");
         if killed {
-            return Err(UrlError::new("cancelled", "остановлено"));
+            return Err(UrlError::new("cancelled", t!("url-stopped")));
         }
         if !status.success() {
             return Err(ytdlp::classify(&stderr));
@@ -638,7 +642,7 @@ impl Fetches {
     pub fn cancel(&self, id: &str) -> Result<Fetch, UrlError> {
         let stop = lock(&self.inner.stops).get(id).cloned();
         let mut list = lock(&self.inner.list);
-        let f = list.iter_mut().find(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", format!("нет загрузки {id}")))?;
+        let f = list.iter_mut().find(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", t!("url-no-fetch", id = id.to_string())))?;
         if f.status != FetchStatus::Downloading {
             return Ok(f.clone());
         }
@@ -659,20 +663,20 @@ impl Fetches {
         let tool = ytdlp::tool(&self.inner.repo_root)?;
         let out = {
             let mut list = lock(&self.inner.list);
-            let f = list.iter_mut().find(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", format!("нет загрузки {id}")))?;
+            let f = list.iter_mut().find(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", t!("url-no-fetch", id = id.to_string())))?;
             match f.status {
-                FetchStatus::Downloading => return Err(UrlError::new("running", format!("{id} ещё качается"))),
+                FetchStatus::Downloading => return Err(UrlError::new("running", t!("url-still-downloading", id = id.to_string()))),
                 FetchStatus::Completed => return Ok(f.clone()),
                 FetchStatus::Cancelled => {
-                    return Err(UrlError::new("not_found", format!("{id} отменена, скачанное удалено: начните новую загрузку")));
+                    return Err(UrlError::new("not_found", t!("url-cancelled-removed", id = id.to_string())));
                 }
                 FetchStatus::Failed | FetchStatus::Interrupted => {}
             }
             let url = f.url.clone();
             if let Some(busy) = list.iter().find(|x| x.status == FetchStatus::Downloading && x.url == url) {
-                return Err(UrlError::new("busy", format!("эта ссылка уже качается: {}", busy.id)));
+                return Err(UrlError::new("busy", t!("url-already-downloading", id = busy.id.clone())));
             }
-            let f = list.iter_mut().find(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", format!("нет загрузки {id}")))?;
+            let f = list.iter_mut().find(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", t!("url-no-fetch", id = id.to_string())))?;
             f.status = FetchStatus::Downloading;
             f.phase = "probe".into();
             f.error_code = None;
@@ -695,12 +699,12 @@ impl Fetches {
     pub fn forget(&self, id: &str) -> Result<(), UrlError> {
         // Отменённая загрузка, чей поток ещё гасит yt-dlp: его файлы в папке ещё заняты.
         if lock(&self.inner.stops).contains_key(id) {
-            return Err(UrlError::new("running", format!("{id} ещё останавливается — повторите через пару секунд")));
+            return Err(UrlError::new("running", t!("url-still-stopping", id = id.to_string())));
         }
         let mut list = lock(&self.inner.list);
-        let at = list.iter().position(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", format!("нет загрузки {id}")))?;
+        let at = list.iter().position(|f| f.id == id).ok_or_else(|| UrlError::new("not_found", t!("url-no-fetch", id = id.to_string())))?;
         if list[at].status == FetchStatus::Downloading {
-            return Err(UrlError::new("running", format!("{id} ещё качается — сначала отмените")));
+            return Err(UrlError::new("running", t!("url-cancel-first", id = id.to_string())));
         }
         let dir = self.dir(id);
         if dir.is_dir() {
@@ -739,7 +743,7 @@ fn subs_file(dir: &Path, out: ytdlp::Captured) -> Result<PathBuf, UrlError> {
             .into_iter()
             .find(|s| !s.is_empty())
             .unwrap_or_default();
-        UrlError::new("ytdlp_failed", format!("yt-dlp закончил без файла субтитров в {}: {said}", dir.display()))
+        UrlError::new("ytdlp_failed", t!("url-no-subs-file", path = dir.display().to_string(), stderr = said.to_string()))
     })
 }
 
@@ -752,7 +756,7 @@ struct Made {
 /// Новый проект из скачанного файла: файл переезжает в workspace/<pid>/source.<ext> (тот же том — мгновенно),
 /// имя проекта — название видео, субтитры площадки — import_subs.srt, как у загруженных вместе с видео.
 fn make_project(fetch_root: &Path, media: &Path, title: &str, subs: Option<&Path>) -> Result<Made, UrlError> {
-    let workspace = fetch_root.parent().ok_or_else(|| UrlError::new("io", format!("{} без родителя", fetch_root.display())))?;
+    let workspace = fetch_root.parent().ok_or_else(|| UrlError::new("io", t!("url-no-parent", path = fetch_root.display().to_string())))?;
     let mut pid = uuid::Uuid::new_v4().simple().to_string();
     pid.truncate(12);
     let d = workspace.join(&pid);
@@ -768,7 +772,7 @@ fn make_project(fetch_root: &Path, media: &Path, title: &str, subs: Option<&Path
     if let Some(src) = subs {
         let text = std::fs::read_to_string(src).map_err(|e| io(src, e))?;
         if crate::subimport::parse(&text, "srt").is_empty() {
-            warning = Some(("subs_empty", format!("в субтитрах {} нет ни одной реплики", src.display())));
+            warning = Some(("subs_empty", t!("url-subs-empty", path = src.display().to_string())));
         } else {
             let to = d.join("import_subs.srt");
             std::fs::write(&to, text).map_err(|e| io(&to, e))?;
@@ -825,7 +829,7 @@ pub async fn tool_update(State(st): State<AppState>) -> Response {
     let res = tokio::task::spawn_blocking(move || {
         let before = ytdlp::status(&root);
         if !before.installed {
-            return Err(UrlError::new("tool_missing", "компонент ytdlp не скачан"));
+            return Err(UrlError::new("tool_missing", t!("url-ytdlp-missing")));
         }
         let started = ytdlp::start_update(&root);
         Ok(json!({ "started": started, "tool": ytdlp::status(&root) }))
@@ -863,7 +867,7 @@ fn probe(repo_root: &Path, fetch_root: &Path, url: &str, cookies: Option<Cookies
         return Err(ytdlp::classify(&out.stderr));
     }
     let info: Value = serde_json::from_slice(&out.stdout)
-        .map_err(|e| UrlError::new("ytdlp_failed", format!("ответ yt-dlp -J не JSON: {e}; {}", ytdlp::last_error_line(&out.stderr))))?;
+        .map_err(|e| UrlError::new("ytdlp_failed", t!("url-probe-not-json", error = e.to_string(), stderr = ytdlp::last_error_line(&out.stderr))))?;
     let probe = ytdlp::parse_probe(&info)?;
     let mut v = serde_json::to_value(&probe).map_err(|e| UrlError::new("io", e.to_string()))?;
     let (data, problem) = match probe.thumbnail.as_deref().map(ytdlp::thumbnail_data) {
@@ -909,7 +913,7 @@ async fn run_probe(st: AppState, url: String, cookies: Option<Cookies>) -> Respo
 pub async fn create_from_url(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
     let quality_text = body.get("quality").and_then(Value::as_str).unwrap_or("best");
     let Some(quality) = Quality::parse(quality_text) else {
-        return refuse(UrlError::new("bad_quality", format!("качество «{quality_text}»: best, 1080, 720, 480 или audio")));
+        return refuse(UrlError::new("bad_quality", t!("url-bad-quality", quality = quality_text.to_string())));
     };
     let req = FetchRequest {
         url: body.get("url").and_then(Value::as_str).unwrap_or_default().to_string(),
@@ -933,7 +937,7 @@ pub async fn fetches_list(State(st): State<AppState>) -> Json<Value> {
 pub async fn fetch_get(State(st): State<AppState>, AxPath(id): AxPath<String>) -> Response {
     match st.fetches.get(&id) {
         Some(f) => Json(f).into_response(),
-        None => refuse(UrlError::new("not_found", format!("нет загрузки {id}"))),
+        None => refuse(UrlError::new("not_found", t!("url-no-fetch", id = id.to_string()))),
     }
 }
 
@@ -1028,7 +1032,7 @@ mod tests {
         assert!(stop.load(Ordering::SeqCst), "the process gets the stop");
         f.update("url9", |x| x.downloaded = 99);
         assert_eq!(f.get("url9").unwrap().downloaded, 5, "a stopped download takes no more progress");
-        f.finish("url9", Err(UrlError::new("cancelled", "остановлено")), true);
+        f.finish("url9", Err(UrlError::new("cancelled", t!("url-stopped"))), true);
         assert_eq!(f.get("url9").unwrap().status, FetchStatus::Cancelled);
         assert_eq!(f.resume("url9").unwrap_err().code, "tool_missing");
     }
@@ -1165,7 +1169,7 @@ mod tests {
         assert_eq!(f.get("url5").unwrap().status, FetchStatus::Completed);
 
         let media = downloaded(&f, "url6");
-        let res = f.after_media("url6", &media, "clip", Some("en"), &stop, |_| Err(UrlError::new("cancelled", "остановлено")));
+        let res = f.after_media("url6", &media, "clip", Some("en"), &stop, |_| Err(UrlError::new("cancelled", t!("url-stopped"))));
         assert_eq!(res.as_ref().unwrap_err().code, "cancelled");
         f.finish("url6", res, false);
         let x = f.get("url6").unwrap();

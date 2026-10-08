@@ -251,7 +251,7 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
     .find(|cand| cand.is_file());
     match found {
         Some(cand) => std::env::set_var("ORT_DYLIB_PATH", cand),
-        None => eprintln!("[ERROR] onnxruntime 1.28 не найден в {}: распознавание и диаризация не запустятся, пока не скачан компонент ONNX Runtime", rt.display()),
+        None => eprintln!("[ERROR] onnxruntime 1.28 not found in {}: recognition and diarization will not start until the ONNX Runtime component is downloaded", rt.display()),
     }
 }
 
@@ -291,16 +291,16 @@ impl AppState {
         let _ = std::fs::create_dir_all(&workspace);
         let interrupted = job_store::recover(&workspace);
         if interrupted > 0 {
-            eprintln!("[jobs] прерванных джоб проектов: {interrupted} (можно продолжить)");
+            eprintln!("[jobs] interrupted project jobs: {interrupted} (they can be resumed)");
         }
         let web_root = spa::find_web_root(&repo_root);
         let mroot = models_root(&repo_root);
         match credentials::migrate_legacy_selection(&mroot) {
             Ok(moved) if moved.openrouter_key || moved.proxy_password => {
-                tracing::info!("секреты перенесены из active.json в хранилище секретов: {moved:?}")
+                tracing::info!("secrets moved from active.json to the secret store: {moved:?}")
             }
             Ok(_) => {}
-            Err(e) => tracing::error!("секреты из active.json не перенесены в хранилище: {e:#}"),
+            Err(e) => tracing::error!("secrets from active.json were not moved to the store: {e:#}"),
         }
         let tdt_dir = std::env::var("DUB_STUDIO_TDT")
             .map(PathBuf::from)
@@ -394,7 +394,7 @@ pub(crate) fn project_writes() -> std::sync::MutexGuard<'static, ()> {
 pub(crate) fn write_project(dir: &Path, proj: &Project) -> Result<(), String> {
     let json = proj
         .to_json_pretty()
-        .map_err(|e| format!("сериализация project.json: {e}"))?;
+        .map_err(|e| t!("project-serialize", error = e.to_string()))?;
     mcp::save_with_revision(dir, || {
         dub_core::atomic::write(&dir.join("project.json"), json.as_bytes())
     })
@@ -426,7 +426,7 @@ fn clean_partials(dir: &Path) {
         }
     }
     if n > 0 {
-        eprintln!("[jobs] {}: удалено недописанных файлов: {n}", dir.display());
+        eprintln!("[jobs] {}: unfinished files removed: {n}", dir.display());
     }
 }
 
@@ -691,7 +691,7 @@ async fn setup_status(State(st): State<AppState>) -> Response {
 async fn setup_download(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
     let ids = body_ids(&body);
     if ids.is_empty() {
-        return dl_error_response(setup::DlError::new("no_ids", "ids пуст"));
+        return dl_error_response(setup::DlError::new("no_ids", t!("setup-no-ids")));
     }
     let dl = st.downloads.clone();
     match tokio::task::spawn_blocking(move || dl.start(ids)).await {
@@ -710,7 +710,7 @@ async fn setup_cancel(State(st): State<AppState>) -> Json<Value> {
 async fn setup_remove(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
     let ids = body_ids(&body);
     if ids.is_empty() {
-        return dl_error_response(setup::DlError::new("no_ids", "ids пуст"));
+        return dl_error_response(setup::DlError::new("no_ids", t!("setup-no-ids")));
     }
     let root = st.repo_root.clone();
     let dl = st.downloads.clone();
@@ -809,7 +809,7 @@ fn ensure_job_components(
     if need.is_empty() && !need_diar {
         return Ok(());
     }
-    progress(json!({ "stage": "download", "msg": "Догружаю недостающие модели для этой функции…" }),
+    progress(json!({ "stage": "download", "msg": t!("setup-fetching-missing") }),
     );
     let ctl = jobs::current();
     let cancel = move || ctl.as_ref().is_some_and(|c| c.is_cancelled());
@@ -820,7 +820,7 @@ fn ensure_job_components(
         if let Err(e) = setup::download_components(repo_root, &["sortformer".to_string()], &cancel, progress) {
             progress(json!({
                 "stage": "download",
-                "msg": format!("Модель диаризации не скачалась ({}) — анализ пойдёт без разделения спикеров", e.detail),
+                "msg": t!("setup-diarization-missing", error = e.detail.clone()),
             }));
         }
     }
@@ -1022,11 +1022,11 @@ async fn voice_slots_assign(
     // Списки имён из тела; проверяем существование каждого в voices/ (.wav|.mp3).
     let slots = voice_slots::Slots::from_json(&body);
     if let Some(n) = slots.missing_in(&list_voice_names(&st.voices_dir)).first() {
-        return (StatusCode::BAD_REQUEST, format!("голос {n:?} не найден в voices/"),
+        return (StatusCode::BAD_REQUEST, t!("voices-not-found", name = format!("{n:?}")),
         ).into_response();
     }
     let Some(vocals) = voice_slots::vocals_for(&dir) else {
-        return (StatusCode::CONFLICT, "нет вокала для замера F0 — сначала analyze",
+        return (StatusCode::CONFLICT, t!("voices-no-vocals"),
         ).into_response();
     };
 
@@ -1034,8 +1034,8 @@ async fn voice_slots_assign(
     let res = tokio::task::spawn_blocking(mcp::carry(move || {
         let path = dir_job.join("project.json");
         let read = || -> Result<Project, String> {
-            let text = std::fs::read_to_string(&path).map_err(|e| format!("чтение {}: {e}", path.display()))?;
-            Project::from_json(&text).map_err(|e| format!("разбор {}: {e}", path.display()))
+            let text = std::fs::read_to_string(&path).map_err(|e| t!("common-read", path = path.display().to_string(), error = e.to_string()))?;
+            Project::from_json(&text).map_err(|e| t!("common-parse", path = path.display().to_string(), error = e.to_string()))
         };
         let measured = read()?;
         let assigns = voice_slots::plan(&measured, &vocals, &dir_job, &slots);
@@ -1044,7 +1044,7 @@ async fn voice_slots_assign(
         let _held = project_writes();
         let mut proj = read()?;
         if voice_slots::speakers(&proj) != voice_slots::speakers(&measured) {
-            return Err("голоса по слотам: спикеры изменились, пока мерился голос — проект не менялся, запустите ещё раз".to_string());
+            return Err(t!("voices-speakers-changed"));
         }
         voice_slots::apply(&mut proj, &assigns);
         write_project(&dir_job, &proj)?;
@@ -1364,7 +1364,7 @@ async fn casting_save(
         for c in &casting.characters {
             let v = c.dub_voice.trim();
             if !v.is_empty() && !v.eq_ignore_ascii_case("clone") && !available.contains(v) {
-                return (StatusCode::BAD_REQUEST, format!("голос {v:?} не найден в voices/"),
+                return (StatusCode::BAD_REQUEST, t!("voices-not-found", name = format!("{v:?}")),
                 ).into_response();
             }
         }
@@ -1488,7 +1488,7 @@ async fn setup_browse(State(st): State<AppState>, Json(body): Json<Value>) -> Re
     let root = st.repo_root.clone();
     let only = body.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
     let res = tokio::task::spawn_blocking(move || {
-        let title = if only.is_some() { "Файл(ы) модели" } else { "Папка с готовыми моделями" };
+        let title = if only.is_some() { t!("setup-pick-model-files") } else { t!("setup-pick-models-folder") };
         rfd::FileDialog::new()
             .set_title(title)
             .pick_folder()
@@ -1514,7 +1514,7 @@ async fn setup_browse(State(st): State<AppState>, Json(body): Json<Value>) -> Re
 async fn setup_import(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
     let path = body.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
     if path.is_empty() || !Path::new(&path).is_dir() {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "code": "bad_path", "detail": format!("нет папки {path}") })),
+        return (StatusCode::BAD_REQUEST, Json(json!({ "code": "bad_path", "detail": t!("setup-no-folder", path = path.clone()) })),
         ).into_response();
     }
     let only = body.get("id").and_then(|v| v.as_str()).map(|s| s.to_string());
@@ -1806,7 +1806,7 @@ async fn delete_project(State(st): State<AppState>, AxPath(pid): AxPath<String>)
         Ok(()) => ([("content-type", "application/json")], "{\"ok\":true}").into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("удаление проекта {}: {e}", dir.display()),
+            t!("project-delete-failed", path = dir.display().to_string(), error = e.to_string()),
         )
             .into_response(),
     }
@@ -1832,7 +1832,7 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
 ) -> Result<String, Box<Response>> {
     let dir = st.proj_dir(pid).map_err(Box::new)?;
     let Some(obj) = args_json.as_object() else {
-        return Err(Box::new((StatusCode::BAD_REQUEST, "analyze args: ожидался объект").into_response(),
+        return Err(Box::new((StatusCode::BAD_REQUEST, t!("analyze-args-not-object")).into_response(),
         ));
     };
     let q: HashMap<String, String> = obj
@@ -1861,12 +1861,12 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         .map(|e| dir.join(format!("import_subs.{e}")))
         .find(|p| p.is_file());
     if let Some(p) = &import_subs {
-        eprintln!("[analyze] импорт субтитров: {}", p.display());
+        eprintln!("[analyze] importing subtitles: {}", p.display());
     }
     let args = analyze::AnalyzeArgs {
         speaker_count: qget("speaker_count", "0").parse::<usize>()
             .ok().filter(|n| *n <= dub_asr::MAX_SPEAKERS)
-            .ok_or_else(|| Box::new((StatusCode::BAD_REQUEST, "speaker_count: ожидается целое число от 0 до 8 (0 — автоматически)").into_response()))?,
+            .ok_or_else(|| Box::new((StatusCode::BAD_REQUEST, t!("settings-bad-speaker-count", max = dub_asr::MAX_SPEAKERS)).into_response()))?,
         tgt_lang: qget("tgt_lang", "en"),
         mode: qget("mode", "auto"),
         src_lang: qget("src_lang", "auto"),
@@ -1935,7 +1935,7 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         if let (Some(b), Some(a)) = (cost_before, openrouter::total_usage_usd(&paths.models_root)) {
             let spent = (a - b).max(0.0);
             if spent > 0.0 {
-                cb(json!({ "stage": "cost", "msg": format!("OpenRouter: потрачено ${spent:.4} за анализ (всего использовано ${a:.2})") }),
+                cb(json!({ "stage": "cost", "msg": t!("cost-analyze", spent = format!("{spent:.4}"), total = format!("{a:.2}")) }),
                 );
             }
         }
@@ -2030,8 +2030,8 @@ fn bake_render_state(
     let baked = after.as_ref().unwrap_or(&before);
     let ckpts = render::SegCkpts::load(dir_for_job)?;
     let _held = project_writes();
-    let t2 = std::fs::read_to_string(proj_path).map_err(|e| format!("чтение {}: {e}", proj_path.display()))?;
-    let mut cur = Project::from_json(&t2).map_err(|e| format!("разбор {}: {e}", proj_path.display()))?;
+    let t2 = std::fs::read_to_string(proj_path).map_err(|e| t!("common-read", path = proj_path.display().to_string(), error = e.to_string()))?;
+    let mut cur = Project::from_json(&t2).map_err(|e| t!("common-parse", path = proj_path.display().to_string(), error = e.to_string()))?;
     for s in &mut cur.segments {
         let id = s.id.as_str();
         let voiced = regen || baked.get(id) != before.get(id);
@@ -2178,7 +2178,7 @@ async fn render_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response
         if let (Some(b), Some(a)) = (cost_before, openrouter::total_usage_usd(&paths.models_root)) {
             let spent = (a - b).max(0.0);
             if spent > 0.0 {
-                cb(json!({ "stage": "cost", "msg": format!("OpenRouter: потрачено ${spent:.4} за прогон (всего использовано ${a:.2})") }),
+                cb(json!({ "stage": "cost", "msg": t!("cost-run", spent = format!("{spent:.4}"), total = format!("{a:.2}")) }),
                 );
             }
         }
@@ -2261,7 +2261,7 @@ async fn export_lang(
         Ok(job_id) => Json(json!({ "job_id": job_id, "project_id": new_pid })).into_response(),
         Err(resp) => {
             if let Err(e) = std::fs::remove_dir_all(&dst_dir) {
-                eprintln!("[export-lang] не удалён клон {}: {e}", dst_dir.display());
+                eprintln!("[export-lang] the clone {} was not removed: {e}", dst_dir.display());
             }
             *resp
         }
@@ -2306,7 +2306,7 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
             p.tgt_lang = lang_c.clone();
             let spoken = matches!(p.mode.as_str(), "dub" | "voiceover");
             progress(json!({ "type": "progress", "stage": "translate",
-                "msg": format!("Перевод {} строк → {}", p.segments.len(), lang_c) }));
+                "msg": t!("translate-lines-to", count = p.segments.len(), lang = lang_c.clone()) }));
             // LLM-провайдер перевода: своя Gemma (плоский MT), локальный сервер или OpenRouter.
             let prov = crate::llm_provider::open(
                 &crate::llm_provider::LlmOpen {
@@ -2317,7 +2317,7 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
                 },
                 crate::llm_provider::LlmMode::Text,
             )
-            .map_err(|e| format!("перевод: LLM недоступен — {e}"))?;
+            .map_err(|e| t!("translate-no-llm", error = e))?;
             let client = prov.client();
             // Сегменты: src_text -> Lx (раскладка/стили/тайминг остаются от пользователя).
             let mut segs: Vec<Seg> = p
@@ -2342,7 +2342,7 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
             if let Some(note) = crate::translate::untranslated_note(segs.iter().map(|sg| (sg.text.as_str(), sg.tgt.as_str())), &lang_c, &glossary,
             ) {
                 tracing::warn!("export_lang -> {lang_c}: {note}");
-                progress(json!({ "type": "progress", "stage": "translate", "msg": format!("перевод: {note}") }),
+                progress(json!({ "type": "progress", "stage": "translate", "msg": t!("translate-note", note = note.clone()) }),
                 );
             }
             p.glossary_fp = glossary_api::fingerprint(&p.glossary, &lang_c);
@@ -2362,9 +2362,9 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
                     progress(json!({ "type": "progress", "stage": "translate", "msg": m.trim() }))
                 });
                 if let Err(e) = &done {
-                    tracing::warn!("export_lang {lang_c}: титры не переведены: {e}");
+                    tracing::warn!("export_lang {lang_c}: the titles were not translated: {e}");
                     progress(json!({ "type": "progress", "stage": "translate",
-                        "msg": format!("титры не переведены ({e}) — в видео они останутся на исходном языке") }));
+                        "msg": t!("translate-titles-failed", error = e.to_string()) }));
                 }
                 let ok = done.is_ok();
                 for (ti, sg) in p.captions.titles.iter_mut().zip(tsegs) {
@@ -2445,13 +2445,13 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
         use dub_translate::{flat_run_with, FlatOpts, Seg};
         let pj = dir_for_job.join("project.json");
         let read = |path: &Path| -> Result<Project, String> {
-            let text = std::fs::read_to_string(path).map_err(|e| format!("чтение {}: {e}", path.display()))?;
-            Project::from_json(&text).map_err(|e| format!("разбор {}: {e}", path.display()))
+            let text = std::fs::read_to_string(path).map_err(|e| t!("common-read", path = path.display().to_string(), error = e.to_string()))?;
+            Project::from_json(&text).map_err(|e| t!("common-parse", path = path.display().to_string(), error = e.to_string()))
         };
         let p = read(&pj)?;
         let spoken = matches!(mode.as_str(), "dub" | "voiceover");
         progress(json!({ "type": "progress", "stage": "translate",
-            "msg": format!("Перевод {} строк → {}", p.segments.len(), lang_c) }));
+            "msg": t!("translate-lines-to", count = p.segments.len(), lang = lang_c.clone()) }));
         let prov = crate::llm_provider::open(
             &crate::llm_provider::LlmOpen {
                 llama_bin: &llama_bin,
@@ -2461,7 +2461,7 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
             },
             crate::llm_provider::LlmMode::Text,
         )
-        .map_err(|e| format!("перевод не выполнен: LLM недоступен: {e}"))?;
+        .map_err(|e| t!("translate-no-llm", error = e))?;
         let client = prov.client();
         // src_text -> Lx (тайминги/спикеры/раскладка остаются от транскрипта). Вручную добавленные фразы
         // (пустой src_text) переводим из текущего tgt_text (как в export_lang).
@@ -2490,7 +2490,7 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
         if let Some(note) = crate::translate::untranslated_note(segs.iter().map(|sg| (sg.text.as_str(), sg.tgt.as_str())), &lang_c, &glossary,
         ) {
             tracing::warn!("retranslate {pid_res} -> {lang_c}: {note}");
-            progress(json!({ "type": "progress", "stage": "translate", "msg": format!("перевод: {note}") }),
+            progress(json!({ "type": "progress", "stage": "translate", "msg": t!("translate-note", note = note.clone()) }),
             );
         }
         // Титры: text -> Lx (позиции/стиль остаются).
@@ -2503,7 +2503,7 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
             flat_run_with(client, &mut tsegs, &topts, &mut |m: &str| {
                 progress(json!({ "type": "progress", "stage": "translate", "msg": m.trim() }))
             })
-                .map_err(|e| format!("перевод титров: {e}"))?;
+                .map_err(|e| t!("translate-titles-error", error = e.to_string()))?;
             title_tgts = tsegs.into_iter().map(|sg| sg.tgt).collect();
         }
         drop(prov);
@@ -2514,7 +2514,7 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
         let now: Vec<(String, String)> = fresh.segments.iter().map(input).collect();
         let now_titles: Vec<&str> = fresh.captions.titles.iter().map(|ti| ti.text.as_str()).collect();
         if now != inputs || now_titles != titles.iter().map(String::as_str).collect::<Vec<_>>() {
-            return Err("перевод: реплики или титры изменились, пока шёл перевод — проект не менялся, запустите перевод ещё раз".into());
+            return Err(t!("translate-lines-changed"));
         }
         fresh.tgt_lang = lang_c.clone();
         fresh.mode = mode.clone();
@@ -2631,7 +2631,7 @@ async fn output(
 /// Для batch-экспорта: юзер выбирает ОДНУ папку назначения, дальше save-output кладёт туда все файлы.
 async fn pick_folder() -> Json<Value> {
     let dir = tokio::task::spawn_blocking(|| {
-        rfd::FileDialog::new().set_title("Куда сохранить результаты").pick_folder()
+        rfd::FileDialog::new().set_title(t!("export-pick-folder")).pick_folder()
     })
     .await
     .ok()
@@ -2676,7 +2676,7 @@ async fn save_output(State(st): State<AppState>, AxPath(pid): AxPath<String>, Js
             .into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("копирование в {}: {e}", dest.display()),
+            t!("export-copy-failed", path = dest.display().to_string(), error = e.to_string()),
         )
             .into_response(),
     }
@@ -2897,7 +2897,7 @@ async fn job_get(
         None => 0,
         Some(Ok(v)) => v,
         Some(Err(_)) => {
-            return (StatusCode::BAD_REQUEST, "wait: ожидалось число секунд").into_response()
+            return (StatusCode::BAD_REQUEST, t!("jobs-wait-not-number")).into_response()
         }
     };
     let snap = if wait > 0 { st.jobs.wait(&job_id, wait).await } else { st.jobs.snapshot(&job_id).await };
@@ -2943,7 +2943,7 @@ async fn resume_project(State(st): State<AppState>, AxPath(pid): AxPath<String>)
             .into_response();
     }
     let Some(kind) = jobs::JobKind::parse(&rec.kind) else {
-        return (StatusCode::CONFLICT, format!("неизвестный вид джобы в job.json: {}", rec.kind),
+        return (StatusCode::CONFLICT, t!("jobs-unknown-kind", kind = rec.kind.clone()),
         ).into_response();
     };
     let started = match kind {
@@ -2956,7 +2956,7 @@ async fn resume_project(State(st): State<AppState>, AxPath(pid): AxPath<String>)
         jobs::JobKind::Align => align_enqueue(&st, &pid).await,
         jobs::JobKind::Shorten => shorten::shorten_enqueue(&st, &pid, &rec.args).await,
         other => {
-            return (StatusCode::CONFLICT, format!("джоба {} не продолжается", other.as_str()),
+            return (StatusCode::CONFLICT, t!("jobs-not-resumable", kind = other.as_str()),
             ).into_response();
         }
     };
@@ -3024,30 +3024,27 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
         )
             .map_err(|e| e.to_string())?;
         if proj.segments.iter().all(|s| s.src_text.trim().is_empty()) {
-            return Err("выравнивание по речи: у реплик нет текста на языке оригинала (субтитры импортированы на языке перевода)".into());
+            return Err(t!("align-no-source-text"));
         }
         let wav = ["vocals16_clean.wav", "vocals16.wav"]
             .iter()
             .map(|f| dir_for_job.join(f))
             .find(|p| p.is_file())
-            .ok_or("выравнивание по речи: нет дорожки вокала проекта — сначала анализ")?;
-        progress(json!({ "stage": "asr", "msg": "выравнивание по речи: распознавание слов" }));
+            .ok_or_else(|| t!("align-no-vocals"))?;
+        progress(json!({ "stage": "asr", "msg": t!("align-recognizing") }));
         std::env::set_var("DUB_ASR_BACKEND", &backend);
         let words: Vec<subalign::Heard> = models::build_engine(&asr)
             .transcribe(&wav, "auto")
-            .map_err(|e| format!("выравнивание по речи: распознавание: {e}"))?
+            .map_err(|e| t!("align-recognition-failed", error = e.to_string()))?
             .into_iter()
             .flat_map(|s| s.words)
             .map(|w| (w.word, w.start, w.end))
             .collect();
         jobs::check_cancelled()?;
         let refs: Vec<(f64, f64, &str)> = proj.segments.iter().map(|s| (s.start, s.end, s.src_text.as_str())).collect();
-        let a = subalign::align(&refs, &words).ok_or("выравнивание по речи: речь не распознана — тайминги не менялись")?;
+        let a = subalign::align(&refs, &words).ok_or_else(|| t!("align-no-speech"))?;
         if a.share < subalign::MIN_ALIGNED_SHARE {
-            return Err(format!(
-                "выравнивание по речи: реплики не совпали с речью (сопоставлено {:.0}%) — тайминги не менялись",
-                a.share * 100.0
-            ));
+            return Err(t!("align-mismatch", share = format!("{:.0}", a.share * 100.0)));
         }
         // Распознавание шло минутами: правки, сделанные за это время, остаются, а выравнивание ложится,
         // только пока реплики те же, что сопоставлялись со словами.
@@ -3059,13 +3056,15 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
             p.segments.iter().map(|s| (s.id.clone(), s.start, s.end, s.src_text.clone())).collect::<Vec<_>>()
         };
         if same(&fresh) != same(&proj) {
-            return Err("выравнивание по речи: реплики изменились, пока шло распознавание — тайминги не менялись, запустите выравнивание ещё раз".into());
+            return Err(t!("align-lines-changed"));
         }
         let changed = apply_alignment(&mut fresh, &a);
         write_project(&dir_for_job, &fresh)?;
-        progress(json!({ "stage": "asr", "msg": format!(
-            "выровнено по речи: {:.0}% реплик по словам, изменён тайминг у {changed}; сдвиг {:+.2} с",
-            a.share * 100.0, a.offset
+        progress(json!({ "stage": "asr", "msg": t!(
+            "align-done",
+            share = format!("{:.0}", a.share * 100.0),
+            changed = changed,
+            offset = format!("{:+.2}", a.offset)
         ) }));
         Ok(json!({ "project_id": pid_res, "changed": changed, "aligned_share": a.share, "offset": a.offset }),
         )

@@ -468,7 +468,7 @@ pub fn align(cues: &[(f64, f64, &str)], words: &[Heard]) -> Option<Alignment> {
     }
 
     // Порядок и неперекрытие: реплика кончается не позже начала следующей, не короче MIN_DUR.
-    let mut out: Vec<Placed> = placed.into_iter().map(|p| p.expect("каждая реплика размещена выше")).collect();
+    let mut out: Vec<Placed> = placed.into_iter().map(|p| p.expect("every line is placed above")).collect();
     for index in 0..out.len() {
         out[index].start = out[index].start.max(0.0);
         if index + 1 < out.len() {

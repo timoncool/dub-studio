@@ -70,15 +70,15 @@ pub fn read(dir: &Path) -> Result<Option<JobRecord>, String> {
     let text = match std::fs::read_to_string(&p) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("чтение {}: {e}", p.display())),
+        Err(e) => return Err(t!("common-read", path = p.display().to_string(), error = e.to_string())),
     };
     serde_json::from_str(&text)
         .map(Some)
-        .map_err(|e| format!("разбор {}: {e}", p.display()))
+        .map_err(|e| t!("common-parse", path = p.display().to_string(), error = e.to_string()))
 }
 
 fn write(dir: &Path, rec: &JobRecord) -> Result<(), String> {
-    let body = serde_json::to_vec_pretty(rec).map_err(|e| format!("сериализация job.json: {e}"))?;
+    let body = serde_json::to_vec_pretty(rec).map_err(|e| t!("jobs-serialize-record", error = e.to_string()))?;
     dub_core::atomic::write(&dir.join(FILE), &body)
 }
 
@@ -117,7 +117,7 @@ fn record_writes() -> std::sync::MutexGuard<'static, ()> {
 /// Read-modify-write записи. Нет записи — ошибка (обновлять нечего).
 pub fn update(dir: &Path, f: impl FnOnce(&mut JobRecord)) -> Result<(), String> {
     let _held = record_writes();
-    let mut rec = read(dir)?.ok_or_else(|| format!("{} нет в {}", FILE, dir.display()))?;
+    let mut rec = read(dir)?.ok_or_else(|| t!("jobs-record-missing", file = FILE, dir = dir.display().to_string()))?;
     f(&mut rec);
     rec.updated_at = now_secs();
     write(dir, &rec)
@@ -134,7 +134,7 @@ pub fn update_owned(dir: &Path, job_id: &str, f: impl FnOnce(&mut JobRecord)) ->
             write(dir, &rec)
         }
         Some(_) => Ok(()),
-        None => Err(format!("{} нет в {}", FILE, dir.display())),
+        None => Err(t!("jobs-record-missing", file = FILE, dir = dir.display().to_string())),
     }
 }
 

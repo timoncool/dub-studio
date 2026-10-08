@@ -138,7 +138,7 @@ pub fn save_profile(
 ) -> Result<usize, String> {
     let src_casting = proj_dir.join("casting.json");
     let casting = dub_faces::load_casting(&src_casting)
-        .ok_or_else(|| "в проекте нет casting.json (кастинг не запускался)".to_string())?;
+        .ok_or_else(|| t!("casting-no-casting-json"))?;
     let dir = profile_dir(repo_root, slug);
     let avatars = dir.join("avatars");
     let voices = dir.join("voices");
@@ -190,7 +190,7 @@ pub fn delete_profile(repo_root: &Path, slug: &str) -> Result<(), String> {
     if !dir.exists() {
         return Ok(());
     }
-    std::fs::remove_dir_all(&dir).map_err(|e| format!("удалить профиль {slug}: {e}"))
+    std::fs::remove_dir_all(&dir).map_err(|e| t!("casting-profile-delete-failed", slug = slug.to_string(), error = e.to_string()))
 }
 
 /// Валидный slug для ФС-доступа (защита от traversal): непусто, только [a-z0-9-].
@@ -244,7 +244,7 @@ pub fn read_glossary(repo_root: &Path, slug: &str) -> Option<Result<Vec<dub_core
 
 /// Записать глоссарий профиля (атомарно). Err — профиля нет или запись не удалась.
 pub fn write_glossary(repo_root: &Path, slug: &str, entries: &[dub_core::GlossaryEntry]) -> Result<(), String> {
-    let dir = existing_profile(repo_root, slug).ok_or_else(|| format!("профиль «{slug}» не найден"))?;
+    let dir = existing_profile(repo_root, slug).ok_or_else(|| t!("casting-profile-not-found", slug = slug.to_string()))?;
     let json = serde_json::to_string_pretty(&SeriesGlossary { entries: entries.to_vec() }).map_err(|e| e.to_string())?;
     dub_core::atomic::write(&dir.join(GLOSSARY_FILE), json.as_bytes())
 }
@@ -255,6 +255,7 @@ mod tests {
 
     #[test]
     fn a_series_glossary_lives_beside_its_profile() {
+        let _language = crate::i18n::test_language("ru");
         let repo = std::env::temp_dir().join(format!("dublib_gloss_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         assert!(read_glossary(&repo, "show").is_none(), "no profile");

@@ -23,7 +23,7 @@ pub fn fingerprint(entries: &[GlossaryEntry], tgt: &str) -> String {
     }
     let rows: Vec<(&str, &str, bool)> =
         used.iter().map(|e| (e.term.as_str(), if e.keep { "" } else { e.translation.as_str() }, e.keep)).collect();
-    let json = serde_json::to_string(&rows).expect("строки глоссария сериализуются в JSON");
+    let json = serde_json::to_string(&rows).expect("glossary rows serialize to JSON");
     blake3::hash(json.as_bytes()).to_hex().to_string()
 }
 
@@ -40,9 +40,9 @@ pub fn on_disk(dir: &std::path::Path) -> Result<Option<Vec<GlossaryEntry>>, Stri
     let text = match std::fs::read_to_string(&path) {
         Ok(text) => text,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("чтение {}: {e}", path.display())),
+        Err(e) => return Err(t!("common-read", path = path.display().to_string(), error = e.to_string())),
     };
-    Project::from_json(&text).map(|p| Some(p.glossary)).map_err(|e| format!("разбор {}: {e}", path.display()))
+    Project::from_json(&text).map(|p| Some(p.glossary)).map_err(|e| t!("common-parse", path = path.display().to_string(), error = e.to_string()))
 }
 
 /// Глоссарий результата анализа: собственные записи — как на диске сейчас, записи сериала — этого анализа.
@@ -68,7 +68,7 @@ fn wants_tsv(q: &HashMap<String, String>) -> Result<bool, String> {
     match q.get("format").map(String::as_str) {
         None | Some("json") => Ok(false),
         Some("tsv") => Ok(true),
-        Some(other) => Err(format!("format «{other}»: json или tsv")),
+        Some(other) => Err(t!("glossary-bad-format", format = other.to_string())),
     }
 }
 
@@ -158,7 +158,7 @@ pub async fn series_get(State(st): State<AppState>, AxPath(slug): AxPath<String>
     };
     match casting_library::read_glossary(&st.repo_root, &slug) {
         None => (StatusCode::NOT_FOUND, "profile not found").into_response(),
-        Some(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, format!("глоссарий сериала не читается: {e}")).into_response(),
+        Some(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, t!("glossary-series-unreadable", error = e)).into_response(),
         Some(Ok(entries)) if as_tsv => tsv(&entries),
         Some(Ok(entries)) => Json(json!({ "slug": slug, "entries": entries })).into_response(),
     }
@@ -173,7 +173,7 @@ pub async fn series_put(State(st): State<AppState>, AxPath(slug): AxPath<String>
     let current = if body.merge {
         match casting_library::read_glossary(&st.repo_root, &slug) {
             None => return (StatusCode::NOT_FOUND, "profile not found").into_response(),
-            Some(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, format!("глоссарий сериала не читается: {e}")).into_response(),
+            Some(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, t!("glossary-series-unreadable", error = e)).into_response(),
             Some(Ok(entries)) => entries,
         }
     } else {
@@ -216,10 +216,10 @@ pub async fn extract(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
             .filter(|t| !t.is_empty())
             .collect();
         if texts.is_empty() {
-            return Err("в проекте нет текста: глоссарий собирается из распознанной речи — сначала анализ".into());
+            return Err(t!("glossary-no-text"));
         }
         let say = |m: &str| progress(json!({ "type": "progress", "stage": "glossary", "msg": m }));
-        say(&format!("глоссарий: {} строк текста", texts.len()));
+        say(&t!("glossary-lines", count = texts.len()));
         let prov = crate::llm_provider::open(
             &crate::llm_provider::LlmOpen {
                 llama_bin: &llama_bin,
@@ -229,12 +229,12 @@ pub async fn extract(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
             },
             crate::llm_provider::LlmMode::Text,
         )
-        .map_err(|e| format!("глоссарий: LLM недоступен — {e}"))?;
+        .map_err(|e| t!("glossary-no-llm", error = e))?;
         let src_lang = p.meta.extra.get("src_lang").and_then(Value::as_str).unwrap_or("auto").to_string();
         let found = dub_translate::extract_glossary(prov.client(), &texts, &src_lang, &p.tgt_lang, &p.glossary, &mut |m: &str| say(m))
-            .map_err(|e| format!("глоссарий: {e}"))?;
+            .map_err(|e| t!("glossary-failed", error = e.to_string()))?;
         drop(prov);
-        say(&format!("глоссарий: предложено записей — {}", found.len()));
+        say(&t!("glossary-proposed", count = found.len()));
         Ok(json!({ "entries": found }))
     });
     match st.jobs.enqueue(jobs::JobMeta::new(jobs::JobKind::Glossary, Some(&pid)), job).await {
@@ -260,15 +260,15 @@ pub fn for_analyze(
     }
     match casting_library::read_glossary(repo_root, slug) {
         None => {
-            progress(json!({ "stage": "translate", "msg": format!("профиль сериала «{slug}» не найден — его глоссарий не применён") }));
+            progress(json!({ "stage": "translate", "msg": t!("glossary-series-profile-missing", slug = slug.to_string()) }));
             Ok(own)
         }
-        Some(Err(e)) => Err(format!("глоссарий сериала «{slug}» не читается: {e}")),
+        Some(Err(e)) => Err(t!("glossary-series-slug-unreadable", slug = slug.to_string(), error = e)),
         Some(Ok(series)) => {
             let series: Vec<GlossaryEntry> = series.into_iter().map(|e| GlossaryEntry { source: GlossarySource::Series, ..e }).collect();
             let merged = merge_under(&own, &series);
-            progress(json!({ "stage": "translate", "msg": format!(
-                "глоссарий сериала «{slug}»: {} записей, добавлено в проект {}", series.len(), merged.len() - own.len()) }));
+            progress(json!({ "stage": "translate", "msg": t!(
+                "glossary-series-applied", slug = slug.to_string(), count = series.len(), added = merged.len() - own.len()) }));
             Ok(merged)
         }
     }
@@ -345,6 +345,7 @@ mod tests {
 
     #[test]
     fn a_glossary_saved_during_the_job_is_kept() {
+        let _language = crate::i18n::test_language("ru");
         let dir = std::env::temp_dir().join(format!("dub_gloss_disk_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -376,6 +377,7 @@ mod tests {
 
     #[test]
     fn analysis_takes_the_series_glossary_under_the_projects_own() {
+        let _language = crate::i18n::test_language("ru");
         let repo = std::env::temp_dir().join(format!("dub_gloss_analyze_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&repo);
         let seen = std::sync::Mutex::new(Vec::<String>::new());

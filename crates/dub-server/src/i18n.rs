@@ -22,6 +22,19 @@ pub const LANGUAGES: [&str; 6] = ["en", "ru", "es", "fr", "pt", "zh"];
 
 static CURRENT: RwLock<Option<LanguageIdentifier>> = RwLock::new(None);
 
+/// Tests run in parallel and the language is global: a test that sets the language or compares a message
+/// with one language holds this for its whole body.
+#[cfg(test)]
+pub(crate) static TEST_LANGUAGE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Holds [`TEST_LANGUAGE_LOCK`] and sets `code` as the language for the rest of the test.
+#[cfg(test)]
+pub(crate) fn test_language(code: &str) -> std::sync::MutexGuard<'static, ()> {
+    let guard = TEST_LANGUAGE_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    set_language(code).expect("an interface language");
+    guard
+}
+
 /// The language the window shows now; English until it reports one.
 pub fn language() -> LanguageIdentifier {
     CURRENT.read().ok().and_then(|current| current.clone()).unwrap_or_else(|| "en".parse().expect("a language tag"))
@@ -98,7 +111,7 @@ mod tests {
 
     #[test]
     fn the_language_follows_the_window_and_counts_in_russian() {
-        set_language("ru").unwrap();
+        let _language = test_language("ru");
         assert_eq!(t!("asr-windowed", speakers = 2), "транскрипция по окнам на GPU (2 спикера)");
         assert_eq!(t!("asr-windowed", speakers = 5), "транскрипция по окнам на GPU (5 спикеров)");
         set_language("en").unwrap();

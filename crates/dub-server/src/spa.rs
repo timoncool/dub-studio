@@ -11,10 +11,10 @@ use std::path::{Path, PathBuf};
 /// Отдать статик-файл SPA по пути или index.html (deep-link/refresh). None -> web-root не собран.
 pub async fn serve_spa(web_root: Option<&Path>, spa_path: &str) -> Response {
     let Some(web_root) = web_root else {
-        return (StatusCode::NOT_FOUND, "frontend не собран").into_response();
+        return (StatusCode::NOT_FOUND, t!("spa-not-built")).into_response();
     };
     let Ok(root_canon) = web_root.canonicalize() else {
-        return (StatusCode::NOT_FOUND, "frontend не собран").into_response();
+        return (StatusCode::NOT_FOUND, t!("spa-not-built")).into_response();
     };
 
     if !spa_path.is_empty() {

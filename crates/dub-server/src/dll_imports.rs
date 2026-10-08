@@ -17,16 +17,16 @@ use crate::setup::{self, Delivery};
 pub fn imported_libraries(binary: &Path) -> Result<Vec<String>, String> {
     let data = std::fs::read(binary).map_err(|e| format!("{}: {e}", binary.display()))?;
     let at = |offset: usize| -> Result<u32, String> {
-        let b = data.get(offset..offset + 4).ok_or("обрезанный PE-заголовок")?;
+        let b = data.get(offset..offset + 4).ok_or("truncated PE header")?;
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     };
     let short = |offset: usize| -> Result<u16, String> {
-        let b = data.get(offset..offset + 2).ok_or("обрезанный PE-заголовок")?;
+        let b = data.get(offset..offset + 2).ok_or("truncated PE header")?;
         Ok(u16::from_le_bytes([b[0], b[1]]))
     };
     let pe = at(0x3c)? as usize;
     if data.get(pe..pe + 4) != Some(b"PE\0\0") {
-        return Err(format!("{} — не PE", binary.display()));
+        return Err(format!("{} is not a PE file", binary.display()));
     }
     let sections = short(pe + 6)? as usize;
     let optional_size = short(pe + 20)? as usize;
@@ -46,8 +46,8 @@ pub fn imported_libraries(binary: &Path) -> Result<Vec<String>, String> {
             .map(|(va, _, raw)| (raw + (rva - va)) as usize)
     };
     let name_at = |rva: u32| -> Result<String, String> {
-        let start = offset_of(rva).ok_or("имя импорта вне файла")?;
-        let end = data[start..].iter().position(|b| *b == 0).ok_or("имя импорта без конца")? + start;
+        let start = offset_of(rva).ok_or("import name outside the file")?;
+        let end = data[start..].iter().position(|b| *b == 0).ok_or("import name without a terminator")? + start;
         Ok(String::from_utf8_lossy(&data[start..end]).into_owned())
     };
     let mut names = Vec::new();
@@ -57,9 +57,9 @@ pub fn imported_libraries(binary: &Path) -> Result<Vec<String>, String> {
         if table_rva == 0 {
             continue;
         }
-        let mut entry = offset_of(table_rva).ok_or("таблица импорта вне файла")?;
+        let mut entry = offset_of(table_rva).ok_or("import table outside the file")?;
         loop {
-            let d = data.get(entry..entry + descriptor).ok_or("обрезанная таблица импорта")?;
+            let d = data.get(entry..entry + descriptor).ok_or("truncated import table")?;
             if d.iter().all(|b| *b == 0) {
                 break;
             }
@@ -194,7 +194,7 @@ pub fn check_root(root: &Path, seen: &mut dyn FnMut(&str, &(String, PathBuf))) -
     for (component, rel) in ENTRY_POINTS {
         let entry = root.join(rel);
         if !entry.is_file() {
-            problems.push(format!("{component}: нет {rel} после установки"));
+            problems.push(format!("{component}: no {rel} after installation"));
             continue;
         }
         let r = resolve(&entry, &dirs)?;
@@ -207,7 +207,7 @@ pub fn check_root(root: &Path, seen: &mut dyn FnMut(&str, &(String, PathBuf))) -
                 .iter()
                 .any(|(n, d)| *n == lowered && (entry.parent() == Some(d.as_path()) || dirs.contains(d)));
             if !shipped {
-                problems.push(format!("{rel} импортирует {name}: его нет ни рядом, ни в Windows, ни в манифесте"));
+                problems.push(format!("{rel} imports {name}: it is neither next to it, nor in Windows, nor in the manifest"));
             }
         }
     }
