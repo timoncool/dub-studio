@@ -232,16 +232,16 @@ pub fn run(client: &ChatClient, lang: &str, style: &str, items: &[Item], log: &d
         match client.chat(&prompt(lang, style, item), &s) {
             Ok(answer) => match check(&item.src, &item.tgt, &answer, lang) {
                 Ok(to) => {
-                    log(format!("сокращение {}/{}: {} -> {} символов", k + 1, items.len(), fit::text_units(&item.tgt), fit::text_units(&to)));
+                    log(t!("shorten-line-done", n = k + 1, total = items.len(), from = fit::text_units(&item.tgt), to = fit::text_units(&to)));
                     out.done.push(Change { id: item.id.clone(), from: item.tgt.clone(), to });
                 }
                 Err(r) => {
-                    log(format!("сокращение {}/{}: ответ не принят ({})", k + 1, items.len(), r.code()));
+                    log(t!("shorten-line-rejected", n = k + 1, total = items.len(), reason = r.code()));
                     out.rejected.push((item.id.clone(), r));
                 }
             },
             Err(e) => {
-                log(format!("сокращение {}/{}: LLM не ответил — {e}", k + 1, items.len()));
+                log(t!("shorten-line-no-answer", n = k + 1, total = items.len(), error = e.to_string()));
                 out.failed.push((item.id.clone(), e.to_string()));
             }
         }
@@ -267,8 +267,8 @@ pub fn already_shortened(seg: &dub_core::Segment) -> bool {
 pub fn persist(dir: &Path, changes: &[Change]) -> Result<(Vec<Change>, Vec<String>), String> {
     let path = dir.join("project.json");
     let held = crate::project_writes();
-    let text = std::fs::read_to_string(&path).map_err(|e| format!("чтение {}: {e}", path.display()))?;
-    let mut proj = Project::from_json(&text).map_err(|e| format!("разбор {}: {e}", path.display()))?;
+    let text = std::fs::read_to_string(&path).map_err(|e| t!("common-read", path = path.display().to_string(), error = e.to_string()))?;
+    let mut proj = Project::from_json(&text).map_err(|e| t!("common-parse", path = path.display().to_string(), error = e.to_string()))?;
     let mut applied = Vec::new();
     for c in changes {
         if let Some(seg) = proj.segments.iter_mut().find(|s| s.id == c.id && s.tgt_text.trim() == c.from.trim()) {
@@ -335,21 +335,21 @@ pub fn render_overflow(
     if list.is_empty() {
         return Ok(None);
     }
-    log(format!("не влезли в слот {} фраз — сокращаю перевод и озвучиваю только их", list.len()));
+    log(t!("shorten-auto-start", count = list.len()));
     if crate::models::llm_backend(&paths.models_root, "llm") != crate::models::LlmBackend::OpenRouter && engine.take().is_some() {
-        log("Higgs выгружен на время сокращения перевода".to_string());
+        log(t!("shorten-higgs-unloaded"));
     }
     let prov = match open_llm(&paths.llama_bin, &paths.mt_model, &paths.models_root) {
         Ok(p) => p,
         Err(e) => {
-            log(format!("сокращение перевода пропущено: LLM недоступен — {e}"));
+            log(t!("shorten-auto-no-llm", error = e));
             return Ok(None);
         }
     };
     let outcome = run(prov.client(), &proj.tgt_lang, &proj.audio.translate_style, &list, log)?;
     drop(prov);
     if outcome.done.is_empty() {
-        log(format!("сокращение: ни одна из {} фраз не сократилась — остаются как озвучены", list.len()));
+        log(t!("shorten-none-shortened", count = list.len()));
         return Ok(None);
     }
     let (applied, _) = persist(&paths.work_dir, &outcome.done)?;
@@ -359,7 +359,7 @@ pub fn render_overflow(
             mark(seg, c);
         }
     }
-    log(format!("сокращено {} фраз из {}", applied.len(), list.len()));
+    log(t!("shorten-done", count = applied.len(), total = list.len()));
     Ok((!applied.is_empty()).then_some(updated))
 }
 
@@ -414,20 +414,20 @@ pub(crate) async fn shorten_enqueue(st: &AppState, pid: &str, args: &Value) -> R
             }
         }
         if picks.is_empty() {
-            log("нечего сокращать: все фразы влезают в свои слоты".to_string());
+            log(t!("shorten-nothing"));
             return Ok(json!({ "shortened": [], "rejected": skipped, "failed": [], "unpinned": [] }));
         }
         let list = items(&proj, &picks);
-        let prov = open_llm(&llama_bin, &mt_model, &models_root).map_err(|e| format!("сокращение: LLM недоступен — {e}"))?;
-        log(format!("сокращение {} фраз: {}", list.len(), prov.describe()));
+        let prov = open_llm(&llama_bin, &mt_model, &models_root).map_err(|e| t!("shorten-no-llm", error = e))?;
+        log(t!("shorten-start", count = list.len(), provider = prov.describe()));
         let outcome = run(prov.client(), &proj.tgt_lang, &proj.audio.translate_style, &list, &log)?;
         drop(prov);
         if outcome.done.is_empty() && outcome.rejected.is_empty() {
             let (id, e) = &outcome.failed[0];
-            return Err(format!("сокращение не выполнено: LLM не ответил ни на одну фразу ({id}: {e})"));
+            return Err(t!("shorten-all-failed", id = id.clone(), error = e.clone()));
         }
         let (applied, unpinned) = persist(&dir_for_job, &outcome.done)?;
-        log(format!("сокращено {} фраз из {}", applied.len(), list.len()));
+        log(t!("shorten-done", count = applied.len(), total = list.len()));
         skipped.extend(outcome.rejected.iter().map(|(id, r)| json!({ "id": id, "reason": r.code() })));
         Ok(json!({
             "shortened": applied.iter().map(|c| json!({ "id": c.id, "from": c.from, "to": c.to })).collect::<Vec<_>>(),
@@ -542,6 +542,7 @@ mod tests {
 
     #[test]
     fn the_render_loop_rewrites_the_lines_that_did_not_fit_and_saves_them() {
+        let _language = crate::i18n::test_language("ru");
         let d = std::env::temp_dir().join(format!("dub_overflow_{}_{}", std::process::id(), uuid::Uuid::new_v4().simple()));
         let models = d.join("models");
         std::fs::create_dir_all(&models).unwrap();

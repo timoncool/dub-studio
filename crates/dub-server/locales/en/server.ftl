@@ -153,3 +153,58 @@ preset-reason-top-card = { $gpu } detected: the maximum quants
 preset-reason-by-vram = { $gpu } · { $vram } GB VRAM: { $preset }
 preset-reason-low-vram = { $gpu } · { $vram } GB VRAM is little for local models; the cloud is more reliable
 preset-unknown = unknown preset: { $id }
+
+## Service port, shortening, frontend, launch defaults
+
+common-corrupt = { $path } is damaged: { $error }
+common-create-dir = folder { $path }: { $error }
+service-bad-port = { $value }: not a port number (1..65535 expected)
+service-exe-path = the service exe path: { $error }
+service-request-not-sent = the connection was accepted, but the request was not sent: { $error }
+service-no-health-answer = the connection was accepted, but /health did not answer: { $error }
+service-not-http = the answer is not HTTP
+service-health-status = an HTTP server; /health answered { $code }
+service-health-not-dub-studio = an HTTP server; /health did not answer with a Dub Studio body
+service-health-not-json = an HTTP server; /health did not answer with JSON
+service-health-no-fields = /health calls itself { $app }, but without the service fields: { $error }
+service-other-app = another application ({ $app })
+service-health-no-app = an HTTP server; /health without an application name
+service-port-reserved = the system does not give out the port, though nobody accepts connections on it (it may be in a range Windows reserves: { $command })
+service-port-dub-studio = Dub Studio { $version } is on it ({ $executable })
+service-port-other = another process holds it: { $what }
+service-port-busy = Port 127.0.0.1:{ $port } has been busy for { $seconds } s: { $who }. Error: { $error }.
+
+    Close the program that holds it, or set another port with the { $env } environment variable (for example { $env }={ $other_port }).
+shorten-line-done = shortening { $n }/{ $total }: { $from } -> { $to } characters
+shorten-line-rejected = shortening { $n }/{ $total }: the answer was not accepted ({ $reason })
+shorten-line-no-answer = shortening { $n }/{ $total }: the LLM did not answer: { $error }
+shorten-auto-start = { $count } { $count ->
+    [one] line does
+   *[other] lines do
+} not fit the slot; shortening the translation and voicing only those
+shorten-higgs-unloaded = Higgs is unloaded while the translation is shortened
+shorten-auto-no-llm = shortening the translation was skipped: the LLM is unavailable: { $error }
+shorten-none-shortened = shortening: none of the { $count } lines got shorter; they stay as voiced
+shorten-done = { $count } of { $total } { $total ->
+    [one] line
+   *[other] lines
+} shortened
+shorten-nothing = nothing to shorten: every line fits its slot
+shorten-no-llm = shortening: the LLM is unavailable: { $error }
+shorten-start = shortening { $count } { $count ->
+    [one] line
+   *[other] lines
+}: { $provider }
+shorten-all-failed = shortening failed: the LLM answered none of the lines ({ $id }: { $error })
+spa-not-built = the frontend is not built
+settings-bad-speaker-count = speaker_count: a whole number from 0 to { $max } is expected (0 means automatic)
+settings-bad-vo-gain = vo_gain_db={ $value }: a number from { $min } to { $max } dB is expected
+settings-bad-src-lang = src_lang={ $value }: neither a language code nor "auto"
+settings-bad-tgt-lang = tgt_lang={ $value }: not a language code
+settings-bad-casting-ref = casting_ref={ $value }: not a casting profile slug
+settings-style-too-long = tr_style_custom is longer than { $max } characters
+settings-too-many-slots = { $name }: more than { $max } slots
+settings-unknown-field = unknown launch defaults field: { $key }
+settings-read-failed = reading the launch defaults: { $error }
+settings-patch-not-object = the PATCH /settings/launch body is an object of fields
+settings-write-failed = writing the launch defaults: { $error }

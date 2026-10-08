@@ -135,20 +135,17 @@ fn is_content_lang(code: &str) -> bool {
 impl LaunchDefaults {
     pub fn validate(&self) -> Result<(), String> {
         if self.speaker_count > dub_asr::MAX_SPEAKERS {
-            return Err("speaker_count: ожидается целое число от 0 до 8 (0 — автоматически)".into());
+            return Err(t!("settings-bad-speaker-count", max = dub_asr::MAX_SPEAKERS));
         }
         if !self.vo_gain_db.is_finite() || !(VO_GAIN_MIN_DB..=VO_GAIN_MAX_DB).contains(&self.vo_gain_db) {
-            return Err(format!(
-                "vo_gain_db={}: ожидается число от {VO_GAIN_MIN_DB} до {VO_GAIN_MAX_DB} дБ",
-                self.vo_gain_db
-            ));
+            return Err(t!("settings-bad-vo-gain", value = self.vo_gain_db, min = VO_GAIN_MIN_DB, max = VO_GAIN_MAX_DB));
         }
         if self.src_lang != "auto" && !is_content_lang(&self.src_lang) {
-            return Err(format!("src_lang={:?}: не код языка и не \"auto\"", self.src_lang));
+            return Err(t!("settings-bad-src-lang", value = format!("{:?}", self.src_lang)));
         }
         if let Some(t) = &self.tgt_lang {
             if !is_content_lang(t) {
-                return Err(format!("tgt_lang={t:?}: не код языка"));
+                return Err(t!("settings-bad-tgt-lang", value = format!("{t:?}")));
             }
         }
         if !self
@@ -156,14 +153,14 @@ impl LaunchDefaults {
             .chars()
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         {
-            return Err(format!("casting_ref={:?}: не slug профиля кастинга", self.casting_ref));
+            return Err(t!("settings-bad-casting-ref", value = format!("{:?}", self.casting_ref)));
         }
         if self.tr_style_custom.chars().count() > MAX_TEXT_CHARS {
-            return Err(format!("tr_style_custom длиннее {MAX_TEXT_CHARS} символов"));
+            return Err(t!("settings-style-too-long", max = MAX_TEXT_CHARS));
         }
         for (name, slots) in [("voice_slots_m", &self.voice_slots_m), ("voice_slots_f", &self.voice_slots_f)] {
             if slots.len() > MAX_SLOTS {
-                return Err(format!("{name}: больше {MAX_SLOTS} слотов"));
+                return Err(t!("settings-too-many-slots", name = name, max = MAX_SLOTS));
             }
         }
         Ok(())
@@ -181,10 +178,10 @@ pub fn load(models_root: &Path) -> Result<(LaunchDefaults, bool), String> {
     let text = match std::fs::read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((LaunchDefaults::default(), false)),
-        Err(e) => return Err(format!("чтение {}: {e}", path.display())),
+        Err(e) => return Err(t!("common-read", path = path.display().to_string(), error = e.to_string())),
     };
     let defaults: LaunchDefaults =
-        serde_json::from_str(&text).map_err(|e| format!("{} повреждён: {e}", path.display()))?;
+        serde_json::from_str(&text).map_err(|e| t!("common-corrupt", path = path.display().to_string(), error = e.to_string()))?;
     defaults
         .validate()
         .map_err(|e| format!("{}: {e}", path.display()))?;
@@ -196,26 +193,26 @@ pub fn load(models_root: &Path) -> Result<(LaunchDefaults, bool), String> {
 pub fn apply_patch(models_root: &Path, patch: &Map<String, Value>) -> Result<LaunchDefaults, String> {
     let _guard = WRITE_LOCK
         .lock()
-        .map_err(|_| "замок записи дефолтов запуска отравлен паникой".to_string())?;
+        .map_err(|_| "the launch defaults write lock is poisoned by a panic".to_string())?;
     let (current, _) = load(models_root)?;
     let mut merged = match serde_json::to_value(&current) {
         Ok(Value::Object(m)) => m,
-        Ok(other) => return Err(format!("дефолты запуска сериализовались не в объект: {other}")),
-        Err(e) => return Err(format!("сериализация дефолтов запуска: {e}")),
+        Ok(other) => return Err(format!("the launch defaults serialized to a non-object: {other}")),
+        Err(e) => return Err(format!("serializing the launch defaults: {e}")),
     };
     for (key, value) in patch {
         if !merged.contains_key(key) {
-            return Err(format!("незнакомое поле дефолтов запуска: {key:?}"));
+            return Err(t!("settings-unknown-field", key = format!("{key:?}")));
         }
         merged.insert(key.clone(), value.clone());
     }
     let next: LaunchDefaults = serde_json::from_value(Value::Object(merged)).map_err(|e| e.to_string())?;
     next.validate()?;
-    let body = serde_json::to_string_pretty(&next).map_err(|e| format!("сериализация: {e}"))?;
-    std::fs::create_dir_all(models_root).map_err(|e| format!("каталог {}: {e}", models_root.display()))?;
+    let body = serde_json::to_string_pretty(&next).map_err(|e| format!("serializing: {e}"))?;
+    std::fs::create_dir_all(models_root).map_err(|e| t!("common-create-dir", path = models_root.display().to_string(), error = e.to_string()))?;
     let path = launch_path(models_root);
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, body.as_bytes()).map_err(|e| format!("запись {}: {e}", tmp.display()))?;
+    std::fs::write(&tmp, body.as_bytes()).map_err(|e| t!("common-write", what = tmp.display().to_string(), error = e.to_string()))?;
     std::fs::rename(&tmp, &path).map_err(|e| format!("rename {} -> {}: {e}", tmp.display(), path.display()))?;
     Ok(next)
 }
@@ -226,20 +223,20 @@ pub async fn launch_get(State(st): State<AppState>) -> Response {
     match tokio::task::spawn_blocking(move || load(&root)).await {
         Ok(Ok((defaults, saved))) => Json(json!({ "defaults": defaults, "saved": saved })).into_response(),
         Ok(Err(e)) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("чтение дефолтов запуска: {e}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, t!("settings-read-failed", error = e.to_string())).into_response(),
     }
 }
 
 /// PATCH /settings/launch {поле: значение, …} -> {defaults, saved: true}
 pub async fn launch_patch(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
     let Value::Object(patch) = body else {
-        return (StatusCode::BAD_REQUEST, "тело PATCH /settings/launch — объект полей").into_response();
+        return (StatusCode::BAD_REQUEST, t!("settings-patch-not-object")).into_response();
     };
     let root = st.models_root.clone();
     match tokio::task::spawn_blocking(move || apply_patch(&root, &patch)).await {
         Ok(Ok(defaults)) => Json(json!({ "defaults": defaults, "saved": true })).into_response(),
         Ok(Err(e)) => (StatusCode::BAD_REQUEST, e).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, format!("запись дефолтов запуска: {e}")).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, t!("settings-write-failed", error = e.to_string())).into_response(),
     }
 }
 

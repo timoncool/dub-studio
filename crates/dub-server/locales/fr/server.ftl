@@ -153,3 +153,58 @@ preset-reason-top-card = { $gpu } détectée : quants maximaux
 preset-reason-by-vram = { $gpu } · { $vram } Go de VRAM : { $preset }
 preset-reason-low-vram = { $gpu } · { $vram } Go de VRAM, c’est peu pour le local ; le cloud est plus fiable
 preset-unknown = préréglage inconnu : { $id }
+
+## Service port, shortening, frontend, launch defaults
+
+common-corrupt = { $path } est endommagé : { $error }
+common-create-dir = dossier { $path } : { $error }
+service-bad-port = { $value } : ce n’est pas un numéro de port (1..65535 attendu)
+service-exe-path = chemin de l’exe du service : { $error }
+service-request-not-sent = la connexion a été acceptée, mais la requête n’est pas partie : { $error }
+service-no-health-answer = la connexion a été acceptée, mais /health n’a pas répondu : { $error }
+service-not-http = la réponse n’est pas en HTTP
+service-health-status = un serveur HTTP ; /health a répondu { $code }
+service-health-not-dub-studio = un serveur HTTP ; /health n’a pas répondu avec un corps Dub Studio
+service-health-not-json = un serveur HTTP ; /health n’a pas répondu en JSON
+service-health-no-fields = /health se dit { $app }, mais sans les champs du service : { $error }
+service-other-app = une autre application ({ $app })
+service-health-no-app = un serveur HTTP ; /health sans nom d’application
+service-port-reserved = le système ne libère pas le port, alors que personne n’y accepte de connexions (il est peut-être dans une plage réservée par Windows : { $command })
+service-port-dub-studio = Dub Studio { $version } l’occupe ({ $executable })
+service-port-other = un autre processus l’occupe : { $what }
+service-port-busy = Le port 127.0.0.1:{ $port } est occupé depuis { $seconds } s : { $who }. Erreur : { $error }.
+
+    Fermez le programme qui l’occupe, ou indiquez un autre port avec la variable d’environnement { $env } (par exemple { $env }={ $other_port }).
+shorten-line-done = raccourcissement { $n }/{ $total } : { $from } -> { $to } caractères
+shorten-line-rejected = raccourcissement { $n }/{ $total } : la réponse n’a pas été acceptée ({ $reason })
+shorten-line-no-answer = raccourcissement { $n }/{ $total } : le LLM n’a pas répondu : { $error }
+shorten-auto-start = { $count } { $count ->
+    [one] réplique ne tient
+   *[other] répliques ne tiennent
+} pas dans leur créneau ; je raccourcis la traduction et ne double que celles-là
+shorten-higgs-unloaded = Higgs est déchargé pendant le raccourcissement de la traduction
+shorten-auto-no-llm = raccourcissement de la traduction ignoré : le LLM est indisponible : { $error }
+shorten-none-shortened = raccourcissement : aucune des { $count } répliques n’a raccourci ; elles restent telles que doublées
+shorten-done = { $count } { $count ->
+    [one] réplique raccourcie
+   *[other] répliques raccourcies
+} sur { $total }
+shorten-nothing = rien à raccourcir : toutes les répliques tiennent dans leur créneau
+shorten-no-llm = raccourcissement : le LLM est indisponible : { $error }
+shorten-start = raccourcissement de { $count } { $count ->
+    [one] réplique
+   *[other] répliques
+} : { $provider }
+shorten-all-failed = raccourcissement échoué : le LLM n’a répondu à aucune réplique ({ $id } : { $error })
+spa-not-built = le frontend n’est pas compilé
+settings-bad-speaker-count = speaker_count : un entier de 0 à { $max } est attendu (0 = automatique)
+settings-bad-vo-gain = vo_gain_db={ $value } : un nombre de { $min } à { $max } dB est attendu
+settings-bad-src-lang = src_lang={ $value } : ni un code de langue ni "auto"
+settings-bad-tgt-lang = tgt_lang={ $value } : ce n’est pas un code de langue
+settings-bad-casting-ref = casting_ref={ $value } : ce n’est pas le slug d’un profil de casting
+settings-style-too-long = tr_style_custom dépasse { $max } caractères
+settings-too-many-slots = { $name } : plus de { $max } emplacements
+settings-unknown-field = champ inconnu des réglages de lancement : { $key }
+settings-read-failed = lecture des réglages de lancement : { $error }
+settings-patch-not-object = le corps de PATCH /settings/launch est un objet de champs
+settings-write-failed = écriture des réglages de lancement : { $error }

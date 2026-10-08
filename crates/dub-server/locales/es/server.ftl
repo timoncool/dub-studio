@@ -153,3 +153,58 @@ preset-reason-top-card = Se detectó { $gpu }: cuantizados máximos
 preset-reason-by-vram = { $gpu } · { $vram } GB de VRAM: { $preset }
 preset-reason-low-vram = { $gpu } · { $vram } GB de VRAM son pocos para modelos locales; la nube es más fiable
 preset-unknown = preajuste desconocido: { $id }
+
+## Service port, shortening, frontend, launch defaults
+
+common-corrupt = { $path } está dañado: { $error }
+common-create-dir = carpeta { $path }: { $error }
+service-bad-port = { $value }: no es un número de puerto (se espera 1..65535)
+service-exe-path = ruta del exe del servicio: { $error }
+service-request-not-sent = la conexión se aceptó, pero la petición no se envió: { $error }
+service-no-health-answer = la conexión se aceptó, pero /health no respondió: { $error }
+service-not-http = la respuesta no es HTTP
+service-health-status = un servidor HTTP; /health respondió { $code }
+service-health-not-dub-studio = un servidor HTTP; /health no respondió con un cuerpo de Dub Studio
+service-health-not-json = un servidor HTTP; /health no respondió con JSON
+service-health-no-fields = /health se presenta como { $app }, pero sin los campos del servicio: { $error }
+service-other-app = otra aplicación ({ $app })
+service-health-no-app = un servidor HTTP; /health sin nombre de aplicación
+service-port-reserved = el sistema no cede el puerto, aunque nadie acepta conexiones en él (puede estar en un rango reservado por Windows: { $command })
+service-port-dub-studio = en él está Dub Studio { $version } ({ $executable })
+service-port-other = otro proceso lo ocupa: { $what }
+service-port-busy = El puerto 127.0.0.1:{ $port } lleva { $seconds } s ocupado: { $who }. Error: { $error }.
+
+    Cierra el programa que lo ocupa o indica otro puerto con la variable de entorno { $env } (por ejemplo { $env }={ $other_port }).
+shorten-line-done = acortando { $n }/{ $total }: { $from } -> { $to } caracteres
+shorten-line-rejected = acortando { $n }/{ $total }: la respuesta no se aceptó ({ $reason })
+shorten-line-no-answer = acortando { $n }/{ $total }: el LLM no respondió: { $error }
+shorten-auto-start = { $count } { $count ->
+    [one] frase no cabe
+   *[other] frases no caben
+} en su espacio; acorto la traducción y doblo solo esas
+shorten-higgs-unloaded = Higgs se descargó mientras se acorta la traducción
+shorten-auto-no-llm = se omitió acortar la traducción: el LLM no está disponible: { $error }
+shorten-none-shortened = acortado: ninguna de las { $count } frases se acortó; quedan como se doblaron
+shorten-done = se acortaron { $count } de { $total } { $total ->
+    [one] frase
+   *[other] frases
+}
+shorten-nothing = no hay nada que acortar: todas las frases caben en su espacio
+shorten-no-llm = acortado: el LLM no está disponible: { $error }
+shorten-start = acortando { $count } { $count ->
+    [one] frase
+   *[other] frases
+}: { $provider }
+shorten-all-failed = no se pudo acortar: el LLM no respondió a ninguna frase ({ $id }: { $error })
+spa-not-built = el frontend no está compilado
+settings-bad-speaker-count = speaker_count: se espera un número entero de 0 a { $max } (0 es automático)
+settings-bad-vo-gain = vo_gain_db={ $value }: se espera un número de { $min } a { $max } dB
+settings-bad-src-lang = src_lang={ $value }: no es un código de idioma ni "auto"
+settings-bad-tgt-lang = tgt_lang={ $value }: no es un código de idioma
+settings-bad-casting-ref = casting_ref={ $value }: no es el slug de un perfil de casting
+settings-style-too-long = tr_style_custom tiene más de { $max } caracteres
+settings-too-many-slots = { $name }: más de { $max } espacios
+settings-unknown-field = campo de valores de inicio desconocido: { $key }
+settings-read-failed = leyendo los valores de inicio: { $error }
+settings-patch-not-object = el cuerpo de PATCH /settings/launch es un objeto de campos
+settings-write-failed = guardando los valores de inicio: { $error }

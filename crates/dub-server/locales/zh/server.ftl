@@ -123,3 +123,49 @@ preset-reason-top-card = 检测到 { $gpu }：使用最高量化
 preset-reason-by-vram = { $gpu } · { $vram } GB 显存：{ $preset }
 preset-reason-low-vram = { $gpu } · { $vram } GB 显存不足以运行本地模型；云端更可靠
 preset-unknown = 未知预设：{ $id }
+
+## Service port, shortening, frontend, launch defaults
+
+common-corrupt = { $path } 已损坏：{ $error }
+common-create-dir = 文件夹 { $path }：{ $error }
+service-bad-port = { $value }：不是端口号（应为 1..65535）
+service-exe-path = 服务 exe 路径：{ $error }
+service-request-not-sent = 连接已建立，但请求未发出：{ $error }
+service-no-health-answer = 连接已建立，但 /health 没有响应：{ $error }
+service-not-http = 响应不是 HTTP
+service-health-status = 一个 HTTP 服务器；/health 返回 { $code }
+service-health-not-dub-studio = 一个 HTTP 服务器；/health 返回的不是 Dub Studio 的内容
+service-health-not-json = 一个 HTTP 服务器；/health 返回的不是 JSON
+service-health-no-fields = /health 自称 { $app }，但缺少服务字段：{ $error }
+service-other-app = 其他应用（{ $app }）
+service-health-no-app = 一个 HTTP 服务器；/health 没有应用名称
+service-port-reserved = 系统不释放该端口，但没有程序在其上接受连接（可能处于 Windows 保留范围：{ $command }）
+service-port-dub-studio = 其上运行着 Dub Studio { $version }（{ $executable }）
+service-port-other = 被其他进程占用：{ $what }
+service-port-busy = 端口 127.0.0.1:{ $port } 已被占用 { $seconds } 秒：{ $who }。错误：{ $error }。
+
+    请关闭占用它的程序，或用环境变量 { $env } 指定其他端口（例如 { $env }={ $other_port }）。
+shorten-line-done = 缩短 { $n }/{ $total }：{ $from } -> { $to } 个字符
+shorten-line-rejected = 缩短 { $n }/{ $total }：回答未被接受（{ $reason }）
+shorten-line-no-answer = 缩短 { $n }/{ $total }：LLM 没有回答：{ $error }
+shorten-auto-start = { $count } 句放不进时间槽；正在缩短译文并只为这些句子配音
+shorten-higgs-unloaded = 缩短译文期间已卸载 Higgs
+shorten-auto-no-llm = 已跳过缩短译文：LLM 不可用：{ $error }
+shorten-none-shortened = 缩短：{ $count } 句均未缩短；保持现有配音
+shorten-done = 已缩短 { $count }/{ $total } 句
+shorten-nothing = 无需缩短：所有句子都放得进时间槽
+shorten-no-llm = 缩短：LLM 不可用：{ $error }
+shorten-start = 正在缩短 { $count } 句：{ $provider }
+shorten-all-failed = 缩短失败：LLM 没有回答任何一句（{ $id }：{ $error }）
+spa-not-built = 前端尚未构建
+settings-bad-speaker-count = speaker_count：应为 0 到 { $max } 的整数（0 表示自动）
+settings-bad-vo-gain = vo_gain_db={ $value }：应为 { $min } 到 { $max } dB 之间的数
+settings-bad-src-lang = src_lang={ $value }：既不是语言代码也不是 "auto"
+settings-bad-tgt-lang = tgt_lang={ $value }：不是语言代码
+settings-bad-casting-ref = casting_ref={ $value }：不是选角档案的 slug
+settings-style-too-long = tr_style_custom 超过 { $max } 个字符
+settings-too-many-slots = { $name }：超过 { $max } 个槽位
+settings-unknown-field = 未知的启动默认值字段：{ $key }
+settings-read-failed = 读取启动默认值：{ $error }
+settings-patch-not-object = PATCH /settings/launch 的请求体应为字段对象
+settings-write-failed = 写入启动默认值：{ $error }

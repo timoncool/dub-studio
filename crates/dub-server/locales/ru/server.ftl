@@ -159,3 +159,61 @@ preset-reason-top-card = Обнаружена { $gpu } — максимальн�
 preset-reason-by-vram = { $gpu } · { $vram } ГБ VRAM — { $preset }
 preset-reason-low-vram = { $gpu } · { $vram } ГБ VRAM маловато для локали — облако надёжнее
 preset-unknown = неизвестный пресет: { $id }
+
+## Service port, shortening, frontend, launch defaults
+
+common-corrupt = { $path } повреждён: { $error }
+common-create-dir = каталог { $path }: { $error }
+service-bad-port = { $value }: не номер порта (ожидается 1..65535)
+service-exe-path = путь к exe сервиса: { $error }
+service-request-not-sent = соединение принято, но запрос не ушёл: { $error }
+service-no-health-answer = соединение принято, ответа на /health нет: { $error }
+service-not-http = ответ не по HTTP
+service-health-status = HTTP-сервер, /health ответил { $code }
+service-health-not-dub-studio = HTTP-сервер, /health ответил не телом Dub Studio
+service-health-not-json = HTTP-сервер, /health ответил не JSON
+service-health-no-fields = /health называет себя { $app }, но без полей сервиса: { $error }
+service-other-app = другое приложение ({ $app })
+service-health-no-app = HTTP-сервер, /health без имени приложения
+service-port-reserved = система не отдаёт порт, хотя соединений на нём никто не принимает (возможно, он в зарезервированном диапазоне Windows: { $command })
+service-port-dub-studio = на нём Dub Studio { $version } ({ $executable })
+service-port-other = его занял другой процесс: { $what }
+service-port-busy = Порт 127.0.0.1:{ $port } занят уже { $seconds } с: { $who }. Ошибка: { $error }.
+
+    Закройте программу, которая его держит, или задайте другой порт переменной окружения { $env } (например { $env }={ $other_port }).
+shorten-line-done = сокращение { $n }/{ $total }: { $from } -> { $to } символов
+shorten-line-rejected = сокращение { $n }/{ $total }: ответ не принят ({ $reason })
+shorten-line-no-answer = сокращение { $n }/{ $total }: LLM не ответил — { $error }
+shorten-auto-start = не влезли в слот { $count } { $count ->
+    [one] фраза
+    [few] фразы
+   *[many] фраз
+} — сокращаю перевод и озвучиваю только их
+shorten-higgs-unloaded = Higgs выгружен на время сокращения перевода
+shorten-auto-no-llm = сокращение перевода пропущено: LLM недоступен — { $error }
+shorten-none-shortened = сокращение: ни одна из { $count } фраз не сократилась — остаются как озвучены
+shorten-done = сокращено { $count } { $count ->
+    [one] фраза
+    [few] фразы
+   *[many] фраз
+} из { $total }
+shorten-nothing = нечего сокращать: все фразы влезают в свои слоты
+shorten-no-llm = сокращение: LLM недоступен — { $error }
+shorten-start = сокращение { $count } { $count ->
+    [one] фразы
+    [few] фраз
+   *[many] фраз
+}: { $provider }
+shorten-all-failed = сокращение не выполнено: LLM не ответил ни на одну фразу ({ $id }: { $error })
+spa-not-built = frontend не собран
+settings-bad-speaker-count = speaker_count: ожидается целое число от 0 до { $max } (0 — автоматически)
+settings-bad-vo-gain = vo_gain_db={ $value }: ожидается число от { $min } до { $max } дБ
+settings-bad-src-lang = src_lang={ $value }: не код языка и не "auto"
+settings-bad-tgt-lang = tgt_lang={ $value }: не код языка
+settings-bad-casting-ref = casting_ref={ $value }: не slug профиля кастинга
+settings-style-too-long = tr_style_custom длиннее { $max } символов
+settings-too-many-slots = { $name }: больше { $max } слотов
+settings-unknown-field = незнакомое поле дефолтов запуска: { $key }
+settings-read-failed = чтение дефолтов запуска: { $error }
+settings-patch-not-object = тело PATCH /settings/launch — объект полей
+settings-write-failed = запись дефолтов запуска: { $error }
