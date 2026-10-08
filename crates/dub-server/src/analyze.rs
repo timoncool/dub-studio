@@ -1150,7 +1150,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         emit(
             progress,
             "asr",
-            &format!("транскрипция по окнам на GPU ({} спикер(ов))", nsp),
+            &t!("asr-windowed", speakers = nsp),
         );
         let ts = asr
             .transcribe(&asr_wav, &args.src_lang)

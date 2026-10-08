@@ -101,5 +101,10 @@ const _applyHtmlLang = (l: string) => { try { document.documentElement.lang = l;
 _applyHtmlLang(i18n.language);
 i18n.on("languageChanged", _applyHtmlLang);
 
+// The server speaks the window's language: it is told at start and on every change.
+const _tellServer = (l: string) => { void fetch("/settings/ui-lang", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lang: l.split("-")[0] }) }).catch((error: unknown) => console.error("[ERROR] telling the server the interface language:", error)); };
+_tellServer(i18n.language);
+i18n.on("languageChanged", _tellServer);
+
 export const setLang = (l: Lang) => { localStorage.setItem("lang", l); i18n.changeLanguage(l); };
 export default i18n;

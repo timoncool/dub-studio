@@ -6,6 +6,8 @@
 //! GET /jobs/{id}/events. GPU-эндпоинты (analyze/render/preview/patch и т.д.) — каркас на следующие
 //! раунды; их карта в docs/PORT-CONTRACT.md.
 
+#[macro_use]
+pub mod i18n;
 mod analyze;
 mod asr_filter;
 mod atomic;
@@ -506,6 +508,7 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/casting/library/{slug}/glossary", get(glossary_api::series_get).put(glossary_api::series_put),
         )
+        .route("/settings/ui-lang", axum::routing::put(set_ui_lang))
         .route("/settings/launch", get(studio_settings::launch_get).patch(studio_settings::launch_patch),
         )
         .route("/app/paths", get(studio_settings::app_paths))
@@ -3137,4 +3140,11 @@ mod align_tests {
 async fn spa_fallback(State(st): State<AppState>, uri: axum::http::Uri) -> Response {
     let path = uri.path().trim_start_matches('/');
     spa::serve_spa(st.web_root.as_deref(), path).await
+}
+
+/// The language the window shows, reported by the window so the server speaks it too.
+async fn set_ui_lang(Json(body): Json<Value>) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    let lang = body.get("lang").and_then(Value::as_str).unwrap_or_default();
+    i18n::set_language(lang).map_err(|detail| (StatusCode::BAD_REQUEST, Json(json!({ "code": "bad_lang", "detail": detail }))))?;
+    Ok(Json(json!({ "lang": lang })))
 }

@@ -6,6 +6,7 @@ license.workspace = true
 description = "axum-сервер Dub Studio: тот же REST/SSE контракт, что backend/app.py"
 
 [dependencies]
+fluent-templates = "0.15.1"
 dub-core = { path = "../dub-core" }
 dub-asr = { path = "../dub-asr", features = ["cuda"] }
 dub-llm = { path = "../dub-llm" }
