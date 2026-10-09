@@ -120,36 +120,58 @@ pub fn for_translation(entries: &[GlossaryEntry], target: &str) -> Vec<GlossaryE
     out
 }
 
-/// Отказ проверки глоссария: код (окно берёт текст по нему из локали) и его аргументы; Display — тот же
-/// отказ по-русски для журнала и агента.
+/// Отказ проверки глоссария. `code` и `args` — стабильный код и его аргументы (окно и сервер берут текст по
+/// ним из локали); Display — тот же отказ по-английски для журнала.
 #[derive(Clone, Debug, PartialEq)]
-pub struct GlossaryError {
-    pub code: &'static str,
-    pub args: Value,
+pub enum GlossaryError {
+    OverLimit { total: usize, max: usize },
+    EmptyTerm { entry: usize },
+    FieldTooLong { entry: usize, term: String, max: usize },
+    Duplicate { term: String, first: usize, second: usize },
+    TsvKeep { line: usize, value: String },
+    TsvEmptyTerm { line: usize },
+    OneOf,
+    Nothing,
 }
 
 impl GlossaryError {
-    pub fn new(code: &'static str, args: Value) -> Self {
-        GlossaryError { code, args }
+    pub fn code(&self) -> &'static str {
+        match self {
+            GlossaryError::OverLimit { .. } => "glossary_over_limit",
+            GlossaryError::EmptyTerm { .. } => "glossary_empty_term",
+            GlossaryError::FieldTooLong { .. } => "glossary_field_too_long",
+            GlossaryError::Duplicate { .. } => "glossary_duplicate",
+            GlossaryError::TsvKeep { .. } => "glossary_tsv_keep",
+            GlossaryError::TsvEmptyTerm { .. } => "glossary_tsv_empty_term",
+            GlossaryError::OneOf => "glossary_one_of",
+            GlossaryError::Nothing => "glossary_nothing",
+        }
+    }
+
+    pub fn args(&self) -> Value {
+        match self {
+            GlossaryError::OverLimit { total, max } => json!({ "total": total, "max": max }),
+            GlossaryError::EmptyTerm { entry } => json!({ "entry": entry }),
+            GlossaryError::FieldTooLong { entry, term, max } => json!({ "entry": entry, "term": term, "max": max }),
+            GlossaryError::Duplicate { term, first, second } => json!({ "term": term, "first": first, "second": second }),
+            GlossaryError::TsvKeep { line, value } => json!({ "line": line, "value": value }),
+            GlossaryError::TsvEmptyTerm { line } => json!({ "line": line }),
+            GlossaryError::OneOf | GlossaryError::Nothing => json!({}),
+        }
     }
 }
 
 impl std::fmt::Display for GlossaryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let a = |k: &str| match &self.args[k] {
-            Value::String(s) => s.clone(),
-            other => other.to_string(),
-        };
-        match self.code {
-            "glossary_over_limit" => write!(f, "в глоссарии {} записей — больше {}", a("total"), a("max")),
-            "glossary_empty_term" => write!(f, "запись {}: пустой термин", a("entry")),
-            "glossary_field_too_long" => write!(f, "запись {} («{}»): поле длиннее {} символов", a("entry"), a("term"), a("max")),
-            "glossary_duplicate" => write!(f, "термин «{}» указан дважды (записи {} и {})", a("term"), a("first"), a("second")),
-            "glossary_tsv_keep" => write!(f, "строка {}: keep «{}» — ожидалось 1 или 0", a("line"), a("value")),
-            "glossary_tsv_empty_term" => write!(f, "строка {}: пустой термин", a("line")),
-            "glossary_one_of" => write!(f, "нужно что-то одно: entries или tsv"),
-            "glossary_nothing" => write!(f, "нужно entries (список записей) или tsv"),
-            other => write!(f, "{other}"),
+        match self {
+            GlossaryError::OverLimit { total, max } => write!(f, "the glossary has {total} entries, more than {max}"),
+            GlossaryError::EmptyTerm { entry } => write!(f, "entry {entry}: empty term"),
+            GlossaryError::FieldTooLong { entry, term, max } => write!(f, "entry {entry} ({term:?}): a field is longer than {max} characters"),
+            GlossaryError::Duplicate { term, first, second } => write!(f, "term {term:?} is given twice (entries {first} and {second})"),
+            GlossaryError::TsvKeep { line, value } => write!(f, "line {line}: keep {value:?}, expected 1 or 0"),
+            GlossaryError::TsvEmptyTerm { line } => write!(f, "line {line}: empty term"),
+            GlossaryError::OneOf => write!(f, "give either entries or tsv, not both"),
+            GlossaryError::Nothing => write!(f, "give entries (a list of entries) or tsv"),
         }
     }
 }
@@ -158,7 +180,7 @@ impl std::fmt::Display for GlossaryError {
 /// (или без языка) — ошибка с номером строки.
 pub fn validate(entries: Vec<GlossaryEntry>) -> Result<Vec<GlossaryEntry>, GlossaryError> {
     if entries.len() > MAX_ENTRIES {
-        return Err(GlossaryError::new("glossary_over_limit", json!({ "total": entries.len(), "max": MAX_ENTRIES })));
+        return Err(GlossaryError::OverLimit { total: entries.len(), max: MAX_ENTRIES });
     }
     let mut out: Vec<GlossaryEntry> = Vec::with_capacity(entries.len());
     let mut seen: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
@@ -171,16 +193,16 @@ pub fn validate(entries: Vec<GlossaryEntry>) -> Result<Vec<GlossaryEntry>, Gloss
         e.lang = e.lang.trim().to_string();
         e.asr_fix = e.asr_fix.iter().map(|v| one_line(v)).filter(|v| !v.is_empty()).collect();
         if e.term.is_empty() {
-            return Err(GlossaryError::new("glossary_empty_term", json!({ "entry": n })));
+            return Err(GlossaryError::EmptyTerm { entry: n });
         }
         for field in [&e.term, &e.translation, &e.pronunciation, &e.note] {
             if field.chars().count() > MAX_FIELD {
-                return Err(GlossaryError::new("glossary_field_too_long", json!({ "entry": n, "term": e.term, "max": MAX_FIELD })));
+                return Err(GlossaryError::FieldTooLong { entry: n, term: e.term.clone(), max: MAX_FIELD });
             }
         }
         let same = seen.entry(normalize(&e.term)).or_default();
         if let Some(&first) = same.iter().find(|&&k| out[k].overlaps(&e)) {
-            return Err(GlossaryError::new("glossary_duplicate", json!({ "term": e.term, "first": first + 1, "second": n })));
+            return Err(GlossaryError::Duplicate { term: e.term, first: first + 1, second: n });
         }
         same.push(out.len());
         out.push(e);
@@ -436,10 +458,10 @@ pub fn from_tsv(text: &str, lang: &str) -> Result<Vec<GlossaryEntry>, GlossaryEr
         let keep = match col(2).to_lowercase().as_str() {
             "" | "0" | "false" | "no" | "нет" => false,
             "1" | "true" | "yes" | "да" | "keep" => true,
-            other => return Err(GlossaryError::new("glossary_tsv_keep", json!({ "line": n, "value": other }))),
+            other => return Err(GlossaryError::TsvKeep { line: n, value: other.to_string() }),
         };
         if col(0).is_empty() {
-            return Err(GlossaryError::new("glossary_tsv_empty_term", json!({ "line": n })));
+            return Err(GlossaryError::TsvEmptyTerm { line: n });
         }
         out.push(GlossaryEntry {
             term: col(0).to_string(),
@@ -539,12 +561,12 @@ mod tests {
     #[test]
     fn validation_refuses_an_empty_or_repeated_term() {
         let empty = validate(vec![entry(" ", "x")]).unwrap_err();
-        assert_eq!((empty.code, empty.args["entry"].as_u64()), ("glossary_empty_term", Some(1)));
-        assert!(empty.to_string().contains("пустой"));
+        assert_eq!((empty.code(), empty.args()["entry"].as_u64()), ("glossary_empty_term", Some(1)));
+        assert!(empty.to_string().contains("empty term"));
         let err = validate(vec![entry("Harry", "Гарри"), entry("harry ", "Гарри")]).unwrap_err();
-        assert_eq!(err.code, "glossary_duplicate");
-        assert_eq!((err.args["term"].as_str(), err.args["first"].as_u64(), err.args["second"].as_u64()), (Some("harry"), Some(1), Some(2)));
-        assert!(err.to_string().contains("дважды"), "{err}");
+        assert_eq!(err.code(), "glossary_duplicate");
+        assert_eq!((err.args()["term"].as_str(), err.args()["first"].as_u64(), err.args()["second"].as_u64()), (Some("harry"), Some(1), Some(2)));
+        assert!(err.to_string().contains("given twice"), "{err}");
         let mut ru = entry("Harry", "Гарри");
         ru.lang = "ru".into();
         let mut es = entry("Harry", "Harry");
@@ -592,9 +614,9 @@ mod tests {
         assert_eq!(back.len(), 2);
         assert!(back[1].keep && back[1].pronunciation == "Энвидиа" && back[1].lang == "ru");
         let keep = from_tsv("a\tb\tmaybe", "ru").unwrap_err();
-        assert_eq!((keep.code, keep.args["line"].as_u64(), keep.args["value"].as_str()), ("glossary_tsv_keep", Some(1), Some("maybe")));
-        assert!(keep.to_string().contains("строка 1"));
-        assert_eq!(from_tsv("\tb", "ru").unwrap_err().code, "glossary_tsv_empty_term");
+        assert_eq!((keep.code(), keep.args()["line"].as_u64(), keep.args()["value"].as_str()), ("glossary_tsv_keep", Some(1), Some("maybe")));
+        assert!(keep.to_string().contains("line 1"));
+        assert_eq!(from_tsv("\tb", "ru").unwrap_err().code(), "glossary_tsv_empty_term");
     }
 
     #[test]

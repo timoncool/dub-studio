@@ -12,6 +12,7 @@ use dub_core::glossary::{for_translation, from_tsv, merge_tsv, merge_under, to_t
 use dub_core::{GlossaryEntry, GlossarySource, Project};
 use serde_json::{json, Value};
 
+use crate::localize::Localize;
 use crate::{casting_library, jobs, AppState};
 
 /// Отпечаток того, что перевод на `tgt` берёт из глоссария (for_translation: термин, перевод, keep в порядке
@@ -74,7 +75,7 @@ fn wants_tsv(q: &HashMap<String, String>) -> Result<bool, String> {
 
 /// Отказ проверки: 400 {error: код, detail: текст, args} — окно показывает текст по коду.
 fn refused(e: GlossaryError) -> Response {
-    (StatusCode::BAD_REQUEST, Json(json!({ "error": e.code, "detail": e.to_string(), "args": e.args }))).into_response()
+    (StatusCode::BAD_REQUEST, Json(json!({ "error": e.code(), "detail": e.localize(), "args": e.args() }))).into_response()
 }
 
 /// Тело PUT: весь список entries или текст tsv; merge — влить в имеющиеся (присланное главнее) вместо замены,
@@ -95,8 +96,8 @@ fn incoming(body: Put, default_lang: &str, current: &[GlossaryEntry]) -> Result<
     let new = match (body.entries, body.tsv) {
         (Some(entries), None) => entries,
         (None, Some(text)) => from_tsv(&text, &lang)?,
-        (Some(_), Some(_)) => return Err(GlossaryError::new("glossary_one_of", json!({}))),
-        (None, None) => return Err(GlossaryError::new("glossary_nothing", json!({}))),
+        (Some(_), Some(_)) => return Err(GlossaryError::OneOf),
+        (None, None) => return Err(GlossaryError::Nothing),
     };
     let new: Vec<GlossaryEntry> = validate(new)?
         .into_iter()
@@ -415,7 +416,7 @@ mod tests {
         assert_eq!(from_tsv.len(), 3);
         assert!(from_tsv[2].keep && from_tsv[2].lang == "ru");
         assert!(incoming(put(None, None, false), "ru", &current).is_err());
-        assert_eq!(incoming(put(Some(vec![entry(" ", "x")]), None, false), "ru", &current).unwrap_err().code, "glossary_empty_term");
+        assert_eq!(incoming(put(Some(vec![entry(" ", "x")]), None, false), "ru", &current).unwrap_err().code(), "glossary_empty_term");
     }
 
     #[test]

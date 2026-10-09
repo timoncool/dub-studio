@@ -761,3 +761,14 @@ post-analyze-bad-flag = { $name }: se esperaba 0 o 1, llegó { $value }
 post-analyze-bad-container = container: se esperaba mp4 o mkv, llegó { $value }
 post-analyze-bad-voice-slots = voice_slots: se esperaba un objeto {"{"}male:[…], female:[…]{"}"}
 post-analyze-edit-failed = el ajuste tras el análisis { $edit }: { $error }
+
+## Messages of the engines and libraries: glossary, LLM, ASR, translation, separation, faces, TTS, captions, OCR
+
+glossary-over-limit = el glosario tiene { $total } entradas, más de { $max }
+glossary-empty-term = la entrada { $entry } no tiene término
+glossary-field-too-long = entrada { $entry } («{ $term }»): un campo supera los { $max } caracteres
+glossary-duplicate = el término «{ $term }» aparece dos veces (entradas { $first } y { $second })
+glossary-tsv-keep = línea { $line }: keep vale «{ $value }»; se esperaba 1 o 0
+glossary-tsv-empty-term = línea { $line }: falta el término
+glossary-one-of = envía entradas o TSV, no ambos
+glossary-nothing = nada que guardar: no hay entradas ni TSV

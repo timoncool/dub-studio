@@ -602,3 +602,14 @@ post-analyze-bad-flag = { $name }：应为 0 或 1，收到 { $value }
 post-analyze-bad-container = container：应为 mp4 或 mkv，收到 { $value }
 post-analyze-bad-voice-slots = voice_slots：应为对象 {"{"}male:[…], female:[…]{"}"}
 post-analyze-edit-failed = 分析后的设置 { $edit }：{ $error }
+
+## Messages of the engines and libraries: glossary, LLM, ASR, translation, separation, faces, TTS, captions, OCR
+
+glossary-over-limit = 术语表有 { $total } 条，超过上限 { $max }
+glossary-empty-term = 第 { $entry } 条没有术语
+glossary-field-too-long = 第 { $entry } 条（“{ $term }”）：有字段超过 { $max } 个字符
+glossary-duplicate = 术语“{ $term }”出现了两次（第 { $first } 条和第 { $second } 条）
+glossary-tsv-keep = 第 { $line } 行：keep 为“{ $value }”，应为 1 或 0
+glossary-tsv-empty-term = 第 { $line } 行没有术语
+glossary-one-of = 只能提交条目或 TSV 之一
+glossary-nothing = 没有可保存的内容：既无条目也无 TSV

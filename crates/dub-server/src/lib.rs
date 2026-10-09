@@ -35,6 +35,7 @@ mod job_store;
 mod jobs;
 mod limiter;
 mod llm_provider;
+mod localize;
 mod mcp;
 mod media;
 mod models;

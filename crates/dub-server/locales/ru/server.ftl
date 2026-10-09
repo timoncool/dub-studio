@@ -770,3 +770,14 @@ post-analyze-bad-flag = { $name }: ожидалось 0 или 1, пришло {
 post-analyze-bad-container = container: ожидалось mp4 или mkv, пришло { $value }
 post-analyze-bad-voice-slots = voice_slots: ожидался объект {"{"}male:[…], female:[…]{"}"}
 post-analyze-edit-failed = настройка после анализа { $edit }: { $error }
+
+## Messages of the engines and libraries: glossary, LLM, ASR, translation, separation, faces, TTS, captions, OCR
+
+glossary-over-limit = в глоссарии слишком много записей: { $total }, предел — { $max }
+glossary-empty-term = запись { $entry }: пустой термин
+glossary-field-too-long = запись { $entry } («{ $term }»): поле длиннее { $max } символов
+glossary-duplicate = термин «{ $term }» указан дважды (записи { $first } и { $second })
+glossary-tsv-keep = строка { $line }: в колонке keep «{ $value }» — нужно 1 или 0
+glossary-tsv-empty-term = строка { $line }: пустой термин
+glossary-one-of = нужно что-то одно: записи или TSV
+glossary-nothing = нечего сохранять: нет ни записей, ни TSV

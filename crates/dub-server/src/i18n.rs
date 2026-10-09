@@ -109,6 +109,147 @@ mod tests {
         assert!(missing.is_empty(), "keys missing from catalogues: {missing:?}");
     }
 
+    /// The source files of the crate, except this one.
+    fn sources() -> Vec<std::path::PathBuf> {
+        let mut found = Vec::new();
+        let mut stack = vec![std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|extension| extension == "rs") && path.file_name().is_some_and(|name| name != "i18n.rs") {
+                    found.push(path);
+                }
+            }
+        }
+        found
+    }
+
+    /// Every `t!` call of `code`: its key and the names of the arguments it passes. Comments, strings and
+    /// character literals are skipped, so only real calls count.
+    fn calls(code: &str) -> Vec<(String, Vec<String>)> {
+        let chars: Vec<char> = code.chars().collect();
+        let skip_literal = |i: usize| -> Option<usize> {
+            if chars[i] == 'r' && (i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_')) {
+                let hashes = chars[i + 1..].iter().take_while(|&&c| c == '#').count();
+                if chars.get(i + 1 + hashes) == Some(&'"') {
+                    let close: Vec<char> = std::iter::once('"').chain(std::iter::repeat_n('#', hashes)).collect();
+                    let mut j = i + 2 + hashes;
+                    while chars[j..j + close.len()] != close[..] {
+                        j += 1;
+                    }
+                    return Some(j + close.len());
+                }
+            }
+            match chars[i] {
+                '"' => {
+                    let mut j = i + 1;
+                    while chars[j] != '"' {
+                        j += if chars[j] == '\\' { 2 } else { 1 };
+                    }
+                    Some(j + 1)
+                }
+                '\'' if chars.get(i + 1) == Some(&'\\') => chars[i + 3..].iter().position(|&c| c == '\'').map(|k| i + 4 + k),
+                '\'' if chars.get(i + 2) == Some(&'\'') => Some(i + 3),
+                '/' if chars.get(i + 1) == Some(&'/') => Some(chars[i..].iter().position(|&c| c == '\n').map_or(chars.len(), |k| i + k)),
+                '/' if chars.get(i + 1) == Some(&'*') => {
+                    Some((i + 2..chars.len() - 1).find(|&k| chars[k] == '*' && chars[k + 1] == '/').map_or(chars.len(), |k| k + 2))
+                }
+                _ => None,
+            }
+        };
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < chars.len() {
+            if let Some(next) = skip_literal(i) {
+                i = next;
+                continue;
+            }
+            let is_call = chars[i..].starts_with(&['t', '!', '('])
+                && (i == 0 || !(chars[i - 1].is_alphanumeric() || chars[i - 1] == '_'));
+            if !is_call {
+                i += 1;
+                continue;
+            }
+            let mut parts = vec![String::new()];
+            let (mut depth, mut j) = (0usize, i + 3);
+            while j < chars.len() {
+                if let Some(next) = skip_literal(j) {
+                    parts.last_mut().unwrap().extend(&chars[j..next]);
+                    j = next;
+                    continue;
+                }
+                match chars[j] {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' if depth == 0 => break,
+                    ')' | ']' | '}' => depth -= 1,
+                    ',' if depth == 0 => {
+                        parts.push(String::new());
+                        j += 1;
+                        continue;
+                    }
+                    _ => {}
+                }
+                parts.last_mut().unwrap().push(chars[j]);
+                j += 1;
+            }
+            let key = parts[0].trim().trim_matches('"').to_string();
+            let names = parts[1..]
+                .iter()
+                .filter(|part| !part.trim().is_empty())
+                .map(|part| part.split('=').next().unwrap().trim().to_string())
+                .collect();
+            out.push((key, names));
+            i = j;
+        }
+        out
+    }
+
+    /// Every `t!` call formats in every language with exactly the arguments it passes: a message that
+    /// refers to an argument the call does not give fails here, where at run time `tr` would hand back the
+    /// bare key.
+    #[test]
+    fn every_call_formats_in_every_language_with_its_arguments() {
+        use fluent_templates::fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
+        let mut all = Vec::new();
+        for path in sources() {
+            let place = path.file_name().unwrap().to_string_lossy().to_string();
+            all.extend(calls(&std::fs::read_to_string(&path).unwrap()).into_iter().map(|(key, names)| (place.clone(), key, names)));
+        }
+        assert!(all.len() > 500, "the calls were not found: {}", all.len());
+        let catalogues = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("locales");
+        let mut problems = Vec::new();
+        for code in LANGUAGES {
+            let mut bundle = FluentBundle::new(vec![code.parse::<LanguageIdentifier>().unwrap()]);
+            bundle.set_use_isolating(false);
+            for entry in std::fs::read_dir(catalogues.join(code)).unwrap().flatten() {
+                let resource = FluentResource::try_new(std::fs::read_to_string(entry.path()).unwrap())
+                    .unwrap_or_else(|(_, errors)| panic!("{code}: {errors:?}"));
+                bundle.add_resource(resource).unwrap_or_else(|errors| panic!("{code}: {errors:?}"));
+            }
+            for (place, key, names) in &all {
+                let Some(pattern) = bundle.get_message(key).and_then(|message| message.value()) else {
+                    problems.push(format!("{code} {place}: {key} is not in the catalogue"));
+                    continue;
+                };
+                for count in [1, 3, 5, 21] {
+                    let mut args = FluentArgs::new();
+                    for name in names {
+                        args.set(name.clone(), count);
+                    }
+                    let mut errors = Vec::new();
+                    bundle.format_pattern(pattern, Some(&args), &mut errors);
+                    if !errors.is_empty() {
+                        problems.push(format!("{code} {place}: {key} with {names:?}: {errors:?}"));
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(problems.is_empty(), "{} messages do not format:\n{}", problems.len(), problems.join("\n"));
+    }
+
     #[test]
     fn the_language_follows_the_window_and_counts_in_russian() {
         let _language = test_language("ru");
