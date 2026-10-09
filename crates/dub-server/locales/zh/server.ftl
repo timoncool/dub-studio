@@ -625,3 +625,14 @@ llm-empty-answer = 模型 { $model } 返回了空回答（未说明原因）
 llm-empty-answer-reason = 模型 { $model } 返回了空回答（finish_reason={ $reason }）
 llm-cut-short = 模型 { $model } 达到了 { $max_tokens } 个 token 的上限（finish_reason=length）：回答不完整；它可能把预算花在了推理上——请选择不强制思考的模型
 llm-prompt-cut = 服务器只读取了 { $chars } 个字符的请求中的 { $read } 个 token，并丢弃了开头——它的上下文太小：请在 Ollama 中调大 num_ctx，或在 LM Studio 中调大模型的 Context Length
+asr-engine = 语音识别：{ $error }
+asr-wav-read = 无法读取 wav { $path }：{ $error }
+asr-resample = 重采样：{ $error }
+asr-speaker-count = 说话人数必须在 1 到 { $max } 之间
+speakers-embedding = 说话人 { $speaker } 的声音：{ $error }
+speakers-no-sample = 说话人 { $speaker }：没有至少 0.3 秒的语音片段可用于匹配声音
+speakers-too-many-voices = 指定了 { $given } 位说话人，但片段中有 { $found } 种不同的声音：无法按声音安全合并
+speakers-bad-embedding = 声音模型返回了空的或无效的声音特征
+speakers-dimension-changed = 声音特征的维度发生了变化
+speakers-more-voices = 片段中的声音数超过了指定的说话人数
+speakers-unmatched = 无法将片段中的声音可靠地对应到指定的说话人数

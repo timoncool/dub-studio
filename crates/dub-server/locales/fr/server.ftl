@@ -793,3 +793,17 @@ llm-prompt-cut = le serveur n’a lu que { $read } { $read ->
     [one] caractère
    *[other] caractères
 } et en a jeté le début — son contexte est trop petit : augmentez num_ctx dans Ollama ou le Context Length du modèle dans LM Studio
+asr-engine = reconnaissance vocale : { $error }
+asr-wav-read = impossible de lire le wav { $path } : { $error }
+asr-resample = rééchantillonnage : { $error }
+asr-speaker-count = le nombre de locuteurs doit être compris entre 1 et { $max }
+speakers-embedding = voix du locuteur { $speaker } : { $error }
+speakers-no-sample = locuteur { $speaker } : aucun extrait de parole d’au moins 0,3 seconde pour reconnaître la voix
+speakers-too-many-voices = nombre de locuteurs indiqué : { $given }, mais l’extrait contient { $found } { $found ->
+    [one] voix différente
+   *[other] voix différentes
+} : impossible de les fusionner sans risque par la voix
+speakers-bad-embedding = le modèle de voix a renvoyé des caractéristiques vocales vides ou invalides
+speakers-dimension-changed = la taille des caractéristiques vocales a changé
+speakers-more-voices = l’extrait contient plus de voix que le nombre de locuteurs indiqué
+speakers-unmatched = impossible d’associer de façon fiable les voix de l’extrait au nombre de locuteurs indiqué

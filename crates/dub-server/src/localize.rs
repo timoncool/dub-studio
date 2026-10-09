@@ -2,6 +2,7 @@
 //! code and its arguments and speak English in `Display` (for logs); here each becomes a message of the
 //! catalogues in the language the window shows.
 
+use dub_asr::{AsrError, SpeakerMatchError};
 use dub_core::glossary::GlossaryError;
 use dub_llm::LlmError;
 
@@ -51,6 +52,32 @@ impl Localize for LlmError {
             }
             LlmError::CutShort { model, max_tokens } => t!("llm-cut-short", model = model.clone(), max_tokens = *max_tokens),
             LlmError::PromptCut { read, chars } => t!("llm-prompt-cut", read = *read, chars = *chars),
+        }
+    }
+}
+
+impl Localize for AsrError {
+    fn localize(&self) -> String {
+        match self {
+            AsrError::Parakeet(error) | AsrError::Io(error) => t!("asr-engine", error = error.clone()),
+            AsrError::WavRead(path, error) => t!("asr-wav-read", path = path.clone(), error = error.clone()),
+            AsrError::Resample(error) => t!("asr-resample", error = error.clone()),
+            AsrError::SpeakerCount { max } => t!("asr-speaker-count", max = *max),
+            AsrError::Speakers(e) => e.localize(),
+        }
+    }
+}
+
+impl Localize for SpeakerMatchError {
+    fn localize(&self) -> String {
+        match self {
+            SpeakerMatchError::Embedding { speaker, error } => t!("speakers-embedding", speaker = *speaker, error = error.clone()),
+            SpeakerMatchError::NoSample { speaker } => t!("speakers-no-sample", speaker = *speaker),
+            SpeakerMatchError::TooManyVoices { given, found } => t!("speakers-too-many-voices", given = *given, found = *found),
+            SpeakerMatchError::BadEmbedding => t!("speakers-bad-embedding"),
+            SpeakerMatchError::DimensionChanged => t!("speakers-dimension-changed"),
+            SpeakerMatchError::MoreVoicesThanSpeakers => t!("speakers-more-voices"),
+            SpeakerMatchError::Unmatched => t!("speakers-unmatched"),
         }
     }
 }

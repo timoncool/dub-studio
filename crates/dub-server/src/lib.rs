@@ -75,6 +75,7 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use dub_core::{EngineOpts, Project};
 use futures_util::stream::Stream;
+use localize::Localize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -3036,7 +3037,7 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
         std::env::set_var("DUB_ASR_BACKEND", &backend);
         let words: Vec<subalign::Heard> = models::build_engine(&asr)
             .transcribe(&wav, "auto")
-            .map_err(|e| t!("align-recognition-failed", error = e.to_string()))?
+            .map_err(|e| t!("align-recognition-failed", error = e.localize()))?
             .into_iter()
             .flat_map(|s| s.words)
             .map(|w| (w.word, w.start, w.end))

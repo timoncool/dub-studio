@@ -805,3 +805,22 @@ llm-prompt-cut = сервер прочитал только { $read } { $read ->
     [few] символа
    *[many] символов
 } и отбросил начало — его контекст мал: увеличьте num_ctx в Ollama или Context Length модели в LM Studio
+asr-engine = распознавание речи: { $error }
+asr-wav-read = не удалось прочитать wav { $path }: { $error }
+asr-resample = ресемплинг: { $error }
+asr-speaker-count = число спикеров должно быть от 1 до { $max }
+speakers-embedding = голос спикера { $speaker }: { $error }
+speakers-no-sample = спикер { $speaker }: нет речевого фрагмента длиной хотя бы 0,3 секунды для сопоставления голоса
+speakers-too-many-voices = указано { $given } { $given ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}, но в фрагменте найдено { $found } { $found ->
+    [one] различный голос
+    [few] различных голоса
+   *[many] различных голосов
+}: безопасно объединить их по голосу не удалось
+speakers-bad-embedding = модель вернула пустые или некорректные голосовые признаки
+speakers-dimension-changed = размерность голосовых признаков изменилась
+speakers-more-voices = число локальных голосов превышает заданное число спикеров
+speakers-unmatched = не удалось надёжно сопоставить голоса фрагмента с заданным числом участников

@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
+use crate::localize::Localize;
 use crate::media;
 use crate::wavio;
 
@@ -695,7 +696,7 @@ fn heard_text<'a>(heard: &'a [Result<String, dub_asr::AsrError>], i: usize, fail
     match heard.get(i) {
         Some(Ok(text)) => Some(text.as_str()),
         Some(Err(e)) => {
-            failed.push(e.to_string());
+            failed.push(e.localize());
             None
         }
         None => {
@@ -2494,7 +2495,7 @@ fn build_speaker_refs(
     let heard = asr.transcribe_many(&batch, "auto");
     let unheard = heard.iter().filter(|h| h.is_err()).count();
     if let Some(Err(e)) = heard.iter().find(|h| h.is_err()) {
-        emit(progress, "tts", &t!("render-refs-unchecked", count = unheard, error = e.to_string()));
+        emit(progress, "tts", &t!("render-refs-unchecked", count = unheard, error = e.localize()));
     }
     let heard: Vec<Option<String>> = heard.into_iter().map(Result::ok).collect();
     for spk in &speakers {

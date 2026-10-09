@@ -793,3 +793,20 @@ llm-prompt-cut = the server read only { $read } { $read ->
     [one] character
    *[other] characters
 } and dropped its start — its context is too small: raise num_ctx in Ollama or the model's Context Length in LM Studio
+asr-engine = speech recognition: { $error }
+asr-wav-read = could not read the wav { $path }: { $error }
+asr-resample = resampling: { $error }
+asr-speaker-count = the number of speakers must be from 1 to { $max }
+speakers-embedding = voice of speaker { $speaker }: { $error }
+speakers-no-sample = speaker { $speaker }: no speech piece of at least 0.3 seconds to match the voice
+speakers-too-many-voices = { $given } { $given ->
+    [one] speaker
+   *[other] speakers
+} given, but the piece has { $found } different { $found ->
+    [one] voice
+   *[other] voices
+}: they could not be merged safely by voice
+speakers-bad-embedding = the voice model returned empty or invalid voice features
+speakers-dimension-changed = the size of the voice features changed
+speakers-more-voices = the piece has more voices than the given number of speakers
+speakers-unmatched = the voices of the piece could not be matched reliably with the given number of speakers
