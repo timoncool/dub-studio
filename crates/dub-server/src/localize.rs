@@ -4,6 +4,7 @@
 
 use audiocpp::EngineError;
 use dub_asr::{AsrError, SpeakerMatchError};
+use dub_captions::CaptionsError;
 use dub_core::glossary::GlossaryError;
 use dub_faces::FacesError;
 use dub_llm::LlmError;
@@ -129,6 +130,20 @@ impl Localize for EngineError {
             EngineError::Generation(error) => t!("tts-generation", error = error.clone()),
             EngineError::InvalidParam(error) => t!("tts-invalid-param", error = error.clone()),
             EngineError::StreamingUnsupported => t!("tts-streaming-unsupported"),
+        }
+    }
+}
+
+impl Localize for CaptionsError {
+    fn localize(&self) -> String {
+        match self {
+            CaptionsError::WriteAss(error) => t!("captions-write-ass", error = error.clone()),
+            CaptionsError::FilterScript(error) => t!("captions-filter-script", error = error.clone()),
+            CaptionsError::Spawn(error) => t!("common-ffmpeg-start", error = error.clone()),
+            CaptionsError::Wait(error) => t!("captions-ffmpeg-wait", error = error.clone()),
+            CaptionsError::Timeout { secs, tail } => t!("captions-ffmpeg-timeout", secs = *secs, tail = tail.clone()),
+            CaptionsError::BurnFailed { tail } => t!("captions-burn-failed", tail = tail.clone()),
+            CaptionsError::FrameFailed { tail } => t!("captions-frame-failed", tail = tail.clone()),
         }
     }
 }

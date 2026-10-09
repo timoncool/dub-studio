@@ -79,7 +79,8 @@ pub fn preview_frame(
         proj.render.blur,
         proj.render.blur_sigma,
         scale_w,
-    )?;
+    )
+    .map_err(|e| crate::localize::Localize::localize(&e))?;
     std::fs::read(&out).map_err(|e| t!("frame-read-preview", error = e.to_string()))
 }
 

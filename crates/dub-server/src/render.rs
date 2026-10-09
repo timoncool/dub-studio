@@ -321,7 +321,8 @@ pub fn run(
             proj.render.burn_cq,
             Some(&src_codec),
             proj.render.blur_sigma,
-        )?;
+        )
+        .map_err(|e| e.localize())?;
         captioned
     } else {
         emit(progress, "burn", &t!("render-burn-off"));
@@ -2991,6 +2992,7 @@ pub(crate) fn build_and_burn_captions(
         Some(src_codec),
         proj.render.blur_sigma,
     )
+    .map_err(|e| e.localize())
 }
 
 /// Блюр-подложка под нашим субтитром -> BlurBox (fill=None -> gblur). Старые band-боксы не трогаем.
@@ -3150,7 +3152,7 @@ pub(crate) fn build_ass(
             .and_then(|v| v.as_i64()),
         secondary: secondary.as_ref(),
     };
-    dub_captions::build(vw, vh, out_ass, args)
+    dub_captions::build(vw, vh, out_ass, args).map_err(|e| e.localize())
 }
 
 /// Вид второй строки двуязычных субтитров из настроек проекта.

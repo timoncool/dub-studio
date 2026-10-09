@@ -15,6 +15,7 @@ mod types;
 mod word_align;
 
 pub use burn::{burn, burn_frame};
+pub use types::CaptionsError;
 pub use look::lum;
 pub use look::{DEFAULT_PRESET, DEFAULT_TEMPLATE, FRESH_DEFAULT, FONT_NAME};
 pub use pages::{MAX_EVENT_SECS, MAX_LINE_CHARS, MIN_EVENT_SECS};
@@ -256,7 +257,7 @@ pub fn word_timed_reveal(
 /// Собрать ОДИН ASS с титрами + дублированными субтитрами и записать в out_ass. Порт captions.build.
 /// Возвращает габариты подложек под нашими субтитрами (для блюр-подложки на рендере; пусто, если стиль
 /// сам даёт непрозрачную плашку или сцена плоская с cover-крышкой).
-pub fn build(width: i64, height: i64, out_ass: &Path, mut args: BuildArgs) -> Result<Vec<SubCover>, String> {
+pub fn build(width: i64, height: i64, out_ass: &Path, mut args: BuildArgs) -> Result<Vec<SubCover>, CaptionsError> {
     if args.max_lines == 0 {
         args.max_lines = 2;
     }
@@ -568,7 +569,7 @@ pub fn build(width: i64, height: i64, out_ass: &Path, mut args: BuildArgs) -> Re
         }
     }
 
-    std::fs::write(out_ass, lines.join("\n")).map_err(|e| format!("запись ASS: {e}"))?;
+    std::fs::write(out_ass, lines.join("\n")).map_err(|e| CaptionsError::WriteAss(e.to_string()))?;
     Ok(covers)
 }
 
