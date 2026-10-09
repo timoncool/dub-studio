@@ -2,6 +2,7 @@
 //! face_embedding (медоид кластера), voice_embedding (из инфры #83 speaker_global), кадр-аватарка.
 //! Матчинг эпизодов: косинус face_embedding+voice_embedding к сохранённым (порог ~0.5).
 
+use crate::FacesError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -80,12 +81,12 @@ impl Default for Casting {
 }
 
 /// Записать casting.json атомарно (tmp + rename).
-pub fn save_casting(path: &Path, casting: &Casting) -> Result<(), String> {
-    let json = serde_json::to_string_pretty(casting).map_err(|e| format!("сериализация: {e}"))?;
+pub fn save_casting(path: &Path, casting: &Casting) -> Result<(), FacesError> {
+    let json = serde_json::to_string_pretty(casting).map_err(|e| FacesError::Io(format!("serialize: {e}")))?;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+        std::fs::create_dir_all(parent).map_err(|e| FacesError::Io(format!("mkdir {}: {e}", parent.display())))?;
     }
-    dub_core::atomic::write(path, json.as_bytes())
+    dub_core::atomic::write(path, json.as_bytes()).map_err(FacesError::Io)
 }
 
 /// Прочитать casting.json. Отсутствует/битый -> None (не ошибка: базы просто ещё нет).

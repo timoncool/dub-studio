@@ -62,14 +62,50 @@ pub fn match_cos_threshold() -> f32 {
 /// Ошибки кастинг-пайплайна.
 #[derive(thiserror::Error, Debug)]
 pub enum FacesError {
-    #[error("модель не найдена: {0}")]
+    #[error("model not found: {0}")]
     ModelMissing(String),
     #[error("ffmpeg: {0}")]
     Ffmpeg(String),
+    /// ffmpeg завершился с ошибкой: код выхода и хвост stderr.
+    #[error("ffmpeg exit code {code:?}: {tail}")]
+    FfmpegExit { code: Option<i32>, tail: String },
     #[error("ort: {0}")]
     Ort(String),
     #[error("io: {0}")]
     Io(String),
+    #[error("the model returned no outputs")]
+    NoOutputs,
+    /// Выход модели `model` не той формы.
+    #[error("{model}: unexpected output shape {shape:?}")]
+    OutputShape { model: &'static str, shape: Vec<usize> },
+    #[error("{model}: expected {expected} outputs, got {got}")]
+    OutputCount { model: &'static str, expected: usize, got: usize },
+    /// Эмбеддинг лица ждёт выровненный кроп 112x112.
+    #[error("the face embedding expects a 112x112 aligned crop, got {width}x{height}")]
+    CropSize { width: u32, height: u32 },
+    #[error("voice: expected {expected} Hz, got {got}")]
+    SampleRate { expected: u32, got: u32 },
+    #[error("voice: the clip is shorter than one fbank frame")]
+    ClipTooShort,
+}
+
+impl FacesError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            FacesError::ModelMissing(_) => "faces_model_missing",
+            FacesError::Ffmpeg(_) => "faces_ffmpeg",
+            FacesError::FfmpegExit { .. } => "faces_ffmpeg_exit",
+            FacesError::Ort(_) => "faces_ort",
+            FacesError::Io(_) => "faces_io",
+            FacesError::NoOutputs => "faces_no_outputs",
+            FacesError::OutputShape { .. } => "faces_output_shape",
+            FacesError::OutputCount { .. } => "faces_output_count",
+            FacesError::CropSize { .. } => "faces_crop_size",
+            FacesError::SampleRate { .. } => "faces_sample_rate",
+            FacesError::ClipTooShort => "faces_clip_too_short",
+        }
+    }
 }
 
 /// Пути к весам кастинга.

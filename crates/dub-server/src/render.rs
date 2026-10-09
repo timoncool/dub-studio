@@ -20,6 +20,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
+use crate::localize::Localize;
 use crate::media;
 use crate::wavio;
 
@@ -320,7 +321,8 @@ pub fn run(
             proj.render.burn_cq,
             Some(&src_codec),
             proj.render.blur_sigma,
-        )?;
+        )
+        .map_err(|e| e.localize())?;
         captioned
     } else {
         emit(progress, "burn", &t!("render-burn-off"));
@@ -527,7 +529,7 @@ fn voice_clone_guarded(
     std::thread::spawn(move || {
         let r = eng
             .voice_clone(&t, &rw, rt.as_deref(), &op)
-            .map_err(|e| e.to_string());
+            .map_err(|e| e.localize());
         let _ = tx.send(r); // получателя уже нет по таймауту — send вернёт Err, не паникуем
     });
     // Ждём порциями, чтобы отмена джобы доходила до движка, не дожидаясь таймаута синтеза.
@@ -562,7 +564,7 @@ fn voice_clone_guarded(
 
 /// Загрузить локальный Higgs (DLL + модель выбранного кванта).
 fn load_higgs(paths: &RenderPaths) -> Result<Arc<AudiocppEngine>, String> {
-    let e = Arc::new(AudiocppEngine::load(&paths.higgs_dll).map_err(|e| t!("render-higgs-load-failed", error = e.to_string()))?,
+    let e = Arc::new(AudiocppEngine::load(&paths.higgs_dll).map_err(|e| t!("render-higgs-load-failed", error = e.localize()))?,
     );
     e.load_model(
         &paths.higgs_model_root,
@@ -571,7 +573,7 @@ fn load_higgs(paths: &RenderPaths) -> Result<Arc<AudiocppEngine>, String> {
         paths.higgs_threads,
         Some(paths.higgs_quant.as_str()),
     )
-    .map_err(|e| format!("Higgs load_model: {e}"))?;
+    .map_err(|e| t!("render-higgs-model-failed", error = e.localize()))?;
     Ok(e)
 }
 
@@ -695,7 +697,7 @@ fn heard_text<'a>(heard: &'a [Result<String, dub_asr::AsrError>], i: usize, fail
     match heard.get(i) {
         Some(Ok(text)) => Some(text.as_str()),
         Some(Err(e)) => {
-            failed.push(e.to_string());
+            failed.push(e.localize());
             None
         }
         None => {
@@ -854,7 +856,7 @@ fn build_dub_pass(
             );
             let sep = dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model,
             )
-                .map_err(|e| t!("atomic-separation-failed", error = e.to_string()))?;
+                .map_err(|e| t!("atomic-separation-failed", error = e.localize()))?;
             media::mark_separation(&stems)?;
             (sep.vocals, Some(sep.instrumental))
         } else {
@@ -2315,7 +2317,7 @@ pub(crate) fn speaker_voice_clip(
     let clip = tmp.join("cut44.wav");
     media::cut(input, &clip, a, b, 44_100, 2)?;
     let voc = dub_sep::separate(&clip, &tmp.join("stems"), sep.0, sep.1)
-        .map_err(|e| VoiceClipError::Separation(e.to_string()))?;
+        .map_err(|e| VoiceClipError::Separation(e.localize()))?;
     media::trim_ref(&voc.vocals, out, 0.0, b - a)?;
     Ok(text)
 }
@@ -2494,7 +2496,7 @@ fn build_speaker_refs(
     let heard = asr.transcribe_many(&batch, "auto");
     let unheard = heard.iter().filter(|h| h.is_err()).count();
     if let Some(Err(e)) = heard.iter().find(|h| h.is_err()) {
-        emit(progress, "tts", &t!("render-refs-unchecked", count = unheard, error = e.to_string()));
+        emit(progress, "tts", &t!("render-refs-unchecked", count = unheard, error = e.localize()));
     }
     let heard: Vec<Option<String>> = heard.into_iter().map(Result::ok).collect();
     for spk in &speakers {
@@ -2990,6 +2992,7 @@ pub(crate) fn build_and_burn_captions(
         Some(src_codec),
         proj.render.blur_sigma,
     )
+    .map_err(|e| e.localize())
 }
 
 /// Блюр-подложка под нашим субтитром -> BlurBox (fill=None -> gblur). Старые band-боксы не трогаем.
@@ -3149,7 +3152,7 @@ pub(crate) fn build_ass(
             .and_then(|v| v.as_i64()),
         secondary: secondary.as_ref(),
     };
-    dub_captions::build(vw, vh, out_ass, args)
+    dub_captions::build(vw, vh, out_ass, args).map_err(|e| e.localize())
 }
 
 /// Вид второй строки двуязычных субтитров из настроек проекта.
@@ -3847,6 +3850,7 @@ mod tests {
 
     #[test]
     fn speaker_voice_without_stems_fails_when_the_line_cannot_be_separated() {
+        let _language = crate::i18n::test_language("ru");
         let wd = scratch("spkvoice_nosep");
         let input = wd.join("source.wav");
         stereo_wav(&input, 44_100, 5.0);
@@ -3858,7 +3862,7 @@ mod tests {
         let out = wd.join("voice.wav");
         match speaker_voice_clip(&seg("s0", 1.0, 3.0, "x"), 12.0, &wd, &input, (&broken, &model), &tmp, &out,
         ) {
-            Err(VoiceClipError::Separation(e)) => assert!(e.contains("запуск движка"), "{e}"),
+            Err(VoiceClipError::Separation(e)) => assert!(e.contains("запуск движка сепарации"), "{e}"),
             other => panic!("ждали сбой сепарации: {other:?}"),
         }
         assert!(!out.exists(), "голос с музыкой оригинала за очищенный не пишется");

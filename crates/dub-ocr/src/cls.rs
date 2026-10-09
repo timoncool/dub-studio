@@ -1,6 +1,7 @@
 //! Классификатор ориентации строки (ch_ppocr_mobile_v2.0_cls). Определяет поворот на 180°.
 //! Дефолты config.yaml: cls_image_shape=[3,48,192], cls_thresh=0.9, label_list=["0","180"].
 
+use crate::OcrError;
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
 use ndarray::Array4;
@@ -11,7 +12,7 @@ const CLS_THRESH: f32 = 0.9;
 
 /// Вернуть true, если строку надо перевернуть на 180° (метка "180" с уверенностью >= порога).
 /// `crop` — RGB-кроп вырезанной строки.
-pub fn should_rotate180(model: &mut OnnxModel, crop: &RgbImage) -> Result<bool, String> {
+pub fn should_rotate180(model: &mut OnnxModel, crop: &RgbImage) -> Result<bool, OcrError> {
     let (cw, ch) = (crop.width() as usize, crop.height() as usize);
     if cw == 0 || ch == 0 {
         return Ok(false);

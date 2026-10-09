@@ -770,3 +770,173 @@ post-analyze-bad-flag = { $name }: ожидалось 0 или 1, пришло {
 post-analyze-bad-container = container: ожидалось mp4 или mkv, пришло { $value }
 post-analyze-bad-voice-slots = voice_slots: ожидался объект {"{"}male:[…], female:[…]{"}"}
 post-analyze-edit-failed = настройка после анализа { $edit }: { $error }
+
+## Messages of the engines and libraries: glossary, LLM, ASR, translation, separation, faces, TTS, captions, OCR
+
+glossary-over-limit = в глоссарии слишком много записей: { $total }, предел — { $max }
+glossary-empty-term = запись { $entry }: пустой термин
+glossary-field-too-long = запись { $entry } («{ $term }»): поле длиннее { $max } символов
+glossary-duplicate = термин «{ $term }» указан дважды (записи { $first } и { $second })
+glossary-tsv-keep = строка { $line }: в колонке keep «{ $value }» — нужно 1 или 0
+glossary-tsv-empty-term = строка { $line }: пустой термин
+glossary-one-of = нужно что-то одно: записи или TSV
+glossary-nothing = нечего сохранять: нет ни записей, ни TSV
+llm-spawn-failed = llama-server не запустился: { $error }
+llm-gguf-missing = GGUF-модель не найдена ({ $path })
+llm-log-file = лог llama-server { $path }: { $error }
+llm-exited-early = llama-server завершился до готовности ({ $status }); stderr: { $stderr }
+llm-not-ready = llama-server не поднялся за { $secs } с (порт { $port }); stderr: { $stderr }
+llm-http = запрос к модели не прошёл: { $error }
+llm-api = API модели: { $error }
+llm-rejected = API модели отверг запрос ({ $status }): { $body }
+llm-empty-answer = модель { $model } вернула пустой ответ (без причины)
+llm-empty-answer-reason = модель { $model } вернула пустой ответ (finish_reason={ $reason })
+llm-cut-short = модель { $model } упёрлась в лимит { $max_tokens } { $max_tokens ->
+    [one] токен
+    [few] токена
+   *[many] токенов
+} (finish_reason=length) — ответ неполный; вероятно, она тратит бюджет на рассуждения: выберите модель без обязательного мышления
+llm-prompt-cut = сервер прочитал только { $read } { $read ->
+    [one] токен
+    [few] токена
+   *[many] токенов
+} из запроса в { $chars } { $chars ->
+    [one] символ
+    [few] символа
+   *[many] символов
+} и отбросил начало — его контекст мал: увеличьте num_ctx в Ollama или Context Length модели в LM Studio
+asr-engine = распознавание речи: { $error }
+asr-wav-read = не удалось прочитать wav { $path }: { $error }
+asr-resample = ресемплинг: { $error }
+asr-speaker-count = число спикеров должно быть от 1 до { $max }
+speakers-embedding = голос спикера { $speaker }: { $error }
+speakers-no-sample = спикер { $speaker }: нет речевого фрагмента длиной хотя бы 0,3 секунды для сопоставления голоса
+speakers-too-many-voices = указано { $given } { $given ->
+    [one] спикер
+    [few] спикера
+   *[many] спикеров
+}, но в фрагменте найдено { $found } { $found ->
+    [one] различный голос
+    [few] различных голоса
+   *[many] различных голосов
+}: безопасно объединить их по голосу не удалось
+speakers-bad-embedding = модель вернула пустые или некорректные голосовые признаки
+speakers-dimension-changed = размерность голосовых признаков изменилась
+speakers-more-voices = число локальных голосов превышает заданное число спикеров
+speakers-unmatched = не удалось надёжно сопоставить голоса фрагмента с заданным числом участников
+translate-format-json = перевод: ответ по JSON-схеме ({ $model })
+translate-format-json-probe = перевод: пробую ответ по JSON-схеме ({ $model }); откажет — нумерованные строки
+translate-format-numbered = перевод: нумерованные строки — модель { $model } не заявляет structured_outputs в каталоге OpenRouter
+translate-schema-ignored = перевод: { $model } принял JSON-схему, но ответил нумерованными строками — дальше нумерованные строки
+translate-schema-ignored-server = перевод: сервер принял JSON-схему, но ответил нумерованными строками — дальше нумерованные строки
+translate-schema-refused = перевод: { $model } отверг ответ по JSON-схеме ({ $status }: { $body }) — дальше нумерованные строки
+translate-schema-refused-server = перевод: сервер отверг ответ по JSON-схеме ({ $status }: { $body }) — дальше нумерованные строки
+translate-line-flawed = перевод: строка { $line } — оставлен перевод с замечанием: { $reason }
+translate-line-failed = перевод: строка { $line } не переведена: { $reason }
+translate-line-reason = { $line }: { $reason }
+translate-lines-rejected = перевод: { $bad } из { $total } { $total ->
+    [one] строки
+    [few] строк
+   *[many] строк
+} не прошли проверку ({ $reasons })
+translate-batch-stopped = перевод: пакет строк { $first }..{ $last } не удался ({ $error }) — перевод остановлен
+translate-batch-failed = перевод: пакет строк { $first }..{ $last } не удался ({ $error })
+translate-layout-no-vision = раскладка кадра: пропущена (vision-модель не выбрана или недоступна)
+translate-layout-not-needed = раскладка кадра: пропущена (субтитры не вжигаются — раскладка не нужна)
+translate-layout = раскладка кадра: sub_style={ $sub_style } titles={ $titles } brands={ $brands }
+translate-layout-failed = раскладка кадра: пропущена ({ $error })
+translate-scene-failed = контекст сцены: пропущен ({ $error })
+translate-scene-no-vision = контекст сцены: пропущен (vision-модель не выбрана или недоступна)
+translate-audio-failed = аудио-контекст: пропущен ({ $error })
+translate-context-trimmed = перевод: блок контекста в { $chars } { $chars ->
+    [one] символ
+    [few] символа
+   *[many] символов
+} обрезан до { $budget } (защита n_ctx)
+translate-names-skipped = перевод: авто-глоссарий имён пропущен ({ $error })
+translate-chunks = перевод: { $lines } { $lines ->
+    [one] строка
+    [few] строки
+   *[many] строк
+} -> { $chunks } { $chunks ->
+    [one] пакет
+    [few] пакета
+   *[many] пакетов
+} (глоссарий: { $terms } { $terms ->
+    [one] термин
+    [few] термина
+   *[many] терминов
+}, { $names } { $names ->
+    [one] имя
+    [few] имени
+   *[many] имён
+})
+translate-pass-done = перевод: готово — переведено { $translated } (с замечанием { $flawed }), на исходнике { $untranslated }
+glossary-pass = глоссарий: проход модели { $pass }/{ $passes }
+glossary-schema-refused = глоссарий: сервер отверг ответ по JSON-схеме ({ $status }) — прошу JSON текстом
+content-type-decided = тип контента: { $decided ->
+    [anime] анимация
+   *[other] живая съёмка
+} ({ $votes } { $votes ->
+    [one] внятный ответ
+    [few] внятных ответа
+   *[many] внятных ответов
+} из { $frames } кадров)
+line-missing = нет в ответе
+line-cut = ответ оборван лимитом токенов
+line-untranslated = не на целевом языке
+line-echo = повторяет исходник
+line-too-short = слишком коротко ({ $got } < { $min })
+line-too-long = слишком длинно ({ $got } > { $max })
+line-loop = зацикливание «{ $gram }»
+line-term-missing = нет термина глоссария «{ $term }»
+translate-frame = извлечение кадра: { $error }
+translate-audio = аудио-контекст: { $error }
+translate-empty = модель не перевела ни одной из { $lines } { $lines ->
+    [one] строки
+    [few] строк
+   *[many] строк
+}; последняя причина: { $reason }
+translate-empty-no-reason = модель не перевела ни одной из { $lines } { $lines ->
+    [one] строки
+    [few] строк
+   *[many] строк
+}
+translate-contract = ответ модели: { $problem }
+translate-contract-answer = ответ модели: { $problem }; ответ: { $answer }
+answer-no-json-object = в нём нет JSON-объекта
+answer-not-json = он не разобран как JSON ({ $error })
+answer-no-terms = в нём нет списка terms
+remix-failed = ремикс: { $error }
+sep-engine-missing = движок сепарации не найден ({ $path })
+sep-model-missing = модель сепарации не найдена ({ $path })
+sep-spawn = запуск движка сепарации: { $error }
+sep-engine-failed = движок сепарации завершился с ошибкой (код { $code }): { $tail }
+sep-engine-killed = движок сепарации остановлен без кода выхода: { $tail }
+sep-no-output = движок сепарации не создал вокал-стем ({ $path })
+sep-audio-io = аудио сепарации: { $error }
+faces-model-missing = модель не найдена ({ $path })
+ffmpeg-exit = ffmpeg завершился с кодом { $code }: { $tail }
+ffmpeg-killed = ffmpeg остановлен без кода выхода: { $tail }
+onnx-runtime = среда ONNX: { $error }
+files-error = файлы: { $error }
+model-no-outputs = модель не вернула выходов
+faces-output-shape = { $model }: выход модели неожиданной формы { $shape }
+faces-output-count = { $model }: ожидалось выходов модели — { $expected }, получено — { $got }
+faces-crop-size = эмбеддинг лица ждёт выровненный кроп 112x112, получен { $width }x{ $height }
+faces-sample-rate = голосовой клип должен быть { $expected } Гц, а он { $got } Гц
+faces-clip-too-short = голосовой клип слишком короткий для анализа
+tts-library-load = не удалось загрузить движок озвучки: { $error }
+tts-cancelled = генерация отменена
+tts-generation = генерация не удалась: { $error }
+tts-invalid-param = неверный параметр озвучки: { $error }
+tts-streaming-unsupported = стриминг не поддерживается этой DLL движка
+render-higgs-model-failed = загрузка модели Higgs: { $error }
+captions-write-ass = запись файла субтитров: { $error }
+captions-filter-script = запись filter-скрипта ffmpeg: { $error }
+captions-ffmpeg-wait = ожидание ffmpeg: { $error }
+captions-ffmpeg-timeout = ffmpeg не завершился за { $secs } с — убит (зависание): { $tail }
+captions-burn-failed = вжигание субтитров не удалось: { $tail }
+captions-frame-failed = кадр превью не получен: { $tail }
+ocr-no-dictionary = в модели распознавания текста нет словаря символов
+ocr-internal = распознавание текста: внутренняя ошибка ({ $error })

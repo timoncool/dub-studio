@@ -56,7 +56,7 @@ pub fn write_with(
 /// Записать байты атомарно.
 pub fn write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     write_with(path, |tmp| {
-        std::fs::write(tmp, bytes).map_err(|e| format!("запись {}: {e}", tmp.display()))
+        std::fs::write(tmp, bytes).map_err(|e| format!("write {}: {e}", tmp.display()))
     })
 }
 
@@ -65,7 +65,7 @@ pub fn copy(src: &Path, dst: &Path) -> Result<(), String> {
     write_with(dst, |tmp| {
         std::fs::copy(src, tmp)
             .map(|_| ())
-            .map_err(|e| format!("копирование {} -> {}: {e}", src.display(), tmp.display()))
+            .map_err(|e| format!("copy {} -> {}: {e}", src.display(), tmp.display()))
     })
 }
 

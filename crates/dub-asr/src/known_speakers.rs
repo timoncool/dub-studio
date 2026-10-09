@@ -3,6 +3,41 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::speaker_global::{cosine, Embedding};
 use crate::{DiarTurns, Turn};
 
+/// Почему голоса фрагмента не сопоставлены с заданным числом участников.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum SpeakerMatchError {
+    /// Голосовые признаки спикера не посчитаны; `error` — причина от модели.
+    #[error("voice of speaker {speaker}: {error}")]
+    Embedding { speaker: i32, error: String },
+    #[error("speaker {speaker}: no speech piece of at least 0.3 s to match the voice")]
+    NoSample { speaker: i32 },
+    #[error("{given} speakers were given, but the piece has {found} different voices that cannot be merged safely")]
+    TooManyVoices { given: usize, found: usize },
+    #[error("the model returned empty or invalid voice features")]
+    BadEmbedding,
+    #[error("the size of the voice features changed")]
+    DimensionChanged,
+    #[error("more voices in the piece than speakers were given")]
+    MoreVoicesThanSpeakers,
+    #[error("the voices of the piece could not be matched reliably with the given number of speakers")]
+    Unmatched,
+}
+
+impl SpeakerMatchError {
+    /// Стабильный код (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            SpeakerMatchError::Embedding { .. } => "speakers_embedding",
+            SpeakerMatchError::NoSample { .. } => "speakers_no_sample",
+            SpeakerMatchError::TooManyVoices { .. } => "speakers_too_many_voices",
+            SpeakerMatchError::BadEmbedding => "speakers_bad_embedding",
+            SpeakerMatchError::DimensionChanged => "speakers_dimension_changed",
+            SpeakerMatchError::MoreVoicesThanSpeakers => "speakers_more_voices",
+            SpeakerMatchError::Unmatched => "speakers_unmatched",
+        }
+    }
+}
+
 const NEW_VOICE_SCORE: f32 = 0.5;
 const SAME_VOICE_SCORE: f32 = 0.95;
 
@@ -99,7 +134,7 @@ impl VoiceTracker {
         sr: u32,
         window: DiarWindow,
         embed: &mut impl FnMut(&[f32]) -> Result<Embedding, String>,
-    ) -> Result<Vec<Turn>, String> {
+    ) -> Result<Vec<Turn>, SpeakerMatchError> {
         let mut owned: Vec<Turn> = local
             .iter()
             .filter_map(|t| {
@@ -124,7 +159,7 @@ impl VoiceTracker {
         sr: u32,
         offset: f64,
         embed: &mut impl FnMut(&[f32]) -> Result<Embedding, String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SpeakerMatchError> {
         let references = turns.to_vec();
         self.remap_with_references(turns, &references, audio, sr, offset, embed)
     }
@@ -137,7 +172,7 @@ impl VoiceTracker {
         sr: u32,
         offset: f64,
         embed: &mut impl FnMut(&[f32]) -> Result<Embedding, String>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SpeakerMatchError> {
         let speakers: BTreeSet<i32> = turns.iter().map(|t| t.speaker).collect();
         let mut groups = Vec::new();
         for speaker in speakers {
@@ -155,12 +190,12 @@ impl VoiceTracker {
                     continue;
                 }
                 let vector = embed(&audio[start..end])
-                    .map_err(|e| format!("голос спикера {speaker}: {e}"))?;
+                    .map_err(|error| SpeakerMatchError::Embedding { speaker, error })?;
                 validate_embedding(&vector)?;
                 vectors.push(vector);
             }
             if vectors.is_empty() {
-                return Err(format!("спикер {speaker}: нет речевого фрагмента длиной хотя бы 0,3 секунды для сопоставления голоса"));
+                return Err(SpeakerMatchError::NoSample { speaker });
             }
             groups.push((vec![speaker], mean(&vectors)?));
         }
@@ -194,7 +229,7 @@ impl VoiceTracker {
             groups[i].1 = mean(&[groups[i].1.clone(), removed.1])?;
         }
         if groups.len() > self.voices.len() {
-            return Err(format!("указано {} спикеров, но в фрагменте найдено {} различных голосов: безопасно объединить их по голосу не удалось", self.voices.len(), groups.len()));
+            return Err(SpeakerMatchError::TooManyVoices { given: self.voices.len(), found: groups.len() });
         }
         let vectors: Vec<_> = groups.iter().map(|g| g.1.clone()).collect();
         let assignment = assign(&vectors, &self.voices)?;
@@ -215,14 +250,14 @@ impl VoiceTracker {
     }
 }
 
-fn validate_embedding(vector: &[f32]) -> Result<(), String> {
+fn validate_embedding(vector: &[f32]) -> Result<(), SpeakerMatchError> {
     let norm_squared = vector.iter().map(|v| v * v).sum::<f32>();
     if vector.is_empty()
         || vector.iter().any(|v| !v.is_finite())
         || !norm_squared.is_finite()
         || norm_squared <= 1e-8
     {
-        return Err("модель вернула пустые или некорректные голосовые признаки".into());
+        return Err(SpeakerMatchError::BadEmbedding);
     }
     Ok(())
 }
@@ -260,11 +295,11 @@ fn reference_clips(turns: &[Turn], speaker: i32) -> Vec<(f64, f64)> {
     result
 }
 
-fn mean(vectors: &[Embedding]) -> Result<Embedding, String> {
+fn mean(vectors: &[Embedding]) -> Result<Embedding, SpeakerMatchError> {
     let mut result = vec![0.0; vectors[0].len()];
     for vector in vectors {
         if vector.len() != result.len() {
-            return Err("размерность голосовых признаков изменилась".into());
+            return Err(SpeakerMatchError::DimensionChanged);
         }
         for (sum, value) in result.iter_mut().zip(vector) {
             *sum += value;
@@ -279,9 +314,9 @@ fn mean(vectors: &[Embedding]) -> Result<Embedding, String> {
 }
 
 // Совместное назначение запрещает двум голосам окна независимо выбрать одного участника.
-fn assign(local: &[Embedding], voices: &[Option<Embedding>]) -> Result<Vec<usize>, String> {
+fn assign(local: &[Embedding], voices: &[Option<Embedding>]) -> Result<Vec<usize>, SpeakerMatchError> {
     if local.len() > voices.len() || voices.len() > crate::MAX_SPEAKERS {
-        return Err("число локальных голосов превышает заданное число спикеров".into());
+        return Err(SpeakerMatchError::MoreVoicesThanSpeakers);
     }
     let mut states: BTreeMap<usize, (f32, Vec<usize>)> = BTreeMap::from([(0, (0.0, Vec::new()))]);
     for vector in local {
@@ -315,9 +350,7 @@ fn assign(local: &[Embedding], voices: &[Option<Embedding>]) -> Result<Vec<usize
         .into_values()
         .max_by(|a, b| a.0.total_cmp(&b.0).then_with(|| b.1.cmp(&a.1)))
         .map(|(_, mapping)| mapping)
-        .ok_or_else(|| {
-            "не удалось надёжно сопоставить голоса фрагмента с заданным числом участников".into()
-        })
+        .ok_or(SpeakerMatchError::Unmatched)
 }
 
 #[cfg(test)]
@@ -383,7 +416,7 @@ mod tests {
                 Err("ошибка ONNX".into())
             })
             .unwrap_err();
-        assert!(error.contains("ошибка ONNX"));
+        assert_eq!(error, SpeakerMatchError::Embedding { speaker: 0, error: "ошибка ONNX".into() });
     }
 
     #[test]
@@ -418,7 +451,7 @@ mod tests {
                 })
             })
             .unwrap_err();
-        assert!(error.contains("безопасно объединить"));
+        assert_eq!(error, SpeakerMatchError::TooManyVoices { given: 1, found: 2 });
     }
 
     #[test]

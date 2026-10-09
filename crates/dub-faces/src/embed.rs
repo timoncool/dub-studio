@@ -5,6 +5,7 @@
 //! partial 2D в insightface.utils.face_align. LVFace: вход [1,3,112,112] RGB, (px/255-0.5)/0.5; выход
 //! [1,512], L2-нормируем перед косинусом.
 
+use crate::FacesError;
 use crate::detect::Face;
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
@@ -129,14 +130,14 @@ pub struct LvFace {
 }
 
 impl LvFace {
-    pub fn load(onnx: &std::path::Path) -> Result<Self, String> {
+    pub fn load(onnx: &std::path::Path) -> Result<Self, FacesError> {
         Ok(Self { model: OnnxModel::load(onnx)? })
     }
 
     /// Эмбеддинг для УЖЕ выровненного 112x112 RGB. Нормализация (px/255-0.5)/0.5. L2-норм на выходе.
-    pub fn embed_aligned(&mut self, aligned: &RgbImage) -> Result<Vec<f32>, String> {
+    pub fn embed_aligned(&mut self, aligned: &RgbImage) -> Result<Vec<f32>, FacesError> {
         if aligned.width() != ALIGN as u32 || aligned.height() != ALIGN as u32 {
-            return Err("embed: ждём 112x112".into());
+            return Err(FacesError::CropSize { width: aligned.width(), height: aligned.height() });
         }
         let mut blob = Array4::<f32>::zeros((1, 3, ALIGN, ALIGN));
         for y in 0..ALIGN {
@@ -152,7 +153,7 @@ impl LvFace {
     }
 
     /// Детект+выравнивание уже сделаны — эмбеддинг лица по кадру (align_112 + embed_aligned).
-    pub fn embed_face(&mut self, img: &RgbImage, face: &Face) -> Result<Vec<f32>, String> {
+    pub fn embed_face(&mut self, img: &RgbImage, face: &Face) -> Result<Vec<f32>, FacesError> {
         let aligned = align_112(img, face);
         self.embed_aligned(&aligned)
     }

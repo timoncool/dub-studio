@@ -22,6 +22,7 @@ use dub_faces::{
 };
 
 use crate::analyze::{AnalyzePaths, Progress};
+use crate::localize::Localize;
 
 #[cfg(windows)]
 const FFMPEG: &str = "ffmpeg.exe";
@@ -509,7 +510,7 @@ pub fn stage(paths: &AnalyzePaths, proj: &Project, casting_ref: &str, content_ty
     let path = paths.work_dir.join("casting.json");
     match save_casting(&path, &casting) {
         Ok(()) => emit(progress, "cast_speaker", &t!("casting-saved", count = casting.characters.len())),
-        Err(e) => emit(progress, "cast_speaker", &t!("casting-save-failed", error = e.to_string())),
+        Err(e) => emit(progress, "cast_speaker", &t!("casting-save-failed", error = e.localize())),
     }
 }
 
@@ -715,7 +716,7 @@ enum FaceDet {
     Anime(AnimeFaceDetector),
 }
 impl FaceDet {
-    fn detect(&mut self, img: &image::RgbImage) -> Result<Vec<Face>, String> {
+    fn detect(&mut self, img: &image::RgbImage) -> Result<Vec<Face>, dub_faces::FacesError> {
         match self {
             FaceDet::Real(s) => s.detect(img),
             FaceDet::Anime(a) => a.detect(img),
@@ -730,7 +731,7 @@ enum FaceEmb {
     Ccip(CcipEmbedder),
 }
 impl FaceEmb {
-    fn embed(&mut self, img: &image::RgbImage, face: &Face) -> Result<Vec<f32>, String> {
+    fn embed(&mut self, img: &image::RgbImage, face: &Face) -> Result<Vec<f32>, dub_faces::FacesError> {
         match self {
             FaceEmb::Lv(l) => l.embed_face(img, face),
             FaceEmb::Ccip(c) => c.embed_character(img, face),
@@ -748,7 +749,7 @@ fn load_face_det(models_root: &Path, anime: bool, progress: &Progress) -> Option
         match AnimeFaceDetector::load(&p) {
             Ok(d) => Some(FaceDet::Anime(d)),
             Err(e) => {
-                emit(progress, "cast_detect", &t!("casting-anime-detector-failed", error = e.to_string()));
+                emit(progress, "cast_detect", &t!("casting-anime-detector-failed", error = e.localize()));
                 None
             }
         }
@@ -761,7 +762,7 @@ fn load_face_det(models_root: &Path, anime: bool, progress: &Progress) -> Option
         match Scrfd::load(&models.scrfd) {
             Ok(d) => Some(FaceDet::Real(d)),
             Err(e) => {
-                emit(progress, "cast_detect", &t!("casting-scrfd-failed", error = e.to_string()));
+                emit(progress, "cast_detect", &t!("casting-scrfd-failed", error = e.localize()));
                 None
             }
         }
@@ -778,7 +779,7 @@ fn load_face_emb(models_root: &Path, anime: bool, progress: &Progress) -> Option
         match CcipEmbedder::load(&p) {
             Ok(e) => Some(FaceEmb::Ccip(e)),
             Err(e) => {
-                emit(progress, "cast_embed", &t!("casting-embedder-failed", model = "CCIP", error = e.to_string()));
+                emit(progress, "cast_embed", &t!("casting-embedder-failed", model = "CCIP", error = e.localize()));
                 None
             }
         }
@@ -790,7 +791,7 @@ fn load_face_emb(models_root: &Path, anime: bool, progress: &Progress) -> Option
         match LvFace::load(&models.lvface) {
             Ok(e) => Some(FaceEmb::Lv(e)),
             Err(e) => {
-                emit(progress, "cast_embed", &t!("casting-embedder-failed", model = "LVFace", error = e.to_string()));
+                emit(progress, "cast_embed", &t!("casting-embedder-failed", model = "LVFace", error = e.localize()));
                 None
             }
         }
@@ -947,7 +948,7 @@ fn speaker_voices(
     let mut embedder = match dub_faces::VoiceEmbedder::load(&onnx) {
         Ok(e) => e,
         Err(e) => {
-            emit(progress, "cast_embed", &t!("casting-voice-model-failed", error = e.to_string()));
+            emit(progress, "cast_embed", &t!("casting-voice-model-failed", error = e.localize()));
             return (embs, samples);
         }
     };
@@ -978,7 +979,7 @@ fn speaker_voices(
                 samples.insert(spk.clone(), wav);
             }
             Err(e) => {
-                emit(progress, "cast_embed", &t!("casting-voice-embedding-failed", speaker = spk.clone(), error = e.to_string()));
+                emit(progress, "cast_embed", &t!("casting-voice-embedding-failed", speaker = spk.clone(), error = e.localize()));
                 samples.insert(spk.clone(), wav);
             }
         }

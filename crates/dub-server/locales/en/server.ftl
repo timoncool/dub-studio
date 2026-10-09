@@ -761,3 +761,159 @@ post-analyze-bad-flag = { $name }: 0 or 1 was expected, { $value } came
 post-analyze-bad-container = container: mp4 or mkv was expected, { $value } came
 post-analyze-bad-voice-slots = voice_slots: an object {"{"}male:[…], female:[…]{"}"} was expected
 post-analyze-edit-failed = the setting after analysis { $edit }: { $error }
+
+## Messages of the engines and libraries: glossary, LLM, ASR, translation, separation, faces, TTS, captions, OCR
+
+glossary-over-limit = the glossary has { $total } entries, more than { $max }
+glossary-empty-term = entry { $entry } has no term
+glossary-field-too-long = entry { $entry } (“{ $term }”): a field is longer than { $max } characters
+glossary-duplicate = the term “{ $term }” is listed twice (entries { $first } and { $second })
+glossary-tsv-keep = line { $line }: keep is “{ $value }”, 1 or 0 was expected
+glossary-tsv-empty-term = line { $line } has no term
+glossary-one-of = send either entries or TSV, not both
+glossary-nothing = nothing to save: no entries and no TSV
+llm-spawn-failed = llama-server did not start: { $error }
+llm-gguf-missing = the GGUF model was not found ({ $path })
+llm-log-file = llama-server log { $path }: { $error }
+llm-exited-early = llama-server exited before it was ready ({ $status }); stderr: { $stderr }
+llm-not-ready = llama-server did not come up in { $secs } s (port { $port }); stderr: { $stderr }
+llm-http = the request to the model failed: { $error }
+llm-api = the model API: { $error }
+llm-rejected = the model API refused the request ({ $status }): { $body }
+llm-empty-answer = the model { $model } returned an empty answer (no reason given)
+llm-empty-answer-reason = the model { $model } returned an empty answer (finish_reason={ $reason })
+llm-cut-short = the model { $model } hit the limit of { $max_tokens } { $max_tokens ->
+    [one] token
+   *[other] tokens
+} (finish_reason=length): the answer is incomplete; it probably spends the budget on reasoning — choose a model without mandatory thinking
+llm-prompt-cut = the server read only { $read } { $read ->
+    [one] token
+   *[other] tokens
+} of a request of { $chars } { $chars ->
+    [one] character
+   *[other] characters
+} and dropped its start — its context is too small: raise num_ctx in Ollama or the model's Context Length in LM Studio
+asr-engine = speech recognition: { $error }
+asr-wav-read = could not read the wav { $path }: { $error }
+asr-resample = resampling: { $error }
+asr-speaker-count = the number of speakers must be from 1 to { $max }
+speakers-embedding = voice of speaker { $speaker }: { $error }
+speakers-no-sample = speaker { $speaker }: no speech piece of at least 0.3 seconds to match the voice
+speakers-too-many-voices = { $given } { $given ->
+    [one] speaker
+   *[other] speakers
+} given, but the piece has { $found } different { $found ->
+    [one] voice
+   *[other] voices
+}: they could not be merged safely by voice
+speakers-bad-embedding = the voice model returned empty or invalid voice features
+speakers-dimension-changed = the size of the voice features changed
+speakers-more-voices = the piece has more voices than the given number of speakers
+speakers-unmatched = the voices of the piece could not be matched reliably with the given number of speakers
+translate-format-json = translation: the model answers with a JSON object by schema ({ $model })
+translate-format-json-probe = translation: trying answers by JSON schema ({ $model }); if refused, numbered lines
+translate-format-numbered = translation: numbered lines; the model { $model } does not declare structured_outputs in the OpenRouter catalogue
+translate-schema-ignored = translation: { $model } accepted the JSON schema but answered with numbered lines; numbered lines from now on
+translate-schema-ignored-server = translation: the server accepted the JSON schema but answered with numbered lines; numbered lines from now on
+translate-schema-refused = translation: { $model } refused answers by JSON schema ({ $status }: { $body }); numbered lines from now on
+translate-schema-refused-server = translation: the server refused answers by JSON schema ({ $status }: { $body }); numbered lines from now on
+translate-line-flawed = translation: line { $line } keeps a translation with a remark: { $reason }
+translate-line-failed = translation: line { $line } is not translated: { $reason }
+translate-line-reason = { $line }: { $reason }
+translate-lines-rejected = translation: { $bad } of { $total } { $total ->
+    [one] line
+   *[other] lines
+} failed the check ({ $reasons })
+translate-batch-stopped = translation: the batch of lines { $first }..{ $last } failed ({ $error }); the translation stopped
+translate-batch-failed = translation: the batch of lines { $first }..{ $last } failed ({ $error })
+translate-layout-no-vision = frame layout: skipped (no vision model is chosen or available)
+translate-layout-not-needed = frame layout: skipped (subtitles are not burned in, no layout is needed)
+translate-layout = frame layout: sub_style={ $sub_style } titles={ $titles } brands={ $brands }
+translate-layout-failed = frame layout: skipped ({ $error })
+translate-scene-failed = scene context: skipped ({ $error })
+translate-scene-no-vision = scene context: skipped (no vision model is chosen or available)
+translate-audio-failed = audio context: skipped ({ $error })
+translate-context-trimmed = translation: the context block of { $chars } { $chars ->
+    [one] character
+   *[other] characters
+} is cut to { $budget } (n_ctx guard)
+translate-names-skipped = translation: the automatic name glossary is skipped ({ $error })
+translate-chunks = translation: { $lines } { $lines ->
+    [one] line
+   *[other] lines
+} -> { $chunks } { $chunks ->
+    [one] chunk
+   *[other] chunks
+} (glossary: { $terms } { $terms ->
+    [one] term
+   *[other] terms
+}, { $names } { $names ->
+    [one] name
+   *[other] names
+})
+translate-pass-done = translation: done, { $translated } translated ({ $flawed } with a remark), { $untranslated } left in the source language
+glossary-pass = glossary: model pass { $pass }/{ $passes }
+glossary-schema-refused = glossary: the server refused answers by JSON schema ({ $status }); asking for JSON as text
+content-type-decided = content type: { $decided ->
+    [anime] animation
+   *[other] live action
+} ({ $votes } { $votes ->
+    [one] clear answer
+   *[other] clear answers
+} of { $frames } frames)
+line-missing = missing from the answer
+line-cut = the answer was cut by the token limit
+line-untranslated = not in the target language
+line-echo = repeats the source
+line-too-short = too short ({ $got } < { $min })
+line-too-long = too long ({ $got } > { $max })
+line-loop = loops on “{ $gram }”
+line-term-missing = the glossary term “{ $term }” is missing
+translate-frame = extracting a video frame: { $error }
+translate-audio = audio context: { $error }
+translate-empty = the model translated none of { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}; the last cause: { $reason }
+translate-empty-no-reason = the model translated none of { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}
+translate-contract = the model's answer: { $problem }
+translate-contract-answer = the model's answer: { $problem }; the answer: { $answer }
+answer-no-json-object = it has no JSON object
+answer-not-json = it is not valid JSON ({ $error })
+answer-no-terms = it has no terms list
+remix-failed = remix: { $error }
+sep-engine-missing = the separation engine was not found ({ $path })
+sep-model-missing = the separation model was not found ({ $path })
+sep-spawn = starting the separation engine: { $error }
+sep-engine-failed = the separation engine failed (exit code { $code }): { $tail }
+sep-engine-killed = the separation engine was stopped without an exit code: { $tail }
+sep-no-output = the separation engine made no vocal stem ({ $path })
+sep-audio-io = separation audio: { $error }
+faces-model-missing = the model was not found ({ $path })
+ffmpeg-exit = ffmpeg exit code { $code }: { $tail }
+ffmpeg-killed = ffmpeg was stopped without an exit code: { $tail }
+onnx-runtime = the ONNX runtime: { $error }
+files-error = files: { $error }
+model-no-outputs = the model returned no outputs
+faces-output-shape = { $model }: the model output has an unexpected shape { $shape }
+faces-output-count = { $model }: { $expected } model outputs were expected, { $got } came
+faces-crop-size = the face embedding expects a 112x112 aligned crop, got { $width }x{ $height }
+faces-sample-rate = the voice clip must be { $expected } Hz, it is { $got } Hz
+faces-clip-too-short = the voice clip is too short to analyse
+tts-library-load = the TTS engine did not load: { $error }
+tts-cancelled = the generation was cancelled
+tts-generation = the generation failed: { $error }
+tts-invalid-param = invalid TTS parameter: { $error }
+tts-streaming-unsupported = this engine DLL does not support streaming
+render-higgs-model-failed = loading the Higgs model: { $error }
+captions-write-ass = writing the subtitle file: { $error }
+captions-filter-script = writing the ffmpeg filter script: { $error }
+captions-ffmpeg-wait = waiting for ffmpeg: { $error }
+captions-ffmpeg-timeout = ffmpeg did not finish in { $secs } s and was stopped (it hung): { $tail }
+captions-burn-failed = burning the subtitles in failed: { $tail }
+captions-frame-failed = the preview frame failed: { $tail }
+ocr-no-dictionary = the text recognition model has no character dictionary
+ocr-internal = text recognition: internal error ({ $error })

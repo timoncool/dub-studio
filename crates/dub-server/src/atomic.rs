@@ -252,7 +252,7 @@ fn separation(dir: PathBuf, input: PathBuf, cli: PathBuf, model: PathBuf, repo_r
             jobs::check_cancelled()?;
         }
         cb(json!({ "stage": "separate", "msg": t!("atomic-separating", model = "Mel-Band Roformer voc_fv6-Q8_0") }));
-        let split = dub_sep::separate(&audio_hq, &stems, &cli, &model).map_err(|e| t!("atomic-separation-failed", error = e.to_string()))?;
+        let split = dub_sep::separate(&audio_hq, &stems, &cli, &model).map_err(|e| t!("atomic-separation-failed", error = crate::localize::Localize::localize(&e)))?;
         media::mark_separation(&stems)?;
         Ok(json!({ "vocals": split.vocals.to_string_lossy(), "background": split.instrumental.to_string_lossy() }))
     })
@@ -319,7 +319,8 @@ fn reading(input: PathBuf, dir: PathBuf, ocr: dub_ocr::OcrPaths, fps: i32, (widt
             return read_regions(&file);
         }
         progress(json!({ "stage": "ocr_detect", "msg": t!("ocr-detecting-burned-text", model = "PP-OCR DBNet+CRNN") }));
-        let (regions, _) = dub_ocr::detect_regions(&input, &dir, &ocr, fps, OCR_MIN_DUR, OCR_IOU, OCR_PAD, OCR_JITTER, OCR_SCORE)?;
+        let (regions, _) = dub_ocr::detect_regions(&input, &dir, &ocr, fps, OCR_MIN_DUR, OCR_IOU, OCR_PAD, OCR_JITTER, OCR_SCORE)
+            .map_err(|e| t!("ocr-detection-failed", error = crate::localize::Localize::localize(&e)))?;
         jobs::check_cancelled()?;
         let found = json!({
             "file": file.to_string_lossy(),

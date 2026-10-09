@@ -11,6 +11,7 @@
 use dub_core::{Meta, Project, Segment};
 use serde_json::{json, Value};
 
+use crate::localize::Localize;
 use crate::media;
 
 pub use cache::StageCache;
@@ -675,11 +676,11 @@ fn known_speaker_turns(
     };
     emit(progress, "diarize", &msg);
     let mut embedder = dub_faces::VoiceEmbedder::load(voice_model)
-        .map_err(|e| t!("analyze-wespeaker-needed", error = e.to_string()))?;
+        .map_err(|e| t!("analyze-wespeaker-needed", error = e.localize()))?;
     dub_asr::turns_with_speaker_count(wav, detector, count, &mut |samples| {
         crate::jobs::check_cancelled()?;
-        embedder.embed_samples(samples)
-    }).map_err(|e| e.to_string())
+        embedder.embed_samples(samples).map_err(|e| e.localize())
+    }).map_err(|e| e.localize())
 }
 
 /// Кто переводит (stage "llm") или смотрит кадры (stage "vision") — для ключа стадии перевода: своя Gemma
@@ -752,7 +753,7 @@ fn align_cues(
     let mut asr = crate::models::build_engine(&paths.asr);
     let words: Vec<crate::subalign::Heard> = asr
         .transcribe(asr_wav, &args.src_lang)
-        .map_err(|e| t!("analyze-align-recognition-failed", error = e.to_string()))?
+        .map_err(|e| t!("analyze-align-recognition-failed", error = e.localize()))?
         .into_iter()
         .flat_map(|s| s.words)
         .map(|w| (w.word, w.start, w.end))
@@ -943,7 +944,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 }
                 emit(progress, "separate", &t!("analyze-separating", model = "BSRoformer"));
                 dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.localize())?;
                 media::mark_separation(&stems)?;
             } else {
                 emit(progress, "separate", &t!("analyze-separation-cached"));
@@ -985,7 +986,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             let result = if args.speaker_count > 0 {
                 known_speaker_turns(&asr_wav, &paths.sortformer_onnx, &voice_model, args.speaker_count, progress)
             } else {
-                dub_asr::turns(&asr_wav, &paths.sortformer_onnx, 0.8, 2.5).map_err(|e| e.to_string())
+                dub_asr::turns(&asr_wav, &paths.sortformer_onnx, 0.8, 2.5).map_err(|e| e.localize())
             };
             match result {
                 Ok(d) => {
@@ -1151,7 +1152,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         );
         let ts = asr
             .transcribe(&asr_wav, &args.src_lang)
-            .map_err(|e| format!("transcribe: {e}"))?;
+            .map_err(|e| e.localize())?;
         // Спикер — по словам: реплика, на которой сменился спикер диаризации, режется на слове смены.
         let segs: Vec<Segment> = dub_asr::split_at_speaker_turns(ts, turns)
             .into_iter()

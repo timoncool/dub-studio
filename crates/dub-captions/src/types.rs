@@ -122,3 +122,38 @@ pub struct BlurBox {
     /// None = gblur; "#rrggbb" = сплошная заливка (порт fill из _cover_parts).
     pub fill: Option<String>,
 }
+
+/// Сбой сборки ASS или вжигания субтитров.
+#[derive(Debug, thiserror::Error)]
+pub enum CaptionsError {
+    #[error("writing the ASS file: {0}")]
+    WriteAss(String),
+    #[error("filter script: {0}")]
+    FilterScript(String),
+    #[error("ffmpeg start: {0}")]
+    Spawn(String),
+    #[error("ffmpeg wait: {0}")]
+    Wait(String),
+    /// ffmpeg не уложился в `secs` и убит; `tail` — хвост stderr.
+    #[error("ffmpeg did not finish in {secs}s and was killed (hang).\n{tail}")]
+    Timeout { secs: u64, tail: String },
+    #[error("ffmpeg caption burn failed:\n{tail}")]
+    BurnFailed { tail: String },
+    #[error("ffmpeg preview frame failed:\n{tail}")]
+    FrameFailed { tail: String },
+}
+
+impl CaptionsError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            CaptionsError::WriteAss(_) => "captions_write_ass",
+            CaptionsError::FilterScript(_) => "captions_filter_script",
+            CaptionsError::Spawn(_) => "captions_ffmpeg_start",
+            CaptionsError::Wait(_) => "captions_ffmpeg_wait",
+            CaptionsError::Timeout { .. } => "captions_ffmpeg_timeout",
+            CaptionsError::BurnFailed { .. } => "captions_burn_failed",
+            CaptionsError::FrameFailed { .. } => "captions_frame_failed",
+        }
+    }
+}

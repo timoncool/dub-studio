@@ -146,7 +146,7 @@ pub fn save_profile(
     std::fs::create_dir_all(&voices).map_err(|e| format!("mkdir voices: {e}"))?;
 
     // casting.json целиком (эмбеддинги нужны для матчинга при применении к другому ролику).
-    dub_faces::save_casting(&dir.join("casting.json"), &casting)?;
+    dub_faces::save_casting(&dir.join("casting.json"), &casting).map_err(|e| crate::localize::Localize::localize(&e))?;
 
     // Имя файла в профиле = id персонажа (эндпоинты библиотеки резолвят avatars/<id>.jpg по id, НЕ по позиции
     // в списке). Источник — stored-путь персонажа (sample_frame/voice_sample), тот же, что отдают per-project

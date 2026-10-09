@@ -19,18 +19,33 @@ mod wav;
 
 #[derive(Debug, thiserror::Error)]
 pub enum SepError {
-    #[error("движок сепарации не найден: {0}")]
+    #[error("separation engine not found: {0}")]
     EngineMissing(PathBuf),
-    #[error("модель сепарации не найдена: {0}")]
+    #[error("separation model not found: {0}")]
     ModelMissing(PathBuf),
-    #[error("запуск движка: {0}")]
+    #[error("engine start: {0}")]
     Spawn(String),
-    #[error("движок завершился с ошибкой: {0}")]
-    EngineFailed(String),
-    #[error("движок не создал вокал-стем: {0}")]
+    /// Движок завершился с ошибкой: код выхода и хвост его вывода.
+    #[error("the engine failed (exit code {code:?}): {tail}")]
+    EngineFailed { code: Option<i32>, tail: String },
+    #[error("the engine made no vocal stem: {0}")]
     NoOutput(PathBuf),
-    #[error("аудио I/O: {0}")]
+    #[error("audio I/O: {0}")]
     Wav(String),
+}
+
+impl SepError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            SepError::EngineMissing(_) => "sep_engine_missing",
+            SepError::ModelMissing(_) => "sep_model_missing",
+            SepError::Spawn(_) => "sep_spawn",
+            SepError::EngineFailed { .. } => "sep_engine_failed",
+            SepError::NoOutput(_) => "sep_no_output",
+            SepError::Wav(_) => "sep_audio_io",
+        }
+    }
 }
 
 /// Результат сепарации: пути к вокалу и инструменталу (оба WAV, 44.1кГц).
@@ -103,7 +118,7 @@ pub fn separate(
     let part = part_dir(out_dir);
     if part.exists() {
         std::fs::remove_dir_all(&part)
-            .map_err(|e| SepError::Wav(format!("удаление {}: {e}", part.display())))?;
+            .map_err(|e| SepError::Wav(format!("remove {}: {e}", part.display())))?;
     }
     std::fs::create_dir_all(&part).map_err(|e| SepError::Wav(e.to_string()))?;
     if let Err(e) = separate_into(mix_wav, &part, cli, model) {
@@ -112,7 +127,7 @@ pub fn separate(
     }
     if out_dir.exists() {
         std::fs::remove_dir_all(out_dir)
-            .map_err(|e| SepError::Wav(format!("удаление {}: {e}", out_dir.display())))?;
+            .map_err(|e| SepError::Wav(format!("remove {}: {e}", out_dir.display())))?;
     }
     std::fs::rename(&part, out_dir).map_err(|e| {
         SepError::Wav(format!("rename {} -> {}: {e}", part.display(), out_dir.display()))
@@ -295,11 +310,7 @@ fn run_cli(cli: &Path, model: &Path, input: &Path, output: &Path) -> Result<(), 
         let stdout = String::from_utf8_lossy(&out.stdout);
         let mut tail: Vec<&str> = stderr.lines().chain(stdout.lines()).rev().take(8).collect();
         tail.reverse();
-        return Err(SepError::EngineFailed(format!(
-            "код {:?}: {}",
-            out.status.code(),
-            tail.join(" | ")
-        )));
+        return Err(SepError::EngineFailed { code: out.status.code(), tail: tail.join(" | ") });
     }
     Ok(())
 }

@@ -35,6 +35,7 @@ mod job_store;
 mod jobs;
 mod limiter;
 mod llm_provider;
+mod localize;
 mod mcp;
 mod media;
 mod models;
@@ -74,6 +75,7 @@ use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use dub_core::{EngineOpts, Project};
 use futures_util::stream::Stream;
+use localize::Localize;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::convert::Infallible;
@@ -1409,7 +1411,7 @@ async fn casting_save(
 
     // Сохранить casting.json + project.json.
     if let Err(e) = dub_faces::save_casting(&path, &casting) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        return (StatusCode::INTERNAL_SERVER_ERROR, e.localize()).into_response();
     }
     if let Err(e) = write_project(&dir, &proj) {
         return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
@@ -2334,10 +2336,10 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
             let contract = dub_translate::Contract::for_client(client);
             let opts = FlatOpts { src: "auto", tgt: &lang_c, spoken, style: &p.audio.translate_style, glossary: &p.glossary, contract: &contract,
             };
-            flat_run_with(client, &mut segs, &opts, &mut |m: &str| {
-                progress(json!({ "type": "progress", "stage": "translate", "msg": m.trim() }))
+            flat_run_with(client, &mut segs, &opts, &mut |m: &dub_translate::Note| {
+                progress(json!({ "type": "progress", "stage": "translate", "msg": m.localize() }))
             })
-                .map_err(|e| format!("translate: {e}"))?;
+                .map_err(|e| t!("translate-failed", error = e.localize()))?;
             let glossary = dub_core::glossary::for_translation(&p.glossary, &lang_c);
             if let Some(note) = crate::translate::untranslated_note(segs.iter().map(|sg| (sg.text.as_str(), sg.tgt.as_str())), &lang_c, &glossary,
             ) {
@@ -2358,13 +2360,13 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
                 let mut tsegs: Vec<Seg> = p.captions.titles.iter().map(|ti| Seg::new(ti.text.clone(), 0)).collect();
                 let topts = FlatOpts { src: "auto", tgt: &lang_c, spoken: false, style: &p.audio.translate_style, glossary: &[], contract: &contract,
                 };
-                let done = flat_run_with(client, &mut tsegs, &topts, &mut |m: &str| {
-                    progress(json!({ "type": "progress", "stage": "translate", "msg": m.trim() }))
+                let done = flat_run_with(client, &mut tsegs, &topts, &mut |m: &dub_translate::Note| {
+                    progress(json!({ "type": "progress", "stage": "translate", "msg": m.localize() }))
                 });
                 if let Err(e) = &done {
                     tracing::warn!("export_lang {lang_c}: the titles were not translated: {e}");
                     progress(json!({ "type": "progress", "stage": "translate",
-                        "msg": t!("translate-titles-failed", error = e.to_string()) }));
+                        "msg": t!("translate-titles-failed", error = e.localize()) }));
                 }
                 let ok = done.is_ok();
                 for (ti, sg) in p.captions.titles.iter_mut().zip(tsegs) {
@@ -2482,10 +2484,10 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
         let contract = dub_translate::Contract::for_client(client);
         let opts = FlatOpts { src: "auto", tgt: &lang_c, spoken, style: &p.audio.translate_style, glossary: &p.glossary, contract: &contract,
         };
-        flat_run_with(client, &mut segs, &opts, &mut |m: &str| {
-            progress(json!({ "type": "progress", "stage": "translate", "msg": m.trim() }))
+        flat_run_with(client, &mut segs, &opts, &mut |m: &dub_translate::Note| {
+            progress(json!({ "type": "progress", "stage": "translate", "msg": m.localize() }))
         })
-            .map_err(|e| format!("translate: {e}"))?;
+            .map_err(|e| t!("translate-failed", error = e.localize()))?;
         let glossary = dub_core::glossary::for_translation(&p.glossary, &lang_c);
         if let Some(note) = crate::translate::untranslated_note(segs.iter().map(|sg| (sg.text.as_str(), sg.tgt.as_str())), &lang_c, &glossary,
         ) {
@@ -2500,10 +2502,10 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
             let mut tsegs: Vec<Seg> = titles.iter().map(|text| Seg::new(text.clone(), 0)).collect();
             let topts = FlatOpts { src: "auto", tgt: &lang_c, spoken: false, style: &p.audio.translate_style, glossary: &[], contract: &contract,
             };
-            flat_run_with(client, &mut tsegs, &topts, &mut |m: &str| {
-                progress(json!({ "type": "progress", "stage": "translate", "msg": m.trim() }))
+            flat_run_with(client, &mut tsegs, &topts, &mut |m: &dub_translate::Note| {
+                progress(json!({ "type": "progress", "stage": "translate", "msg": m.localize() }))
             })
-                .map_err(|e| t!("translate-titles-error", error = e.to_string()))?;
+                .map_err(|e| t!("translate-titles-error", error = e.localize()))?;
             title_tgts = tsegs.into_iter().map(|sg| sg.tgt).collect();
         }
         drop(prov);
@@ -3035,7 +3037,7 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
         std::env::set_var("DUB_ASR_BACKEND", &backend);
         let words: Vec<subalign::Heard> = models::build_engine(&asr)
             .transcribe(&wav, "auto")
-            .map_err(|e| t!("align-recognition-failed", error = e.to_string()))?
+            .map_err(|e| t!("align-recognition-failed", error = e.localize()))?
             .into_iter()
             .flat_map(|s| s.words)
             .map(|w| (w.word, w.start, w.end))

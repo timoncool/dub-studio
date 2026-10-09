@@ -19,6 +19,42 @@ mod rec;
 pub mod blur;
 
 pub use det::{DetBox, DetParams};
+
+/// Сбой экранного OCR.
+#[derive(Debug, thiserror::Error)]
+pub enum OcrError {
+    #[error("ort: {0}")]
+    Ort(String),
+    #[error("io: {0}")]
+    Io(String),
+    #[error("ffmpeg frames: {0}")]
+    Ffmpeg(String),
+    /// ffmpeg завершился с ошибкой: код выхода и хвост stderr.
+    #[error("ffmpeg frames exit code {code:?}: {tail}")]
+    FfmpegExit { code: Option<i32>, tail: String },
+    #[error("the model returned no outputs")]
+    NoOutputs,
+    #[error("the recognition model has no 'character' metadata")]
+    NoDictionary,
+    /// Нарушен внутренний инвариант (форма тензора, общий буфер воркеров).
+    #[error("internal: {0}")]
+    Internal(String),
+}
+
+impl OcrError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            OcrError::Ort(_) => "ocr_ort",
+            OcrError::Io(_) => "ocr_io",
+            OcrError::Ffmpeg(_) => "ocr_ffmpeg",
+            OcrError::FfmpegExit { .. } => "ocr_ffmpeg_exit",
+            OcrError::NoOutputs => "ocr_no_outputs",
+            OcrError::NoDictionary => "ocr_no_dictionary",
+            OcrError::Internal(_) => "ocr_internal",
+        }
+    }
+}
 pub use rec::RecDict;
 
 use det::detect;
@@ -88,8 +124,8 @@ const FFMPEG: &str = "ffmpeg.exe";
 const FFMPEG: &str = "ffmpeg";
 
 /// Извлечь кадры видео с частотой fps в PNG (порт _frames).
-fn extract_frames(video: &Path, out_dir: &Path, fps: i32) -> Result<Vec<PathBuf>, String> {
-    std::fs::create_dir_all(out_dir).map_err(|e| e.to_string())?;
+fn extract_frames(video: &Path, out_dir: &Path, fps: i32) -> Result<Vec<PathBuf>, OcrError> {
+    std::fs::create_dir_all(out_dir).map_err(|e| OcrError::Io(format!("{}: {e}", out_dir.display())))?;
     let vf = format!("fps={fps}");
     let pat = out_dir.join("f_%05d.png");
     let out = Command::new(FFMPEG)
@@ -99,16 +135,15 @@ fn extract_frames(video: &Path, out_dir: &Path, fps: i32) -> Result<Vec<PathBuf>
         .args(["-vf", &vf])
         .arg(&pat)
         .output()
-        .map_err(|e| format!("ffmpeg frames: {e}"))?;
+        .map_err(|e| OcrError::Ffmpeg(e.to_string()))?;
     if !out.status.success() {
-        return Err(format!(
-            "ffmpeg frames код {:?}: {}",
-            out.status.code(),
-            String::from_utf8_lossy(&out.stderr).chars().rev().take(400).collect::<String>()
-        ));
+        return Err(OcrError::FfmpegExit {
+            code: out.status.code(),
+            tail: String::from_utf8_lossy(&out.stderr).chars().rev().take(400).collect::<String>(),
+        });
     }
     let mut frames: Vec<PathBuf> = std::fs::read_dir(out_dir)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| OcrError::Io(format!("{}: {e}", out_dir.display())))?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| p.extension().map(|x| x == "png").unwrap_or(false))
         .collect();
@@ -250,7 +285,7 @@ pub fn detect_regions(
     pad: i64,
     jitter: f32,
     score_thr: f32,
-) -> Result<(Vec<Region>, Vec<RawDet>), String> {
+) -> Result<(Vec<Region>, Vec<RawDet>), OcrError> {
     // словарь и параметры грузим один раз (rec-мета читается с временной сессии) и клонируем воркерам.
     let rec_probe = OnnxModel::load(&paths.rec)?;
     let dict = match RecDict::from_session_meta(&rec_probe) {
@@ -279,7 +314,7 @@ pub fn detect_regions(
     let out = std::sync::Arc::new(std::sync::Mutex::new(
         Vec::<(usize, f32, Vec<Line>)>::new(),
     ));
-    let err = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
+    let err = std::sync::Arc::new(std::sync::Mutex::new(None::<OcrError>));
 
     std::thread::scope(|scope| {
         for _ in 0..workers {
@@ -335,9 +370,9 @@ pub fn detect_regions(
         return Err(e);
     }
     let mut frame_lines_idx = std::sync::Arc::try_unwrap(out)
-        .map_err(|_| "out arc")?
+        .map_err(|_| OcrError::Internal("out arc".into()))?
         .into_inner()
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| OcrError::Internal(e.to_string()))?;
     frame_lines_idx.sort_by_key(|(i, _, _)| *i);
     let frame_lines: Vec<(f32, Vec<Line>)> =
         frame_lines_idx.into_iter().map(|(_, t, l)| (t, l)).collect();
@@ -363,7 +398,7 @@ fn process_frame(
     det_params: &DetParams,
     img: &RgbImage,
     score_thr: f32,
-) -> Result<Vec<Line>, String> {
+) -> Result<Vec<Line>, OcrError> {
     let boxes = detect(det_model, img, det_params)?;
     let mut crops: Vec<RgbImage> = Vec::with_capacity(boxes.len());
     for b in &boxes {

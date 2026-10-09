@@ -2,6 +2,7 @@
 //! 9 выходов) + LVFace-L (эмбеддинг лица, [1,512]). ensure_ort_dylib() — копия паттерна dub-ocr: без
 //! явного ORT_DYLIB_PATH ort цепляет чужую system32\onnxruntime.dll (1.17) -> ДЕДЛОК при создании сессии.
 
+use crate::FacesError;
 use ndarray::Array4;
 use ort::session::Session;
 use ort::value::TensorRef;
@@ -65,20 +66,20 @@ pub struct OnnxModel {
 }
 
 impl OnnxModel {
-    pub fn load(path: &Path) -> Result<Self, String> {
+    pub fn load(path: &Path) -> Result<Self, FacesError> {
         ensure_ort_dylib();
         let session = Session::builder()
-            .map_err(|e| format!("ort builder: {e}"))?
+            .map_err(|e| FacesError::Ort(format!("ort builder: {e}")))?
             .commit_from_file(path)
-            .map_err(|e| format!("commit_from_file {}: {e}", path.display()))?;
+            .map_err(|e| FacesError::Ort(format!("commit_from_file {}: {e}", path.display())))?;
         Ok(Self { session })
     }
 
     /// Прогнать [N,3,H,W] f32 -> первый выход (shape, данные). Для одно-выходных моделей (LVFace).
-    pub fn run_single(&mut self, input: Array4<f32>) -> Result<(Vec<usize>, Vec<f32>), String> {
+    pub fn run_single(&mut self, input: Array4<f32>) -> Result<(Vec<usize>, Vec<f32>), FacesError> {
         let mut outs = self.run(input)?;
         if outs.is_empty() {
-            return Err("нет выходов".to_string());
+            return Err(FacesError::NoOutputs);
         }
         Ok(outs.swap_remove(0))
     }
@@ -89,46 +90,46 @@ impl OnnxModel {
         &mut self,
         shape: &[usize],
         data: Vec<f32>,
-    ) -> Result<(Vec<usize>, Vec<f32>), String> {
+    ) -> Result<(Vec<usize>, Vec<f32>), FacesError> {
         let dims: Vec<i64> = shape.iter().map(|&d| d as i64).collect();
         let tensor = TensorRef::from_array_view((dims, data.as_slice()))
-            .map_err(|e| format!("tensor: {e}"))?;
+            .map_err(|e| FacesError::Ort(format!("tensor: {e}")))?;
         let outputs = self
             .session
             .run(ort::inputs![tensor])
-            .map_err(|e| format!("run: {e}"))?;
-        let (_name, v) = outputs.iter().next().ok_or_else(|| "нет выходов".to_string())?;
+            .map_err(|e| FacesError::Ort(format!("run: {e}")))?;
+        let (_name, v) = outputs.iter().next().ok_or(FacesError::NoOutputs)?;
         let (oshape, odata) = v
             .try_extract_tensor::<f32>()
-            .map_err(|e| format!("extract: {e}"))?;
+            .map_err(|e| FacesError::Ort(format!("extract: {e}")))?;
         let oshape: Vec<usize> = oshape.iter().map(|&d| d as usize).collect();
         Ok((oshape, odata.to_vec()))
     }
 
     /// Удобная обёртка над run_shape для 3-D входа [b,t,mel] (WeSpeaker).
-    pub fn run_3d(&mut self, shape: &[usize; 3], data: Vec<f32>) -> Result<(Vec<usize>, Vec<f32>), String> {
+    pub fn run_3d(&mut self, shape: &[usize; 3], data: Vec<f32>) -> Result<(Vec<usize>, Vec<f32>), FacesError> {
         self.run_shape(shape, data)
     }
 
     /// Прогнать [N,3,H,W] f32 -> ВСЕ выходы в ПОЗИЦИОННОМ порядке модели [(shape, данные), …].
     /// SCRFD: outputs[0..2]=scores, [3..5]=bbox, [6..8]=kps (фиксированный порядок InsightFace).
-    pub fn run(&mut self, input: Array4<f32>) -> Result<Vec<(Vec<usize>, Vec<f32>)>, String> {
+    pub fn run(&mut self, input: Array4<f32>) -> Result<Vec<(Vec<usize>, Vec<f32>)>, FacesError> {
         // (shape, &data)-форма конструктора тензора (ArrayView-бонд капризен).
         let shape: Vec<i64> = input.shape().iter().map(|&d| d as i64).collect();
         let (data, _) = input.into_raw_vec_and_offset();
         let tensor = TensorRef::from_array_view((shape, data.as_slice()))
-            .map_err(|e| format!("tensor: {e}"))?;
+            .map_err(|e| FacesError::Ort(format!("tensor: {e}")))?;
         let outputs = self
             .session
             .run(ort::inputs![tensor])
-            .map_err(|e| format!("run: {e}"))?;
+            .map_err(|e| FacesError::Ort(format!("run: {e}")))?;
         // Выходы в позиционном порядке модели (SessionOutputs.iter() сохраняет порядок session.outputs) —
         // SCRFD-билды по-разному НАЗЫВАЮТ выходы, но порядок (3 score, 3 bbox, 3 kps) стабилен.
         let mut result = Vec::new();
         for (_name, v) in outputs.iter() {
             let (shape, data) = v
                 .try_extract_tensor::<f32>()
-                .map_err(|e| format!("extract: {e}"))?;
+                .map_err(|e| FacesError::Ort(format!("extract: {e}")))?;
             let shape: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
             result.push((shape, data.to_vec()));
         }

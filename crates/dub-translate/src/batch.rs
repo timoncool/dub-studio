@@ -9,15 +9,15 @@ use std::collections::HashMap;
 use dub_llm::LlmError;
 
 use crate::contract::{cut_line, Answer, Reject};
-use crate::TranslateError;
+use crate::{LineFailure, Note, TranslateError};
 
 /// Сбой зависит от размера пакета, меньший пакет может пройти: ответ не по контракту, обрезанный промпт или
 /// ответ, отказ 400/413/422 (запрос не влез в контекст модели). Сеть, 5xx и 429 после повторов, 401/402/403/404,
 /// пустой ответ модели делением не лечатся.
 fn size_bound(e: &TranslateError) -> bool {
     match e {
-        TranslateError::Contract(_) => true,
-        TranslateError::Llm(LlmError::PromptCut(_) | LlmError::CutShort(_)) => true,
+        TranslateError::Contract { .. } => true,
+        TranslateError::Llm(LlmError::PromptCut { .. } | LlmError::CutShort { .. }) => true,
         TranslateError::Llm(LlmError::Rejected { code, .. }) => matches!(code, 400 | 413 | 422),
         _ => false,
     }
@@ -35,8 +35,8 @@ enum Pass {
 #[derive(Default)]
 pub(crate) struct Outcome {
     pub accepted: HashMap<usize, String>,
-    pub failed: Vec<(usize, String)>,
-    pub flawed: Vec<(usize, String)>,
+    pub failed: Vec<(usize, Option<LineFailure>)>,
+    pub flawed: Vec<(usize, Reject)>,
 }
 
 fn halves(v: &[usize]) -> [Vec<usize>; 2] {
@@ -55,20 +55,22 @@ pub(crate) fn drive(
     ask: &mut Ask,
     check: &Check,
     label: &dyn Fn(usize) -> usize,
-    log: &mut dyn FnMut(&str),
+    log: &mut dyn FnMut(&Note),
 ) -> Result<Outcome, TranslateError> {
     let mut out = Outcome::default();
     let mut best: HashMap<usize, (String, Reject)> = HashMap::new();
-    let mut last_hard: HashMap<usize, String> = HashMap::new();
+    let mut last_hard: HashMap<usize, LineFailure> = HashMap::new();
     let mut stack: Vec<(Vec<usize>, Pass)> = chunks.into_iter().rev().filter(|c| !c.is_empty()).map(|c| (c, Pass::First)).collect();
 
-    let finalize = |i: usize, out: &mut Outcome, best: &mut HashMap<usize, (String, Reject)>, why: String, log: &mut dyn FnMut(&str)| {
+    let finalize = |i: usize, out: &mut Outcome, best: &mut HashMap<usize, (String, Reject)>, why: Option<LineFailure>, log: &mut dyn FnMut(&Note)| {
         if let Some((line, r)) = best.remove(&i) {
-            log(&format!("  перевод: строка {} — оставлен перевод с замечанием: {}", label(i), r.describe()));
-            out.flawed.push((i, r.describe()));
+            log(&Note::LineFlawed { line: label(i), reason: &r });
+            out.flawed.push((i, r));
             out.accepted.insert(i, line);
         } else {
-            log(&format!("  перевод: строка {} не переведена: {why}", label(i)));
+            if let Some(why) = &why {
+                log(&Note::LineFailed { line: label(i), reason: why });
+            }
             out.failed.push((i, why));
         }
     };
@@ -87,7 +89,7 @@ pub(crate) fn drive(
                         }
                         Err(r) => {
                             if r.hard() {
-                                last_hard.insert(i, r.describe());
+                                last_hard.insert(i, LineFailure::Rejected(r));
                             } else if let Some(line) = line {
                                 best.insert(i, (line.to_string(), r));
                             }
@@ -96,24 +98,24 @@ pub(crate) fn drive(
                     }
                 }
                 if !bad.is_empty() {
-                    let reasons: Vec<String> = bad
+                    let reasons: Vec<(usize, LineFailure)> = bad
                         .iter()
-                        .map(|i| {
-                            let why = best.get(i).map(|b| b.1.describe()).or_else(|| last_hard.get(i).cloned()).unwrap_or_default();
-                            format!("{}: {why}", label(*i))
+                        .filter_map(|i| {
+                            let why = best.get(i).map(|b| LineFailure::Rejected(b.1.clone())).or_else(|| last_hard.get(i).cloned())?;
+                            Some((label(*i), why))
                         })
                         .collect();
-                    log(&format!("  перевод: {} из {} строк не прошли проверку ({})", bad.len(), idx.len(), reasons.join("; ")));
+                    log(&Note::LinesRejected { bad: bad.len(), total: idx.len(), reasons: &reasons });
                 }
                 bad
             }
             Err(e) if !size_bound(&e) => {
-                log(&format!("  перевод: пакет строк {}..{} не удался ({e}) — перевод остановлен", label(idx[0]), label(idx[idx.len() - 1])));
+                log(&Note::BatchStopped { first: label(idx[0]), last: label(idx[idx.len() - 1]), error: &e });
                 return Err(e);
             }
             Err(e) => {
-                let why = e.to_string();
-                log(&format!("  перевод: пакет строк {}..{} не удался ({why})", label(idx[0]), label(idx[idx.len() - 1])));
+                log(&Note::BatchFailed { first: label(idx[0]), last: label(idx[idx.len() - 1]), error: &e });
+                let why = LineFailure::Error(Box::new(e));
                 for &i in &idx {
                     last_hard.insert(i, why.clone());
                 }
@@ -127,7 +129,7 @@ pub(crate) fn drive(
             if pass == Pass::First {
                 stack.push((bad, Pass::Retry));
             } else {
-                let why = last_hard.get(&bad[0]).cloned().unwrap_or_default();
+                let why = last_hard.get(&bad[0]).cloned();
                 finalize(bad[0], &mut out, &mut best, why, log);
             }
         } else if pass == Pass::First && bad.len() < idx.len() {
@@ -144,6 +146,7 @@ pub(crate) fn drive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::AnswerProblem;
 
     fn answer(lines: &[Option<&str>]) -> Answer {
         Answer { lines: lines.iter().map(|l| l.map(str::to_string)).collect(), finish_reason: "stop".into() }
@@ -175,7 +178,7 @@ mod tests {
             }
         };
         let chunks: Vec<Vec<usize>> = (0..n).collect::<Vec<_>>().chunks(chunk).map(<[usize]>::to_vec).collect();
-        let out = drive(chunks, &mut ask, &check, &|i| i + 1, &mut |_: &str| {}).unwrap();
+        let out = drive(chunks, &mut ask, &check, &|i| i + 1, &mut |_: &Note| {}).unwrap();
         (out, calls.into_inner())
     }
 
@@ -215,20 +218,20 @@ mod tests {
         let mut ask = |idx: &[usize], _: &HashMap<usize, String>| -> Result<Answer, TranslateError> {
             *calls.borrow_mut() += 1;
             if idx.len() > 1 {
-                return Err(TranslateError::Contract("не влезло".into()));
+                return Err(TranslateError::Contract { problem: AnswerProblem::NoJsonObject, answer: Some("не влезло".into()) });
             }
-            Err(TranslateError::Contract("нет".into()))
+            Err(TranslateError::Contract { problem: AnswerProblem::NoJsonObject, answer: Some("нет".into()) })
         };
-        let out = drive(vec![vec![0, 1]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &str| {}).unwrap();
+        let out = drive(vec![vec![0, 1]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &Note| {}).unwrap();
         assert_eq!(out.failed.len(), 2);
-        assert!(out.failed[0].1.contains("нет"));
+        assert!(out.failed[0].1.as_ref().is_some_and(|why| why.to_string().contains("нет")));
         assert_eq!(*calls.borrow(), 3, "the pair, then each line alone");
         let once = std::cell::RefCell::new(0usize);
         let mut ask = |_: &[usize], _: &HashMap<usize, String>| -> Result<Answer, TranslateError> {
             *once.borrow_mut() += 1;
-            Err(TranslateError::Contract("нет".into()))
+            Err(TranslateError::Contract { problem: AnswerProblem::NoJsonObject, answer: Some("нет".into()) })
         };
-        drive(vec![vec![0]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &str| {}).unwrap();
+        drive(vec![vec![0]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &Note| {}).unwrap();
         assert_eq!(*once.borrow(), 2, "a one-line chunk gets one more try");
         let too_big = std::cell::RefCell::new(0usize);
         let mut ask = |idx: &[usize], _: &HashMap<usize, String>| -> Result<Answer, TranslateError> {
@@ -238,7 +241,7 @@ mod tests {
             }
             Ok(answer(&[Some("хорошо")]))
         };
-        let out = drive(vec![vec![0, 1]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &str| {}).unwrap();
+        let out = drive(vec![vec![0, 1]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &Note| {}).unwrap();
         assert_eq!((out.accepted.len(), *too_big.borrow()), (2, 3), "a request too big for the context is halved");
     }
 
@@ -256,7 +259,7 @@ mod tests {
                 *calls.borrow_mut() += 1;
                 Err(error.borrow_mut().take().expect("asked once").into())
             };
-            let got = drive(vec![vec![0, 1, 2, 3], vec![4]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &str| {});
+            let got = drive(vec![vec![0, 1, 2, 3], vec![4]], &mut ask, &|_, _, _| Ok(()), &|i| i + 1, &mut |_: &Note| {});
             assert_eq!(*calls.borrow(), 1);
             assert_eq!(got.err().map(|e| e.to_string()), Some(format!("llm: {text}")));
         }

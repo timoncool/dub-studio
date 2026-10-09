@@ -383,10 +383,7 @@ impl ChatClient {
                 let prompt_chars: usize = messages.iter().map(Message::text_chars).sum();
                 if let Some(read) = answer.pointer("/usage/prompt_tokens").and_then(Value::as_u64) {
                     if read < (prompt_chars / 6) as u64 {
-                        return Err(LlmError::PromptCut(format!(
-                            "сервер прочитал только {read} токенов из запроса в {prompt_chars} символов и отбросил начало — \
-                             его контекст мал: увеличьте num_ctx в Ollama или Context Length модели в LM Studio"
-                        )));
+                        return Err(LlmError::PromptCut { read, chars: prompt_chars });
                     }
                 }
             }
@@ -394,18 +391,14 @@ impl ChatClient {
             let text = crate::answer::content_of(&message);
             if finish != "length" {
                 if text.is_empty() {
-                    let model = self.model.as_deref().unwrap_or("?");
-                    let why = if finish.is_empty() { "без причины".to_string() } else { format!("finish_reason={finish}") };
-                    return Err(LlmError::Api(format!("модель {model} вернула пустой ответ ({why})")));
+                    let model = self.model.as_deref().unwrap_or("?").to_string();
+                    return Err(LlmError::EmptyAnswer { model, finish_reason: finish });
                 }
                 return Ok(Completion { text, finish_reason: finish });
             }
             if cut_retries == 0 || max_tokens >= MAX_TOKENS_CEILING {
-                let model = self.model.as_deref().unwrap_or("?");
-                return Err(LlmError::CutShort(format!(
-                    "модель {model} упёрлась в лимит {max_tokens} токенов (finish_reason=length) — ответ неполный; \
-                     вероятно, она тратит бюджет на рассуждения: выберите модель без обязательного мышления"
-                )));
+                let model = self.model.as_deref().unwrap_or("?").to_string();
+                return Err(LlmError::CutShort { model, max_tokens });
             }
             cut_retries -= 1;
             max_tokens = max_tokens.saturating_mul(2).min(MAX_TOKENS_CEILING);
@@ -481,12 +474,12 @@ mod tests {
         let server = serve(vec![answer("", "stop")]);
         let client = ChatClient::openai_compatible(&server.base(), "qwen3:8b", None).unwrap();
         let error = client.chat(&[Message::user_text("ping")], &Sampling::new(0.2, 0.95, 50)).unwrap_err();
-        assert!(matches!(&error, LlmError::Api(text) if text.contains("qwen3:8b") && text.contains("пустой")), "{error}");
+        assert!(matches!(&error, LlmError::EmptyAnswer { model, finish_reason } if model == "qwen3:8b" && finish_reason == "stop"), "{error}");
 
         let cloud = serve(vec![answer("<think>only thoughts</think>", "stop")]);
         let client = ChatClient::openrouter_at(&cloud.base(), "k", "vendor/m").unwrap();
         let error = client.chat(&[Message::user_text("ping")], &Sampling::new(0.2, 0.95, 50)).unwrap_err();
-        assert!(matches!(&error, LlmError::Api(text) if text.contains("vendor/m")), "{error}");
+        assert!(matches!(&error, LlmError::EmptyAnswer { model, .. } if model == "vendor/m"), "{error}");
 
         let own = serve(vec![answer("", "stop")]);
         let client = ChatClient::new(own.base()).unwrap();
@@ -645,7 +638,7 @@ mod tests {
         let cut = serve(vec![answer("", "length"), answer("1.", "length")]);
         let client = ChatClient::openai_compatible(&cut.base(), "m", None).unwrap();
         let error = client.chat(&[Message::user_text("ping")], &Sampling::new(0.2, 0.95, 50)).unwrap_err();
-        assert!(matches!(&error, LlmError::CutShort(text) if text.contains("finish_reason=length")), "{error}");
+        assert!(matches!(&error, LlmError::CutShort { model, .. } if model == "m"), "{error}");
     }
 
     #[test]
@@ -654,7 +647,7 @@ mod tests {
         let server = serve(vec![Reply::json(200, r#"{"choices":[{"message":{"content":"1. x"},"finish_reason":"stop"}],"usage":{"prompt_tokens":40}}"#)]);
         let client = ChatClient::openai_compatible(&server.base(), "m", None).unwrap();
         let error = client.chat(&[Message::user_text(long)], &Sampling::new(0.2, 0.95, 50)).unwrap_err();
-        assert!(matches!(&error, LlmError::PromptCut(text) if text.contains("num_ctx")), "{error}");
+        assert!(matches!(&error, LlmError::PromptCut { read: 40, .. }), "{error}");
     }
 
     #[test]

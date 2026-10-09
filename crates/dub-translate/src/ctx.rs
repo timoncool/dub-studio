@@ -14,7 +14,7 @@ use dub_llm::{strip_think, ChatClient, Message, Part, Sampling};
 use crate::contract::{label, rule as contract_rule, Answer, Contract, Format, LineCheck};
 use crate::seg::Seg;
 use crate::vision;
-use crate::TranslateError;
+use crate::{Note, TranslateError};
 
 /// _LANG из ctx_translate — код -> имя (для vision/перевода). Линейный поиск по срезу (как lang_name
 /// в translate.rs) — без построения HashMap на каждый вызов.
@@ -63,7 +63,7 @@ pub fn run(
     contract: &Contract,
     segs: &mut [Seg],
     rewrite: Option<&str>,
-    mut log: impl FnMut(&str),
+    mut log: impl FnMut(&Note),
 ) -> Result<CtxResult, TranslateError> {
     let tgt = lang_name(&cfg.tgt_lang);
     let tmp = cfg.work_dir.join("_ctx_kf.png");
@@ -77,7 +77,7 @@ pub fn run(
     // (гейт по режиму: в «без субтитров»/burn=off выход layout никем не используется, а это 2 vision-
     // вызова на каждый из 5-10 кейфреймов = минуты Gemma на длинном видео впустую).
     if cfg.want_layout && vision.is_none() {
-        log("  ctx vision layout: пропущен (vision-модель не выбрана или недоступна)");
+        log(&Note::LayoutNoVision);
     } else if let (true, Some(vision_llm)) = (cfg.want_layout, vision) {
         match vision::analyze_layout(vision_llm, &cfg.input, &tmp, cfg.total, cfg.vh) {
             Ok(layout) => {
@@ -88,21 +88,21 @@ pub fn run(
                 extra["brands"] = Value::Array(layout.brands.clone());
                 let tnames: Vec<String> = layout.titles.iter().filter_map(|t| t.get("text").and_then(|x| x.as_str()).map(String::from)).collect();
                 let bnames: Vec<String> = layout.brands.iter().filter_map(|b| b.get("text").and_then(|x| x.as_str()).map(String::from)).collect();
-                log(&format!("  ctx vision: sub_style={} titles={:?} brands={:?}", extra["sub_style"], tnames, bnames));
+                log(&Note::Layout { sub_style: &extra["sub_style"], titles: &tnames, brands: &bnames });
             }
-            Err(e) => log(&format!("  ctx vision skipped: {e}")),
+            Err(e) => log(&Note::LayoutFailed { error: &e }),
         }
     } else {
-        log("  ctx vision layout: пропущен (субтитры не вжигаются — раскладка не нужна)");
+        log(&Note::LayoutNotNeeded);
     }
 
     // ── фаза 2: VISION scene-контекст ──────────────────────────────────────
     match vision {
         Some(vision_llm) => match vision::scene_context(vision_llm, &cfg.input, &tmp, cfg.total, &tgt) {
             Ok(sc) => extra["scene_context"] = Value::from(sc),
-            Err(e) => log(&format!("  ctx scene skipped: {e}")),
+            Err(e) => log(&Note::SceneFailed { error: &e }),
         },
-        None => log("  ctx scene: пропущен (vision-модель не выбрана или недоступна)"),
+        None => log(&Note::SceneNoVision),
     }
 
     // ── фаза 3: AUDIO-контекст (окна <=28с). Fail-safe: нет вокала / модель не умеет audio -> пусто ──
@@ -110,7 +110,7 @@ pub fn run(
         match audio_context(vision_llm, vocals, &tgt) {
             Ok(ac) if !ac.is_empty() => extra["audio_context"] = Value::from(ac),
             Ok(_) => {}
-            Err(e) => log(&format!("  ctx audio skipped: {e}")),
+            Err(e) => log(&Note::AudioFailed { error: &e }),
         }
     }
 
@@ -224,7 +224,7 @@ fn translate_lines(
     line_texts: &[String],
     budgets: &[Option<usize>],
     ctx: &str,
-    log: &mut impl FnMut(&str),
+    log: &mut impl FnMut(&Note),
 ) -> Result<std::collections::HashMap<usize, String>, TranslateError> {
     if line_texts.is_empty() {
         return Ok(Default::default());
@@ -236,11 +236,7 @@ fn translate_lines(
     // Если он раздулся (любой будущий источник) — обрезаем по бюджету символов, а не роняем перевод.
     const CTX_CHAR_BUDGET: usize = 6000; // ≈1.5-2К токенов; n_ctx=12288 остаётся с запасом под строки+ответ
     let ctx: String = if ctx.chars().count() > CTX_CHAR_BUDGET {
-        log(&format!(
-            "  ctx translate: блок контекста {} симв. -> обрезан до {} (защита n_ctx)",
-            ctx.chars().count(),
-            CTX_CHAR_BUDGET
-        ));
+        log(&Note::ContextTrimmed { chars: ctx.chars().count(), budget: CTX_CHAR_BUDGET });
         format!("{}\n[context truncated]\n\n", ctx.chars().take(CTX_CHAR_BUDGET).collect::<String>())
     } else {
         ctx.to_string()
@@ -255,7 +251,7 @@ fn translate_lines(
         match crate::translate::glossary_pairs(llm, texts, &crate::translate::name_src(""), tgt, Some(6), &job.glossary) {
             Ok(pairs) => pairs,
             Err(e) => {
-                log(&format!("  ctx translate: авто-глоссарий имён пропущен ({e})"));
+                log(&Note::NamesSkipped { error: &e });
                 Vec::new()
             }
         }
@@ -264,13 +260,7 @@ fn translate_lines(
     };
     let glossary: &[GlossaryEntry] = if job.rewrite.is_some() { &[] } else { &job.glossary };
     if bounds.len() > 1 {
-        log(&format!(
-            "  ctx translate: {} строк -> {} чанков (глоссарий: {} терм., имён: {})",
-            line_texts.len(),
-            bounds.len(),
-            glossary.len(),
-            names.len()
-        ));
+        log(&Note::Chunks { lines: line_texts.len(), chunks: bounds.len(), terms: glossary.len(), names: names.len() });
     }
 
     job.contract.announce(llm, log);
@@ -346,7 +336,7 @@ numbering, match tone/slang/intent.{budget_rule}{style_c}{names_c}{gloss_rule} {
         // mt (макс. выход) капим — не резервировать гигантский n_predict из контекста на большой пакет.
         let mt = (96 + 52 * idx.len()).min(2560) as u32;
         let s = Sampling::new(0.2, 0.95, mt).top_k(64);
-        let mut answer = job.contract.ask(llm, &messages, &s, idx.len(), &mut |m: &str| (log_cell.borrow_mut())(m))?;
+        let mut answer = job.contract.ask(llm, &messages, &s, idx.len(), &mut |m: &Note| (log_cell.borrow_mut())(m))?;
         for line in answer.lines.iter_mut().flatten() {
             *line = crate::gloss::term_lock(line, glossary, &names);
         }
@@ -357,14 +347,9 @@ numbering, match tone/slang/intent.{budget_rule}{style_c}{names_c}{gloss_rule} {
             .check(line, cut)
     };
     let chunks: Vec<Vec<usize>> = bounds.iter().map(|&(a, b)| (a..b).collect()).collect();
-    let out = crate::batch::drive(chunks, &mut ask, &check, &|gi| gi + 1, &mut |m: &str| (log_cell.borrow_mut())(m))?;
+    let out = crate::batch::drive(chunks, &mut ask, &check, &|gi| gi + 1, &mut |m: &Note| (log_cell.borrow_mut())(m))?;
     if line_texts.len() > SHORT_LINES || !out.failed.is_empty() || !out.flawed.is_empty() {
-        (log_cell.borrow_mut())(&format!(
-            "  ctx translate: готово — {} строк переведено ({} с замечанием), {} на исходнике",
-            out.accepted.len(),
-            out.flawed.len(),
-            out.failed.len()
-        ));
+        (log_cell.borrow_mut())(&Note::Done { translated: out.accepted.len(), flawed: out.flawed.len(), untranslated: out.failed.len() });
     }
     Ok(out.accepted.into_iter().map(|(gi, t)| (gi + 1, t)).collect())
 }
@@ -529,7 +514,7 @@ mod tests {
         let job = Job { llm: &llm, contract: &Contract::for_client(&llm), tgt: "Russian", tgt_code: "ru", rewrite: None, style: "", glossary };
         let lines: Vec<String> = vec!["Hi, Harry".into(), "Hello there".into()];
         let mut log: Vec<String> = Vec::new();
-        let by_n = translate_lines(&job, &lines, &[Some(14), Some(14)], "=== VISUAL SCENE ===\nA castle\n\n", &mut |m: &str| log.push(m.to_string())).unwrap();
+        let by_n = translate_lines(&job, &lines, &[Some(14), Some(14)], "=== VISUAL SCENE ===\nA castle\n\n", &mut |m: &Note| log.push(m.to_string())).unwrap();
         assert_eq!(by_n[&1], "Привет, Гарри");
         assert_eq!(by_n[&2], "Ну привет");
         let (a, b) = (body_json(&server.request(0)), body_json(&server.request(1)));
@@ -537,7 +522,7 @@ mod tests {
         assert!(a["messages"][0]["content"].as_str().unwrap().contains("A castle"));
         assert!(a["messages"][1]["content"].as_str().unwrap().contains("Harry → Гарри"));
         assert!(b["messages"][1]["content"].as_str().unwrap().contains("Hi, Harry => Привет, Гарри"), "the retry sees what is done");
-        assert!(log.iter().any(|l| l.contains("повторяет исходник")), "{log:?}");
+        assert!(log.iter().any(|l| l.contains("repeats the source")), "{log:?}");
     }
 
     #[test]
@@ -548,7 +533,7 @@ mod tests {
         let llm = ChatClient::new(server.base()).unwrap();
         let glossary = vec![GlossaryEntry { term: "Harry".into(), translation: "Гарри".into(), ..GlossaryEntry::default() }];
         let job = Job { llm: &llm, contract: &Contract::for_client(&llm), tgt: "Russian", tgt_code: "ru", rewrite: Some("about pizza"), style: "", glossary };
-        let by_n = translate_lines(&job, &["Hi, Harry".into()], &[Some(30)], "", &mut |_: &str| {}).unwrap();
+        let by_n = translate_lines(&job, &["Hi, Harry".into()], &[Some(30)], "", &mut |_: &Note| {}).unwrap();
         assert_eq!(by_n[&1], "Harry ест пиццу", "no term lock");
         let body = body_json(&server.request(0));
         let all = format!("{}{}", body["messages"][0]["content"], body["messages"][1]["content"]);
