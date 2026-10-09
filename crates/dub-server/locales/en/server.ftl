@@ -659,7 +659,7 @@ render-speaker-ref-unchecked = speaker { $speaker } reference: “{ $text }” (
 ## Setup: components
 
 setup-comp-higgs-purpose = Dub synthesis and voice cloning (TTS)
-setup-comp-higgs-engine-name = Higgs engine (audiocpp_engine.dll)
+setup-comp-higgs-engine-name = Higgs engine (audiocpp_engine)
 setup-comp-higgs-engine-purpose = The native Higgs TTS engine (C ABI)
 setup-comp-gemma-purpose = Translation and the vision orchestrator of subtitles/titles
 setup-comp-gemma-q5-0-purpose = Translation and vision, more accurate than q4_0
@@ -704,7 +704,7 @@ setup-comp-onnxruntime-gpu-purpose = The CUDA provider for diarization/Parakeet 
 setup-comp-ffmpeg-purpose = Video and audio decoding/encoding (NVENC)
 setup-comp-ytdlp-name = Download by link (yt-dlp + deno)
 setup-comp-ytdlp-purpose = Download a video by link (YouTube and the other yt-dlp sites) into a new project
-setup-comp-cuda-runtime-purpose = Redistributable CUDA DLLs for the engines and the onnxruntime CUDA EP (no CUDA Toolkit needed)
+setup-comp-cuda-runtime-purpose = Redistributable CUDA libraries for the engines and the onnxruntime CUDA EP (no CUDA Toolkit needed)
 setup-comp-cudnn-purpose = Needed by the onnxruntime CUDA provider for diarization/Parakeet on the GPU
 setup-comp-vcruntime-purpose = The engines’ system DLLs (included)
 setup-comp-ocr-name = OCR models (PP-OCR ONNX)
@@ -752,7 +752,7 @@ setup-manifest-write = manifest { $path }: { $error }
 setup-archive-no-files = the archive { $path } has none of the needed files
 setup-wheel-not-zip = the wheel is not a zip: { $error }
 setup-wheel-entry = wheel entry: { $error }
-setup-archive-no-dll = the archive { $path } has no DLL
+setup-archive-no-dll = the archive { $path } has no libraries
 setup-unpack = unpacking { $path }: { $error }
 setup-finalize = finishing { $path }: { $error }
 

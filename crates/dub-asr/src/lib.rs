@@ -118,7 +118,7 @@ fn ensure_ort_dylib() {
                     roots.push(p1.join("models"));
                 }
                 // DLL рядом с бинарём (портативная упаковка)
-                cands.push(dir.join("onnxruntime.dll"));
+                cands.push(dir.join(dub_core::runtime::ORT_LIBRARY));
             }
         }
         if let Ok(cwd) = std::env::current_dir() {
@@ -128,9 +128,7 @@ fn ensure_ort_dylib() {
             // GPU-сборка (cuda13) ПРИОРИТЕТНЕЕ: она суперсет — умеет и CPU-провайдер, и CUDA-EP. Если
             // скачана, грузим её, чтобы переключение backend gpu<->cpu работало БЕЗ рестарта (dll
             // фиксируется в процессе при первом касании ort; выбор провайдера — уже в exec_config).
-            // Имя папки = корневой каталог zip onnxruntime-win-x64-gpu_cuda13-1.28.2.zip.
-            cands.push(r.join("runtime").join("onnxruntime-win-x64-gpu_cuda13-1.28.2").join("lib").join("onnxruntime.dll"));
-            cands.push(r.join("runtime").join("onnxruntime-win-x64-1.28.2").join("lib").join("onnxruntime.dll"));
+            cands.extend(dub_core::runtime::ort_candidates(r));
         }
         for c in cands {
             if c.is_file() {

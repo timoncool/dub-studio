@@ -106,7 +106,7 @@ Modo transcrição —— transcrição diarizada com layout por falante, karaok
 
 ## Requisitos
 
-- **SO:** Windows 10 / 11 (x64)
+- **SO:** Windows 10 / 11 (x64); Linux x86-64 como build experimental (veja *Linux (experimental)*)
 - **GPU:** NVIDIA com 8 GB de VRAM ou mais (há predefinições para 8, 12, 16, 24 e 32 GB) e um driver recente. A voz local (Higgs Audio), a tradução e a visão (Gemma) rodam em CUDA, e as legendas são gravadas com NVENC. Sem NVIDIA, só podem funcionar as etapas que *O que roda onde* marca para a CPU ou a nuvem, e essa configuração não é testada
 - **WebView2** —— pré-instalado no Windows 11; no Windows 10 o instalador o baixa (se falhar, veja *Solução de problemas*)
 - **Disco:** ~15 GB para os modelos padrão, os motores e o runtime (baixados no primeiro uso), mais espaço para seus projetos; as quantizações alternativas e os modelos Whisper são extras
@@ -219,9 +219,17 @@ cd desktop && npm install && npx tauri build            # 3) shell de desktop (T
 
 Requer Node 20+, Rust (toolchain MSVC) e WebView2. Os motores nativos não precisam ser recompilados —— o app baixa binários pré-compilados.
 
+### Linux (experimental)
+
+O .deb e o AppImage para Linux x86-64 são **experimentais**. Eles vêm do mesmo código com as versões para Linux dos mesmos motores (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, o motor Higgs para Linux, yt-dlp, faster-whisper), mas o autor trabalha no Windows e não os rodou num desktop Linux de verdade. **Se você vive no Linux, seria ótimo se você os lapidasse e mandasse as correções de volta num pull request.**
+
+- A voz local precisa de uma NVIDIA RTX 30 ou mais nova: o motor Higgs para Linux é compilado só para sm 86, 89 e 120. As vozes na nuvem funcionam em qualquer máquina.
+- O driver da NVIDIA (580 ou mais novo), `libgomp1` e `libssl3` vêm do sistema; modelos, motores e bibliotecas CUDA o app baixa na primeira execução em `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
+- Compilados à mão: o workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) ou `scripts/build-release-linux.sh <pasta com models/ocr>`.
+
 ## Contribuições e forks
 
-**Colaboradores são muito bem-vindos.** Eu ficaria genuinamente feliz em ver o Dub Studio portado para outras plataformas e GPUs — a arquitetura permite, eu simplesmente não tenho fôlego para fazer os ports sozinho. Se você quer rodá-lo em **GPUs AMD / Intel, macOS ou Linux**, faça um fork e vá em frente — PRs são bem-vindos.
+**Colaboradores são muito bem-vindos.** Eu ficaria genuinamente feliz em ver o Dub Studio portado para outras plataformas e GPUs — a arquitetura permite, eu simplesmente não tenho fôlego para fazer os ports sozinho. Se você quer rodá-lo em **GPUs AMD / Intel, macOS ou Linux**, faça um fork e vá em frente — PRs são bem-vindos. O Linux já tem um build experimental (veja *Linux (experimental)*): lapidá-lo é a ajuda mais bem-vinda.
 
 **Localizações adicionais** também são bem-vindas: hoje o app e a landing estão em 6 idiomas — traduza os arquivos de idioma (`frontend/src/locales/` e o dicionário em `docs/index.html`) e abra um PR com o seu.
 

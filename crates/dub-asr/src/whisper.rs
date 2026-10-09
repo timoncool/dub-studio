@@ -316,6 +316,7 @@ impl WhisperAsr {
         cmd.env("HF_HUB_OFFLINE", "1").env("TRANSFORMERS_OFFLINE", "1");
         if let Some(dir) = self.bin.parent() {
             cmd.current_dir(abs(dir)); // ради bundled CTranslate2/oneDNN-DLL рядом с бинарём
+            dub_core::proc::libraries_beside(&mut cmd, &abs(dir));
         }
         #[cfg(target_os = "windows")]
         {
@@ -417,6 +418,7 @@ impl WhisperAsr {
         cmd.env("HF_HUB_OFFLINE", "1").env("TRANSFORMERS_OFFLINE", "1");
         if let Some(dir) = self.bin.parent() {
             cmd.current_dir(abs(dir));
+            dub_core::proc::libraries_beside(&mut cmd, &abs(dir));
         }
         #[cfg(target_os = "windows")]
         {

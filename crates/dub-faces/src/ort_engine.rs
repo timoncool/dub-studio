@@ -36,7 +36,7 @@ pub fn ensure_ort_dylib() {
                 if let Some(p1) = dir.parent().and_then(|d| d.parent()) {
                     roots.push(p1.join("models"));
                 }
-                cands.push(dir.join("onnxruntime.dll"));
+                cands.push(dir.join(dub_core::runtime::ORT_LIBRARY));
             }
         }
         if let Ok(cwd) = std::env::current_dir() {
@@ -44,12 +44,7 @@ pub fn ensure_ort_dylib() {
         }
         for r in &roots {
             cands.push(r.join("runtime").join("onnxruntime-1.28.dll"));
-            cands.push(
-                r.join("runtime")
-                    .join("onnxruntime-win-x64-1.28.2")
-                    .join("lib")
-                    .join("onnxruntime.dll"),
-            );
+            cands.extend(dub_core::runtime::ort_candidates(r));
         }
         for c in cands {
             if c.is_file() {

@@ -668,7 +668,7 @@ render-speaker-ref-unchecked = реф спикера { $speaker }: «{ $text }»
 ## Setup: components
 
 setup-comp-higgs-purpose = Синтез дубляжа и клон голоса (TTS)
-setup-comp-higgs-engine-name = Higgs движок (audiocpp_engine.dll)
+setup-comp-higgs-engine-name = Higgs движок (audiocpp_engine)
 setup-comp-higgs-engine-purpose = Нативный TTS-движок Higgs (C-ABI)
 setup-comp-gemma-purpose = Перевод и vision-оркестратор субтитров/титров
 setup-comp-gemma-q5-0-purpose = Перевод и vision — точнее q4_0
@@ -713,7 +713,7 @@ setup-comp-onnxruntime-gpu-purpose = CUDA-провайдер для диариз
 setup-comp-ffmpeg-purpose = Декод/энкод видео и аудио (NVENC)
 setup-comp-ytdlp-name = Загрузка по ссылке (yt-dlp + deno)
 setup-comp-ytdlp-purpose = Скачать видео по ссылке (YouTube и другие сайты yt-dlp) в новый проект
-setup-comp-cuda-runtime-purpose = Редистрибутивные CUDA-DLL для движков и CUDA-EP onnxruntime (без CUDA Toolkit)
+setup-comp-cuda-runtime-purpose = Редистрибутивные CUDA-библиотеки для движков и CUDA-EP onnxruntime (без CUDA Toolkit)
 setup-comp-cudnn-purpose = Нужен CUDA-провайдеру onnxruntime для диаризации/Parakeet на GPU
 setup-comp-vcruntime-purpose = Системные DLL движков (идут в комплекте)
 setup-comp-ocr-name = OCR-модели (PP-OCR ONNX)
@@ -761,7 +761,7 @@ setup-manifest-write = манифест { $path }: { $error }
 setup-archive-no-files = в архиве { $path } не найдено нужных файлов
 setup-wheel-not-zip = wheel не zip: { $error }
 setup-wheel-entry = запись wheel: { $error }
-setup-archive-no-dll = в архиве { $path } нет DLL
+setup-archive-no-dll = в архиве { $path } нет библиотек
 setup-unpack = распаковка { $path }: { $error }
 setup-finalize = финализация { $path }: { $error }
 

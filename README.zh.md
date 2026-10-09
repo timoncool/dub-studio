@@ -106,7 +106,7 @@ Dub Studio 打开时会在 `http://127.0.0.1:8793/mcp` 提供 MCP 服务：Claud
 
 ## 环境要求
 
-- **系统：** Windows 10 / 11 (x64)
+- **系统：** Windows 10 / 11 (x64)；Linux x86-64 为实验性版本（见 *Linux（实验性）*）
 - **显卡：** 显存 8 GB 及以上的 NVIDIA 显卡（提供 8、12、16、24 和 32 GB 的预设）及较新的驱动。本地配音（Higgs Audio）、翻译和视觉（Gemma）通过 CUDA 运行，字幕通过 NVENC 烧录。没有 NVIDIA 时，只有*各阶段运行在哪里*中标为 CPU 或云端的阶段可以运行，且该配置未经测试
 - **WebView2** —— Windows 11 已预装；在 Windows 10 上由安装程序下载（若失败见*故障排除*）
 - **磁盘：** 默认模型、引擎和运行库约 15 GB（首次运行时获取），另需项目空间；备用量化版本和 Whisper 模型为额外占用
@@ -219,9 +219,17 @@ cd desktop && npm install && npx tauri build            # 3) 桌面外壳 (Tauri
 
 需要 Node 20+、Rust（MSVC 工具链）与 WebView2。原生引擎无需重建 —— 应用会下载预编译二进制。
 
+### Linux（实验性）
+
+Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份代码，配的是同一批引擎的 Linux 版本（llama.cpp、ONNX Runtime、BSRoformer.cpp、ffmpeg、Linux 版 Higgs 引擎、yt-dlp、faster-whisper），但作者在 Windows 上工作，没有在真实的 Linux 桌面上跑过。**如果你日常用 Linux，非常欢迎你把它们打磨好，再通过 pull request 把修复合回来。**
+
+- 本地配音需要 NVIDIA RTX 30 或更新的显卡：Linux 版 Higgs 引擎只为 sm 86、89 和 120 编译。云端声音在任何机器上都能用。
+- NVIDIA 驱动（580 或更新）、`libgomp1` 和 `libssl3` 由系统提供；模型、引擎和 CUDA 库由应用在首次运行时下载到 `~/.local/share/dub-studio`（`$XDG_DATA_HOME`）。
+- 手动构建：`Linux build (experimental)` workflow（`.github/workflows/release-linux.yml`）或 `scripts/build-release-linux.sh <含 models/ocr 的文件夹>`。
+
 ## 参与贡献与分支
 
-**非常欢迎协作者。** 我会由衷高兴看到 Dub Studio 被移植到其他平台和显卡上 —— 架构完全支持，我只是没有精力亲自做这些移植。如果你想让它跑在 **AMD / Intel 显卡、macOS 或 Linux** 上，尽管 fork —— 欢迎 PR。
+**非常欢迎协作者。** 我会由衷高兴看到 Dub Studio 被移植到其他平台和显卡上 —— 架构完全支持，我只是没有精力亲自做这些移植。如果你想让它跑在 **AMD / Intel 显卡、macOS 或 Linux** 上，尽管 fork —— 欢迎 PR。Linux 已经有实验性版本（见 *Linux（实验性）*）：把它打磨好是最受欢迎的帮助。
 
 **额外的本地化**同样欢迎：目前应用和落地页支持 6 种语言 —— 翻译语言文件（`frontend/src/locales/` 及 `docs/index.html` 中的字典）并提交 PR 加入你的语言。
 

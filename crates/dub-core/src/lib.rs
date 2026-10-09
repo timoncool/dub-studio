@@ -5,6 +5,7 @@ pub mod fit;
 pub mod glossary;
 mod opts;
 pub mod proc;
+pub mod runtime;
 mod project;
 
 pub use glossary::{GlossaryEntry, GlossarySource};

@@ -19,8 +19,20 @@ pub const COMPONENT: &str = "ytdlp";
 /// Версия yt-dlp.exe из манифеста (setup.rs, GH_YTDLP).
 pub const PINNED_VERSION: &str = "2026.08.19";
 const DIR: &str = "tools/yt-dlp";
+/// Файл yt-dlp на диске и ассет релиза, который его даёт (в SHA2-256SUMS он под тем же именем).
+#[cfg(windows)]
 const EXE: &str = "yt-dlp.exe";
+#[cfg(windows)]
+const ASSET: &str = "yt-dlp.exe";
+#[cfg(not(windows))]
+const EXE: &str = "yt-dlp";
+#[cfg(not(windows))]
+const ASSET: &str = "yt-dlp_linux";
+const SUFFIX: &str = std::env::consts::EXE_SUFFIX;
+#[cfg(windows)]
 const DENO: &str = "deno.exe";
+#[cfg(not(windows))]
+const DENO: &str = "deno";
 const UPDATES: &str = "update";
 const RECORD: &str = "update.json";
 const RELEASES_API: &str = "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
@@ -125,11 +137,11 @@ fn record_path(repo_root: &Path) -> PathBuf {
 /// ffmpeg, которым пользуется студия: скачанный компонент или найденный в PATH (как у рендера).
 fn ffmpeg_dir(repo_root: &Path) -> Option<PathBuf> {
     let own = repo_root.join("tools").join("ffmpeg");
-    if own.join("ffmpeg.exe").is_file() && own.join("ffprobe.exe").is_file() {
+    let name = format!("ffmpeg{SUFFIX}");
+    if own.join(&name).is_file() && own.join(format!("ffprobe{SUFFIX}")).is_file() {
         return Some(own);
     }
-    let name = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
-    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).find(|d| d.join(name).is_file()))
+    std::env::var_os("PATH").and_then(|paths| std::env::split_paths(&paths).find(|d| d.join(&name).is_file()))
 }
 
 // ─── Обновления рядом с закреплённой версией ────────────────────────────────
@@ -348,13 +360,13 @@ fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &s
         .and_then(|r| r.error_for_status())
         .and_then(|r| r.text())
         .map_err(|e| UrlError::new("network", format!("{sums_url}: {e}")))?;
-    let want = sum_for(&sums, EXE).ok_or_else(|| UrlError::new("update_failed", t!("ytdlp-no-checksum", url = sums_url.clone(), file = EXE)))?;
+    let want = sum_for(&sums, ASSET).ok_or_else(|| UrlError::new("update_failed", t!("ytdlp-no-checksum", url = sums_url.clone(), file = ASSET)))?;
     let dir = updates_dir(repo_root);
     std::fs::create_dir_all(&dir).map_err(|e| UrlError::new("io", format!("{}: {e}", dir.display())))?;
-    let file = format!("yt-dlp-{tag}.exe");
+    let file = format!("yt-dlp-{tag}{SUFFIX}");
     let dest = dir.join(&file);
     let part = dir.join(format!("{file}.part"));
-    let exe_url = format!("{releases}/{tag}/{EXE}");
+    let exe_url = format!("{releases}/{tag}/{ASSET}");
     let got = fetch_verified(&client, &exe_url, &part, &want);
     let size = match got {
         Ok(size) => size,
@@ -364,6 +376,11 @@ fn update_with(repo_root: &Path, rec: &mut UpdateRecord, api: &str, releases: &s
         }
     };
     std::fs::rename(&part, &dest).map_err(|e| UrlError::new("io", format!("{}: {e}", dest.display())))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).map_err(|e| UrlError::new("io", format!("{}: {e}", dest.display())))?;
+    }
     let said = run_version(&dest);
     if said.as_deref() != Ok(tag.as_str()) {
         let _ = std::fs::remove_file(&dest);
@@ -1147,7 +1164,7 @@ mod tests {
     fn the_pinned_version_is_the_manifests() {
         let c = crate::setup::manifest().into_iter().find(|c| c.id == COMPONENT).expect("ytdlp in the manifest");
         let exe = c.files.iter().find(|f| f.dest_rel == format!("{DIR}/{EXE}")).expect("yt-dlp.exe");
-        assert!(exe.url.contains(&format!("/releases/download/{PINNED_VERSION}/{EXE}")), "{}", exe.url);
+        assert!(exe.url.ends_with(&format!("/releases/download/{PINNED_VERSION}/{ASSET}")), "{}", exe.url);
         assert!(c.markers.iter().any(|m| m.rel == format!("{DIR}/{DENO}")), "deno is part of the component");
         assert_eq!(c.requirement, crate::setup::Requirement::Optional);
     }
@@ -1212,7 +1229,7 @@ mod tests {
         let body = b"not a program".to_vec();
         let sha: String = Sha256::digest(&body).iter().map(|b| format!("{b:02x}")).collect();
         let latest = r#"{"tag_name":"2099.01.01"}"#;
-        let sums = format!("{sha}  yt-dlp.exe\n");
+        let sums = format!("{sha}  {ASSET}\n");
 
         let server = serve(vec![Reply::json(200, latest), Reply::bytes(200, "text/plain", sums.clone().into_bytes()), Reply::bytes(200, "application/octet-stream", body.clone())]);
         let mut rec = UpdateRecord::default();
@@ -1222,7 +1239,7 @@ mod tests {
         assert_eq!((rec.version.as_deref(), rec.latest.as_deref()), (None, Some("2099.01.01")));
         assert_eq!(std::fs::read_dir(updates_dir(root.path())).unwrap().count(), 0, "the file that did not run is gone");
 
-        let bad = format!("{}  yt-dlp.exe\n", "0".repeat(64));
+        let bad = format!("{}  {ASSET}\n", "0".repeat(64));
         let server = serve(vec![Reply::json(200, latest), Reply::bytes(200, "text/plain", bad.into_bytes()), Reply::bytes(200, "application/octet-stream", body)]);
         let e = update_with(root.path(), &mut rec, &format!("{}/latest", server.base()), &server.base()).unwrap_err();
         assert!(e.detail.contains("SHA-256"), "{e}");

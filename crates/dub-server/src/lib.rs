@@ -20,6 +20,7 @@ mod cloud_voices;
 mod compose;
 mod credentials;
 #[cfg(test)]
+#[cfg(windows)]
 mod dll_imports;
 mod downloads;
 mod dub_timing;
@@ -208,6 +209,36 @@ pub(crate) fn models_root(repo_root: &Path) -> PathBuf {
         .unwrap_or_else(|_| repo_root.join("models"))
 }
 
+/// Linux: CUDA-библиотеки «Первого запуска» (models/higgs-engine) нужны и самому процессу — CUDA-провайдер
+/// onnxruntime связан с cuBLAS и cuRAND без RUNPATH, — а загрузчик читает LD_LIBRARY_PATH только при старте.
+/// Если каталога в нём нет, процесс заменяет себя собой же с этим каталогом (exec). Вызывать первым делом при
+/// старте, до того как что-то загружено.
+pub fn ensure_library_path(repo_root: &Path) {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let dir = models_root(repo_root).join("higgs-engine");
+        let current = std::env::var_os("LD_LIBRARY_PATH");
+        if current.as_ref().is_some_and(|v| std::env::split_paths(v).any(|p| p == dir)) {
+            return;
+        }
+        let mut paths = vec![dir];
+        if let Some(v) = &current {
+            paths.extend(std::env::split_paths(v));
+        }
+        let restarted: Result<(), String> = std::env::join_paths(paths).map_err(|e| e.to_string()).and_then(|joined| {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            Err(std::process::Command::new(exe).args(std::env::args_os().skip(1)).env("LD_LIBRARY_PATH", joined).exec().to_string())
+        });
+        if let Err(e) = restarted {
+            eprintln!("[ERROR] the restart with LD_LIBRARY_PATH failed ({e}): onnxruntime will not find the CUDA libraries, recognition runs on the CPU");
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _ = repo_root;
+}
+
 /// Прописать в PATH процесса каталоги скачанных бинарей (ffmpeg, llama, движок Higgs с CUDA/VC-DLL),
 /// чтобы `Command::new("ffmpeg")` и подобные находили их без перезапуска после автозакачки. Вызывается
 /// один раз при старте сервера (main.rs / Tauri-shell). Идемпотентно: не дублирует уже присутствующие.
@@ -242,14 +273,13 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
         return;
     }
     let rt = repo_root.join("models").join("runtime");
-    let found = [
-        rt.join("onnxruntime-win-x64-gpu_cuda13-1.28.2").join("lib").join("onnxruntime.dll"),
-        rt.join("onnxruntime-win-x64-1.28.2").join("lib").join("onnxruntime.dll"),
-        beside_exe.join("onnxruntime.dll"),
-        rt.join("onnxruntime-1.28.dll"),
-        rt.join("onnxruntime.dll"),
-    ]
-    .into_iter()
+    let found = dub_core::runtime::ort_candidates(&repo_root.join("models"))
+        .into_iter()
+        .chain([
+            beside_exe.join(dub_core::runtime::ORT_LIBRARY),
+            rt.join("onnxruntime-1.28.dll"),
+            rt.join("onnxruntime.dll"),
+        ])
     .find(|cand| cand.is_file());
     match found {
         Some(cand) => std::env::set_var("ORT_DYLIB_PATH", cand),
@@ -321,7 +351,7 @@ impl AppState {
         let bsroformer_model = dub_sep::model_path(&repo_root);
         let higgs_dll = std::env::var("DUB_STUDIO_HIGGS_DLL")
             .map(PathBuf::from)
-            .unwrap_or_else(|_| mroot.join("higgs-engine").join("audiocpp_engine.dll"));
+            .unwrap_or_else(|_| mroot.join("higgs-engine").join(if cfg!(windows) { "audiocpp_engine.dll" } else { "libaudiocpp_engine.so" }));
         let higgs_model_root = std::env::var("DUB_STUDIO_HIGGS_MODEL")
             .map(PathBuf::from)
             .unwrap_or_else(|_| mroot.join("higgs-q8_0"));

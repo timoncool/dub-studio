@@ -500,7 +500,7 @@ render-speaker-ref-unchecked = 说话人 { $speaker } 的参考：“{ $text }�
 ## Setup: components
 
 setup-comp-higgs-purpose = 配音合成与声音克隆（TTS）
-setup-comp-higgs-engine-name = Higgs 引擎（audiocpp_engine.dll）
+setup-comp-higgs-engine-name = Higgs 引擎（audiocpp_engine）
 setup-comp-higgs-engine-purpose = Higgs 原生 TTS 引擎（C ABI）
 setup-comp-gemma-purpose = 翻译以及字幕/标题的视觉编排
 setup-comp-gemma-q5-0-purpose = 翻译与视觉，比 q4_0 更准确
@@ -545,7 +545,7 @@ setup-comp-onnxruntime-gpu-purpose = 在 GPU 上运行说话人分离/Parakeet �
 setup-comp-ffmpeg-purpose = 视频和音频解码/编码（NVENC）
 setup-comp-ytdlp-name = 链接下载（yt-dlp + deno）
 setup-comp-ytdlp-purpose = 通过链接下载视频（YouTube 及 yt-dlp 支持的其他网站）到新项目
-setup-comp-cuda-runtime-purpose = 供引擎和 onnxruntime CUDA EP 使用的可再分发 CUDA DLL（无需 CUDA Toolkit）
+setup-comp-cuda-runtime-purpose = 供引擎和 onnxruntime CUDA EP 使用的可再分发 CUDA 库（无需 CUDA Toolkit）
 setup-comp-cudnn-purpose = onnxruntime CUDA 提供程序在 GPU 上运行说话人分离/Parakeet 时需要
 setup-comp-vcruntime-purpose = 引擎所需的系统 DLL（已随附）
 setup-comp-ocr-name = OCR 模型（PP-OCR ONNX）
@@ -593,7 +593,7 @@ setup-manifest-write = 清单 { $path }：{ $error }
 setup-archive-no-files = 压缩包 { $path } 中没有所需文件
 setup-wheel-not-zip = wheel 不是 zip：{ $error }
 setup-wheel-entry = wheel 条目：{ $error }
-setup-archive-no-dll = 压缩包 { $path } 中没有 DLL
+setup-archive-no-dll = 压缩包 { $path } 中没有库文件
 setup-unpack = 解压 { $path }：{ $error }
 setup-finalize = 完成 { $path }：{ $error }
 

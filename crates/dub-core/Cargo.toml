@@ -8,3 +8,7 @@ description = "Типы Project и EngineOpts — зеркало Pydantic-кон
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# PR_SET_PDEATHSIG: дети не переживают студию на Linux (proc::dies_with_parent).
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"

@@ -55,8 +55,12 @@ pub struct SepResult {
     pub instrumental: PathBuf,
 }
 
-/// Сайдкар-CLI движка (Windows). Рядом лежат ggml*.dll — их подхватывает загрузчик из cwd движка.
+/// Сайдкар-CLI движка. Рядом лежат библиотеки ggml: на Windows их подхватывает загрузчик из cwd движка, на
+/// Linux — LD_LIBRARY_PATH запуска (RUNPATH сборки указывает на каталог её CI).
+#[cfg(windows)]
 pub const ENGINE_CLI_FILE: &str = "bs_roformer-cli.exe";
+#[cfg(not(windows))]
+pub const ENGINE_CLI_FILE: &str = "bs_roformer-cli";
 /// GGUF-модель вокал-сепарации по умолчанию (Mel-Band Roformer voc_fv6, Q8_0).
 pub const MODEL_FILE: &str = "voc_fv6-Q8_0.gguf";
 
@@ -298,6 +302,7 @@ fn run_cli(cli: &Path, model: &Path, input: &Path, output: &Path) -> Result<(), 
     cmd.arg(abs(model)).arg(abs(input)).arg(abs(output));
     if let Some(dir) = cli.parent() {
         cmd.current_dir(abs(dir));
+        dub_core::proc::libraries_beside(&mut cmd, &abs(dir));
     }
     #[cfg(target_os = "windows")]
     {

@@ -218,7 +218,7 @@ impl LlamaServer {
             }
             None => None,
         };
-        let mut child = cmd
+        let mut child = dub_core::proc::dies_with_parent(&mut cmd)
             .spawn()
             .map_err(|e| LlmError::Spawn(format!("spawn llama-server: {e}")))?;
 

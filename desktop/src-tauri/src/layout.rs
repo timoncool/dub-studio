@@ -140,6 +140,26 @@ fn installed_layout(executable_dir: &Path) -> bool {
     executable_dir.join("frontend").is_dir() && executable_dir.join("models").is_dir()
 }
 
+/// Linux-пакет (deb и AppImage): exe в usr/bin, ресурсы бандла в usr/lib/<productName>, оба только для чтения.
+fn linux_package_resources(executable_dir: &Path) -> Option<PathBuf> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let resources = executable_dir.parent()?.join("lib").join(DATA_DIRECTORY_NAME);
+    installed_layout(&resources).then_some(resources)
+}
+
+/// Данные Linux-пакета: $XDG_DATA_HOME/dub-studio, иначе ~/.local/share/dub-studio.
+fn linux_data_directory() -> Result<PathBuf, String> {
+    if let Some(root) = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
+        return Ok(PathBuf::from(root).join("dub-studio"));
+    }
+    std::env::var_os("HOME")
+        .filter(|v| !v.is_empty())
+        .map(|home| PathBuf::from(home).join(".local").join("share").join("dub-studio"))
+        .ok_or_else(|| "Neither XDG_DATA_HOME nor HOME is set: there is nowhere to keep the models.\n\nНе заданы ни XDG_DATA_HOME, ни HOME: моделям негде лежать.".to_string())
+}
+
 pub fn resolve() -> Result<Layout, String> {
     let exe_dir = executable_directory();
 
@@ -157,6 +177,19 @@ pub fn resolve() -> Result<Layout, String> {
         if data != exe_dir {
             stage_bundled_resources(&exe_dir, &data)?;
         }
+        return Ok(Layout {
+            server_root: data.clone(),
+            state_root: data,
+            redirect_temp: true,
+        });
+    }
+
+    if let Some(resources) = linux_package_resources(&exe_dir) {
+        let data = linux_data_directory()?;
+        if !directory_is_writable(&data) {
+            return Err(format!("Cannot write to {}\n\nНельзя писать в {}", data.display(), data.display()));
+        }
+        stage_bundled_resources(&resources, &data)?;
         return Ok(Layout {
             server_root: data.clone(),
             state_root: data,

@@ -656,6 +656,9 @@ fn whisper_cuda_libs_present(bin: &std::path::Path) -> bool {
     }
     let Some(dir) = bin.parent() else { return false;
     };
+    if !cfg!(windows) {
+        return dir.join("libcublas.so.11").is_file() && dir.join("libcudnn.so.8").is_file();
+    }
     let cublas = dir.join("cublas64_11.dll").is_file() || dir.join("cublas64_12.dll").is_file();
     let cudnn = std::fs::read_dir(dir)
         .map(|rd| {

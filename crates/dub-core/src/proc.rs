@@ -58,8 +58,54 @@ impl Drop for ChildGuard {
     }
 }
 
+/// Ребёнок не переживает студию. На Windows это делает job object сервера (process_group), на Linux —
+/// `PR_SET_PDEATHSIG` в порождённом процессе до exec: без него снятая `kill -9` студия оставила бы
+/// llama-server или сепаратор держать видеокарту и порт. Вызывать на `Command` прямо перед `spawn`.
+pub fn dies_with_parent(cmd: &mut Command) -> &mut Command {
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+
+        let parent = std::process::id() as libc::pid_t;
+        // Флаг живёт в потоке и снимается успешным execve, поэтому ставится в pre_exec; внутри только
+        // async-signal-safe вызовы.
+        unsafe {
+            cmd.pre_exec(move || {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::getppid() != parent {
+                    return Err(std::io::Error::other("the studio exited while the child was starting"));
+                }
+                Ok(())
+            });
+        }
+    }
+    cmd
+}
+
+/// Библиотеки, лежащие рядом с программой, видны её загрузчику: на Linux каталог встаёт первым в
+/// LD_LIBRARY_PATH запуска (сборки сайдкаров не несут RUNPATH на свой каталог); Windows и так ищет DLL в
+/// каталоге программы и cwd.
+pub fn libraries_beside<'a>(cmd: &'a mut Command, dir: &std::path::Path) -> &'a mut Command {
+    #[cfg(not(windows))]
+    {
+        let mut paths = vec![dir.to_path_buf()];
+        if let Some(cur) = std::env::var_os("LD_LIBRARY_PATH") {
+            paths.extend(std::env::split_paths(&cur));
+        }
+        if let Ok(joined) = std::env::join_paths(paths) {
+            cmd.env("LD_LIBRARY_PATH", joined);
+        }
+    }
+    #[cfg(windows)]
+    let _ = dir;
+    cmd
+}
+
 /// Аналог `Command::output()` с учётом процесса: stdin закрыт, stdout/stderr читаются целиком.
 pub fn output(cmd: &mut Command) -> std::io::Result<Output> {
+    dies_with_parent(cmd);
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = cmd.spawn()?;
     let guard = track(child.id());

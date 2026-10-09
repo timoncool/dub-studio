@@ -659,7 +659,7 @@ render-speaker-ref-unchecked = referência do falante { $speaker }: “{ $text }
 ## Setup: components
 
 setup-comp-higgs-purpose = Síntese da dublagem e clonagem de voz (TTS)
-setup-comp-higgs-engine-name = Motor Higgs (audiocpp_engine.dll)
+setup-comp-higgs-engine-name = Motor Higgs (audiocpp_engine)
 setup-comp-higgs-engine-purpose = Motor TTS nativo do Higgs (ABI C)
 setup-comp-gemma-purpose = Tradução e orquestrador de visão de legendas/títulos
 setup-comp-gemma-q5-0-purpose = Tradução e visão, mais precisa que q4_0
@@ -704,7 +704,7 @@ setup-comp-onnxruntime-gpu-purpose = Provedor CUDA para diarização/Parakeet na
 setup-comp-ffmpeg-purpose = Decodificação/codificação de vídeo e áudio (NVENC)
 setup-comp-ytdlp-name = Download por link (yt-dlp + deno)
 setup-comp-ytdlp-purpose = Baixar um vídeo por link (YouTube e outros sites do yt-dlp) em um novo projeto
-setup-comp-cuda-runtime-purpose = DLLs CUDA redistribuíveis para os motores e o CUDA EP do onnxruntime (sem CUDA Toolkit)
+setup-comp-cuda-runtime-purpose = Bibliotecas CUDA redistribuíveis para os motores e o CUDA EP do onnxruntime (sem CUDA Toolkit)
 setup-comp-cudnn-purpose = Necessário ao provedor CUDA do onnxruntime para diarização/Parakeet na GPU
 setup-comp-vcruntime-purpose = DLLs de sistema dos motores (incluídas)
 setup-comp-ocr-name = Modelos de OCR (PP-OCR ONNX)
@@ -752,7 +752,7 @@ setup-manifest-write = manifesto { $path }: { $error }
 setup-archive-no-files = o arquivo { $path } não contém os arquivos necessários
 setup-wheel-not-zip = o wheel não é um zip: { $error }
 setup-wheel-entry = entrada do wheel: { $error }
-setup-archive-no-dll = o arquivo { $path } não contém DLL
+setup-archive-no-dll = o arquivo { $path } não contém bibliotecas
 setup-unpack = descompactando { $path }: { $error }
 setup-finalize = finalizando { $path }: { $error }
 
