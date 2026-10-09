@@ -93,7 +93,7 @@ export type Title = {
 export type Project = {
   meta: { video: string; duration: number; width: number; height: number; fps: number; src_codec: string };
   mode: string; tgt_lang: string;
-  audio: { keep_music: boolean; voice: { mode: string; name?: string | null }; rewrite?: string | null; gain_db?: number; voiceover_gain_db?: number; translate_style?: string; keep_original_track?: boolean; container?: string };
+  audio: { keep_music: boolean; voice: { mode: string; name?: string | null }; rewrite?: string | null; gain_db?: number; loudness_normalize?: boolean; voiceover_gain_db?: number; translate_style?: string; keep_original_track?: boolean; container?: string };
   segments: Segment[];
   subs: { mode: string; burn?: boolean; bilingual: Bilingual };
   captions: {
@@ -377,6 +377,10 @@ export const api = {
   openrouterVerify: (key: string) => postJson<{ ok: boolean; data?: { label?: string; limit?: number; usage?: number }; error?: unknown }>("/engine/openrouter/verify", { key }),
   // Ключ OpenRouter: сервер отдаёт только «задан ли» и источник; PUT сначала проверяет ключ в OpenRouter.
   openrouterSettings: () => getJson<OpenRouterSettings>("/engine/openrouter/settings"),
+  googleSettings: () => getJson<OpenRouterSettings>("/engine/google/settings"),
+  saveGoogleKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/google/settings", { api_key: apiKey }),
+  deleteGoogleKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/google/settings"),
+  googleModels: () => getJson<{models: {name:string;displayName?:string;supportedGenerationMethods?:string[]}[]}>("/engine/google/models"),
   saveOpenrouterKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/openrouter/settings", { api_key: apiKey }),
   deleteOpenrouterKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/openrouter/settings"),
   // Прокси: адрес без пароля + флаг. password: нет поля — оставить сохранённый, null — удалить, строка — заменить.
@@ -430,8 +434,8 @@ export const api = {
     if (subs) fd.append("subs", subs);   // готовые субтитры (SRT/ASS) -> analyze возьмёт текст+тайминг вместо ASR
     return fetch(`${BASE}/projects`, { method: "POST", body: fd }).then(j<{ project_id: string; imported_subs?: boolean }>);
   },
-  analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto", subs = "auto", rewrite = "", burn = true, detect = true, importTranslated = false, translateStyle = "", casting = false, castingRef = "", contentType = "auto", alignSubs = false, post: AnalyzePost = {}) =>
-    fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}&subs=${subs}&rewrite=${encodeURIComponent(rewrite)}&burn=${burn ? 1 : 0}&detect=${detect ? 1 : 0}&import_translated=${importTranslated ? 1 : 0}&translate_style=${encodeURIComponent(translateStyle)}&casting=${casting ? 1 : 0}&casting_ref=${encodeURIComponent(castingRef)}&content_type=${encodeURIComponent(contentType)}&align_subs=${alignSubs ? 1 : 0}${analyzePostQuery(post)}`, { method: "POST" }).then(j<{ job_id: string }>),
+  analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto", subs = "auto", rewrite = "", burn = true, detect = true, importTranslated = false, translateStyle = "", casting = false, castingRef = "", contentType = "auto", alignSubs = false, post: AnalyzePost = {}, speakerCount = 0) =>
+    fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}&subs=${subs}&rewrite=${encodeURIComponent(rewrite)}&burn=${burn ? 1 : 0}&detect=${detect ? 1 : 0}&import_translated=${importTranslated ? 1 : 0}&translate_style=${encodeURIComponent(translateStyle)}&casting=${casting ? 1 : 0}&casting_ref=${encodeURIComponent(castingRef)}&content_type=${encodeURIComponent(contentType)}&align_subs=${alignSubs ? 1 : 0}&speaker_count=${speakerCount}${analyzePostQuery(post)}`, { method: "POST" }).then(j<{ job_id: string }>),
   // Кастинг персонажей (#115): список найденных персонажей (аватар+пол+голос+реплики) / сохранение правок.
   casting: (pid: string) => getJson<{ characters: Character[] }>(`/projects/${pid}/casting`),
   castingAvatarUrl: (pid: string, id: string) => `${BASE}/projects/${pid}/casting/avatar?id=${encodeURIComponent(id)}`,
@@ -525,6 +529,7 @@ export type LaunchDefaults = {
   subs: "none" | "transcribe" | "translate" | "bilingual";
   burn: boolean; detect_text: boolean;
   src_lang: string; tgt_lang: string | null;   // tgt_lang null — язык интерфейса окна
+  speaker_count: number;
   casting: boolean; casting_ref: string; content_type: "auto" | "real" | "anime";
   vo_gain_db: number;
   tr_style: "" | "technical" | "literary" | "casual" | "custom"; tr_style_custom: string;

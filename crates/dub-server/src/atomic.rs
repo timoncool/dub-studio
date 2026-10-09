@@ -247,12 +247,12 @@ fn separation(dir: PathBuf, input: PathBuf, cli: PathBuf, model: PathBuf, repo_r
         }
         let audio_hq = dir.join("audio_hq.wav");
         if !audio_hq.is_file() {
-            cb(json!({ "stage": "separate", "msg": "извлечение аудио 44.1k для сепарации" }));
+            cb(json!({ "stage": "separate", "msg": t!("atomic-extract-separation-audio") }));
             media::extract_audio(&input, &audio_hq, 44100, 2)?;
             jobs::check_cancelled()?;
         }
-        cb(json!({ "stage": "separate", "msg": "сепарация (Mel-Band Roformer voc_fv6-Q8_0)" }));
-        let split = dub_sep::separate(&audio_hq, &stems, &cli, &model).map_err(|e| format!("сепарация: {e}"))?;
+        cb(json!({ "stage": "separate", "msg": t!("atomic-separating", model = "Mel-Band Roformer voc_fv6-Q8_0") }));
+        let split = dub_sep::separate(&audio_hq, &stems, &cli, &model).map_err(|e| t!("atomic-separation-failed", error = crate::localize::Localize::localize(&e)))?;
         media::mark_separation(&stems)?;
         Ok(json!({ "vocals": split.vocals.to_string_lossy(), "background": split.instrumental.to_string_lossy() }))
     })
@@ -318,8 +318,9 @@ fn reading(input: PathBuf, dir: PathBuf, ocr: dub_ocr::OcrPaths, fps: i32, (widt
         if file.is_file() {
             return read_regions(&file);
         }
-        progress(json!({ "stage": "ocr_detect", "msg": "детекция вшитого текста (PP-OCR DBNet+CRNN)" }));
-        let (regions, _) = dub_ocr::detect_regions(&input, &dir, &ocr, fps, OCR_MIN_DUR, OCR_IOU, OCR_PAD, OCR_JITTER, OCR_SCORE)?;
+        progress(json!({ "stage": "ocr_detect", "msg": t!("ocr-detecting-burned-text", model = "PP-OCR DBNet+CRNN") }));
+        let (regions, _) = dub_ocr::detect_regions(&input, &dir, &ocr, fps, OCR_MIN_DUR, OCR_IOU, OCR_PAD, OCR_JITTER, OCR_SCORE)
+            .map_err(|e| t!("ocr-detection-failed", error = crate::localize::Localize::localize(&e)))?;
         jobs::check_cancelled()?;
         let found = json!({
             "file": file.to_string_lossy(),

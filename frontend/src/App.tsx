@@ -23,6 +23,7 @@ import { playSfx } from "./lib/sfx";
 import ResourceMonitor from "./components/ResourceMonitor";
 import { GENDER_LABEL_KEY, genderKey } from "./lib/gender";
 import OpenRouterKey from "./components/OpenRouterKey";
+import GoogleTts, { GoogleKey } from "./components/GoogleTts";
 import ProxySection from "./components/ProxySection";
 import { ANALYZE_STEPS, STAGE_TO_STEPKEY } from "./lib/stages";
 import { enqueueWhenFree, finishAnalyze, reportVoiceSlots, watchLocal, watchTracked, watchWithResume } from "./lib/jobs";
@@ -56,6 +57,8 @@ import { named } from "./lib/a11y";
 import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
 import { SourceText, TtsSkipNote } from "./components/SegmentText";
+import { hubChanged, setTelemetry, useHubState } from "./lib/studioHub";
+import HubTelemetryPreview from "./components/HubTelemetryPreview";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -103,6 +106,7 @@ function LanguageSwitcher() {
 const VARIANT_SLOT: Record<string, [string, string]> = {
   higgs: ["tts", "q8_0"], "higgs-q6_k": ["tts", "q6_k"], "higgs-q4_k_m": ["tts", "q4_k_m"],
   parakeet: ["asr", "int8"], "parakeet-fp32": ["asr", "fp32"], "parakeet-ultra": ["asr", "ultra"],
+  "parakeet-ultra-int8": ["asr", "ultra-int8"],
   gemma: ["mt", "q4_0"], "gemma-q5_0": ["mt", "q5_0"], "gemma-q6_k": ["mt", "q6_k"], "gemma-q8_0": ["mt", "q8_0"],
   roformer: ["sep", "Q8_0"], "roformer-q5": ["sep", "Q5_0"], "roformer-q4": ["sep", "Q4_0"],
   "whisper-tiny": ["whisper_model", "tiny"], "whisper-base": ["whisper_model", "base"],
@@ -113,12 +117,13 @@ const VARIANT_SLOT: Record<string, [string, string]> = {
 const activeVariantId = (ids: string[], sel: Selection): string | undefined =>
   ids.find((id) => { const m = VARIANT_SLOT[id]; return !!m && sel[m[0]] === m[1]; });
 
-type VariantI18n = Record<string, { label: "asrVariant.int8" | "asrVariant.fp32" | "asrVariant.ultra"; hint: "asrVariant.int8Hint" | "asrVariant.fp32Hint" | "asrVariant.ultraHint" }>;
+type VariantI18n = Record<string, { label: "asrVariant.int8" | "asrVariant.fp32" | "asrVariant.ultra" | "asrVariant.ultraInt8"; hint: "asrVariant.int8Hint" | "asrVariant.fp32Hint" | "asrVariant.ultraHint" | "asrVariant.ultraInt8Hint" }>;
 // Варианты Parakeet: int8 и fp32 — базовая модель NVIDIA, Ultra — её дообученная Moondream версия.
 const ASR_VARIANT_I18N: VariantI18n = {
   parakeet: { label: "asrVariant.int8", hint: "asrVariant.int8Hint" },
   "parakeet-fp32": { label: "asrVariant.fp32", hint: "asrVariant.fp32Hint" },
   "parakeet-ultra": { label: "asrVariant.ultra", hint: "asrVariant.ultraHint" },
+  "parakeet-ultra-int8": { label: "asrVariant.ultraInt8", hint: "asrVariant.ultraInt8Hint" },
 };
 
 // 25 европейских языков, которые распознаёт дефолтный ASR Parakeet-TDT v3. Источник вне этого набора
@@ -164,10 +169,13 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const hasOrKey = cap?.selection?.or_key_set === true;
   const setSel = (k: string, v: string) => api.setSelection(k, v).then(loadCap).catch(() => {});
   // Голоса выбранной облачной TTS-модели (пол/возраст/русский) для дропдауна + предупреждения о русском.
-  const orTtsModel = slot(cap?.selection, "or_tts_model") ?? "";
+  const ttsProvider = slot(cap?.selection, "tts_provider") ?? (selv("or_tts_on") === "1" ? "openrouter" : "local");
+  const orTtsModel = slot(cap?.selection, ttsProvider === "google" ? "google_tts_model" : "or_tts_model") ?? "";
   useEffect(() => {
-    if (!orTtsModel) { setOrVoices([]); setTtsRu(null); return; }
-    api.openrouterVoices(orTtsModel).then((r) => { setOrVoices(r.voices); setTtsRu(r.supportsRussian); }).catch(() => {});
+    let active = true;
+    const voices = orTtsModel ? api.openrouterVoices(orTtsModel) : Promise.resolve({voices:[],supportsRussian:null});
+    voices.then((r) => { if (active) { setOrVoices(r.voices); setTtsRu(r.supportsRussian); } }).catch((e:unknown)=>{ if (active) setErr(e instanceof Error ? e.message : String(e)); });
+    return () => { active = false; };
   }, [orTtsModel]);
   const setupErr = (e: unknown) => setErr(e instanceof SetupError ? `${errText(e.code)} · ${e.detail}` : e instanceof Error ? e.message : String(e));
   const dl = async (ids: string[]) => {
@@ -194,6 +202,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   if (part === "cloud") return (
     <div className="max-w-2xl space-y-2">
       <div data-settings-part="key"><OpenRouterKey onSaved={loadCap} /></div>
+      <GoogleKey onSaved={loadCap} />
       {hasOrKey && <OpenRouterCatalogRow />}
       {hasOrKey && (
         <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
@@ -308,13 +317,6 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
 
   // Тумблер движка «локально | OpenRouter» — тот же вид, что переключатель Parakeet|Whisper в группе ASR.
   const orRowCls = "px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]";
-  const EngineTabs = ({ cloud, onLocal, onCloud, localLabel }: { cloud: boolean; onLocal: () => void; onCloud: () => void; localLabel: string }) => (
-    <div className="flex gap-1 mb-1.5">
-      <button onClick={onLocal} className={`flex-1 px-2 py-1.5 rounded-md text-[12px] font-medium border transition-colors ${!cloud ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>{localLabel}</button>
-      <button onClick={hasOrKey ? onCloud : () => openSettings("cloud:key")} title={hasOrKey ? "" : t("cloud.needKey")}
-        className={`flex-1 px-2 py-1.5 rounded-md text-[12px] font-medium border transition-colors ${cloud ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"} ${hasOrKey ? "" : "opacity-50"}`}>OpenRouter</button>
-    </div>
-  );
   // На чём считать стадию (устройство): Авто / GPU (CUDA) / CPU — свои табы в каждом разделе, по
   // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
   const BackendTabs = ({ k }: { k: string }) => {
@@ -367,10 +369,13 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         </div>
       )}
       <Group label={t("settings.roleTts")}>
-        <EngineTabs cloud={selv("or_tts_on") === "1"} localLabel="Higgs Audio v3" onLocal={() => setSel("or_tts_on", "0")} onCloud={() => setSel("or_tts_on", "1")} />
-        {selv("or_tts_on") === "1" ? (
+        <div className="flex gap-1 mb-2">
+          {(["local", "openrouter", "google"] as const).map(provider => <button key={provider} onClick={() => api.setSelection("tts_provider",provider).then(loadCap).catch(e=>setErr(String(e)))}
+            className={`flex-1 px-2 py-1.5 rounded-md border text-[12px] ${ttsProvider === provider ? "border-[var(--color-accent)]" : "border-[var(--color-border)]"}`}>{t(`google.provider_${provider}`)}</button>)}
+        </div>
+        {ttsProvider !== "local" ? (
           <div className={`${orRowCls} space-y-2`}>
-            {orModelSelect("tts", "or_tts_model", t("providers.pickTtsModel"))}
+            {ttsProvider === "google" ? <GoogleTts model={selv("google_tts_model")} mode={selv("google_tts_mode")} onChange={(key,value)=>{ api.setSelection(key,value).then(loadCap).catch(e=>setErr(String(e))); }} /> : orModelSelect("tts", "or_tts_model", t("providers.pickTtsModel"))}
             {ttsRu === false && <div className="text-[11px] text-[var(--color-warn)]">{t("cloud.ttsNoRussian")}</div>}
             <div className="flex items-center gap-2">
               <button onClick={() => setSel("or_tts_autocast", (selv("or_tts_autocast") || "1") !== "0" ? "0" : "1")}
@@ -420,7 +425,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             <div className="text-[11px] text-[var(--color-muted)]">{t("providers.asrCloudHint")}</div>
           </div>
         ) : asrEngine === "parakeet" ? (
-          <VariantPicker base="Parakeet-TDT 0.6B v3" ids={["parakeet", "parakeet-fp32", "parakeet-ultra"]} i18n={ASR_VARIANT_I18N} />
+          <VariantPicker base="Parakeet-TDT 0.6B v3" ids={["parakeet", "parakeet-ultra-int8", "parakeet-fp32", "parakeet-ultra"]} i18n={ASR_VARIANT_I18N} />
         ) : (
           <>
             {rowOf("whisper-engine")}
@@ -848,6 +853,8 @@ function DropZone() {
   useEffect(() => () => { void launch.flush(); }, [launch]);
   const [tgt, setTgt] = useState<string>((i18n.language as string) || "ru");   // translate TO (default = UI lang)
   const [src, setSrc] = useState("auto");                                       // translate FROM (auto-detect)
+  const [speakerCount, setSpeakerCount] = useState(0);
+  const chooseSpeakerCount = (count: number) => { setSpeakerCount(count); saveLaunch({ speaker_count: count }); };
   const chooseTgt = (lang: string) => { setTgt(lang); saveLaunch({ tgt_lang: lang }); };
   const chooseSrc = (lang: string) => { pickSrc(lang); saveLaunch({ src_lang: lang }); };
   const [asrNote, setAsrNote] = useState<string | null>(null);                  // «Parakeet не знает язык → переключили на Whisper»
@@ -959,6 +966,7 @@ function DropZone() {
         setAudio(d.audio); setSubs(d.subs); setBurn(d.burn); setDetectText(d.detect_text);
         if (d.tgt_lang) setTgt(d.tgt_lang);
         pickSrc(d.src_lang);
+        setSpeakerCount(d.speaker_count ?? 0);
         setCastingOn(d.casting); setCastingRef(d.casting_ref); setContentType(d.content_type);
         setVoGain(d.vo_gain_db); setTrStyle(d.tr_style); setTrStyleCustom(d.tr_style_custom);
         setSubBlur(d.sub_blur); setKeepOrig(d.keep_orig); setContainer(d.container);
@@ -1103,7 +1111,7 @@ function DropZone() {
         keepOriginal: keepOrig && !audioOnly && voiced ? { container } : undefined,
         voiceSlots: voiceSrc === "library" && voiced && (slotsM.length || slotsF.length) ? { male: slotsM, female: slotsF } : undefined,
       };
-      const { job_id } = await api.analyze(project_id, tgt, eMode, src, eSubs, eRewrite, eBurn, audioOnly ? false : detectText, hasSubs && subsTranslated, trStyleText, effCasting, effCastingRef, effContentType, hasSubs && !subsTranslated && subsAlign, post);
+      const { job_id } = await api.analyze(project_id, tgt, eMode, src, eSubs, eRewrite, eBurn, audioOnly ? false : detectText, hasSubs && subsTranslated, trStyleText, effCasting, effCastingRef, effContentType, hasSubs && !subsTranslated && subsAlign, post, speakerCount);
       // Ошибка -> «Продолжить» с места остановки, не сброс. Для dub/voiceover озвучка готовится здесь же, на
       // экране загрузки (rendered остаётся false: /dub отдаёт готовый дуб, кадры — покадровое превью).
       await finishAnalyze(project_id, await watchWithResume(project_id, "analyze", job_id));
@@ -1251,6 +1259,18 @@ function DropZone() {
           {asrNote
             ? <p className="mt-1 text-center text-[10px] text-[var(--color-accent-2)] leading-tight">{t("comp.asrSwitched", { lang: asrNote })}</p>
             : <p className="mt-1 text-center text-[10px] text-[var(--color-muted)] leading-tight">{t("comp.langHint")}</p>}
+          <div className="mt-3 flex flex-col items-center gap-1">
+            <label className="flex items-center gap-2 text-[12px] text-[var(--color-muted)]">
+              {t("speakers.count")}
+              <select value={speakerCount} onChange={(e) => chooseSpeakerCount(Number(e.target.value))}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] px-2 py-1 text-[var(--color-text)]">
+                <option value={0}>{t("settings.auto")}</option>
+                {Array.from({ length: 8 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{new Intl.NumberFormat(i18n.language).format(n)}</option>)}
+              </select>
+            </label>
+            <p className="max-w-sm text-center text-[10px] text-[var(--color-muted)] leading-tight">{t("speakers.countHint")}</p>
+          </div>
+
           {/* Импорт готовых субтитров (SRT/ASS): точный текст+тайминг вместо авто-распознавания (ASR skip). */}
           {(() => {
             const subsChoice = (
@@ -1857,9 +1877,10 @@ function CastingPanel({ pid, characters, voices, onChange }: {
   const [cloudVoices, setCloudVoices] = useState<{ name: string; gender: string }[]>([]);
   useEffect(() => {
     api.capabilities().then((cap) => {
-      const on = (cap.selection?.or_tts_on ?? "") === "1";
+      const provider = slot(cap.selection,"tts_provider") ?? ((cap.selection?.or_tts_on ?? "") === "1" ? "openrouter" : "local");
+      const on = provider !== "local";
       setCloudOn(on);
-      const model = slot(cap.selection, "or_tts_model") ?? "";
+      const model = slot(cap.selection, provider === "google" ? "google_tts_model" : "or_tts_model") ?? "";
       if (on && model) api.openrouterVoices(model).then((r) => setCloudVoices(r.voices.map((v) => ({ name: v.name, gender: v.gender })))).catch(() => {});
     }).catch(() => {});
   }, []);
@@ -2825,7 +2846,16 @@ function Editor() {
     try { setProject(await api.patch(pid, { op: "reorder_segments", ids: newIds })); }
     catch (e) { await surfaceErr(e); }
   }
-  async function doGain(gainDb: number) { return applyGain("gain", gainDb, t("voice.gain")); }                 // монтажный гейн всей дорожки
+  async function doGain(gainDb: number) { return applyGain("gain", gainDb, t("voice.gain")); }
+  async function setLoudness(on: boolean) {
+    if (regenId) return;
+    setRegenId("__all__"); pushActivity(t("voice.loudness"));
+    try {
+      const fresh = await api.patch(pid, { op: "loudness", on });
+      setProject(fresh); setRendered(false);
+    } catch (e) { await surfaceErr(e); }
+    finally { setRegenId(null); }
+  }                 // монтажный гейн всей дорожки
   async function doVoiceoverGain(gainDb: number) { return applyGain("voiceover_gain", gainDb, t("voice.origGain")); }  // громкость оригинала под переводом
   async function doRegenAll() {                                      // re-synthesize the WHOLE dub (after switching the pack voice/speaker, or to re-roll)
     if (regenId) return;
@@ -3661,6 +3691,14 @@ function Editor() {
                 className="w-full accent-[var(--color-accent)]" />
               <div className="text-[10px] text-[var(--color-muted)] leading-snug mt-0.5">{t("voice.gainHint")}</div>
             </div>
+            <label className="mt-3 flex items-start gap-2 text-[11px] cursor-pointer">
+              <input type="checkbox" checked={p.audio.loudness_normalize ?? true} onChange={(e) => void setLoudness(e.target.checked)}
+                className="mt-0.5 accent-[var(--color-accent)]" />
+              <span>
+                <span className="text-[var(--color-text)]">{t("voice.loudness")}</span>
+                <span className="block text-[10px] text-[var(--color-muted)] leading-snug mt-0.5">{t("voice.loudnessHint")}</span>
+              </span>
+            </label>
             {p.mode === "voiceover" && (   // закадровый: громкость ОРИГИНАЛЬНОЙ дорожки под переводом (0 = в полную силу, ниже = тише)
               <div className="mt-3">
                 <div className="flex items-center justify-between text-[11px] mb-1">
@@ -3992,7 +4030,7 @@ function FilesPanel() {
 const QUANT_GROUP: Record<string, string> = {
   higgs: "higgs", "higgs-q6_k": "higgs", "higgs-q4_k_m": "higgs",
   gemma: "gemma", "gemma-q5_0": "gemma", "gemma-q6_k": "gemma", "gemma-q8_0": "gemma",
-  parakeet: "parakeet", "parakeet-fp32": "parakeet", "parakeet-ultra": "parakeet",
+  parakeet: "parakeet", "parakeet-fp32": "parakeet", "parakeet-ultra": "parakeet", "parakeet-ultra-int8": "parakeet",
   roformer: "roformer", "roformer-q5": "roformer", "roformer-q4": "roformer",
 };
 
@@ -4003,6 +4041,10 @@ const preselect = (s: SetupStatus) =>
 
 function FirstRun() {
   const { t } = useTranslation();
+  // Галочка статистики «Первого запуска»: включена, уходит с первой закачкой или «Продолжить» (выбор увиден).
+  const [telemetryOn, setTelemetryOn] = useState(true);
+  const [telemetryPreview, setTelemetryPreview] = useState(false);
+  const sendTelemetryChoice = () => setTelemetry(telemetryOn, true).catch((e: Error) => console.warn("[hub] the statistics choice was not saved:", e.message));
   const errText = useDownloadErrorText();
   const setStage = useStore((s) => s.setStage);
   // Выбор пользователя; null — ещё не трогал, берём преселект из текущего статуса (опрос его не сбрасывает).
@@ -4197,7 +4239,7 @@ function FirstRun() {
 
         <div className="mt-6 flex items-center gap-3">
           {status && !status.ready && (
-            <button onClick={() => download(selectedComps.filter((c) => c.delivery === "download" && !c.installed).map((c) => c.id))} disabled={busy || sel.size === 0 || noSpace} title={noSpace ? t("downloads.noSpace", { need: fmtBytes(selectedSpace), free: fmtBytes(status.freeBytes ?? 0) }) : undefined}
+            <button onClick={() => { sendTelemetryChoice(); download(selectedComps.filter((c) => c.delivery === "download" && !c.installed).map((c) => c.id)); }} disabled={busy || sel.size === 0 || noSpace} title={noSpace ? t("downloads.noSpace", { need: fmtBytes(selectedSpace), free: fmtBytes(status.freeBytes ?? 0) }) : undefined}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-40 hover:brightness-105">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               {t("setup.download")} {selectedBytes > 0 && <span className="opacity-80">· {fmtBytes(selectedBytes)}</span>}
@@ -4215,10 +4257,18 @@ function FirstRun() {
               <FolderDown size={14} />{t("settings.browseFolder")}</button>
           )}
           {status?.ready && !busy && (
-            <button onClick={() => setStage("empty")}
+            <button onClick={() => { sendTelemetryChoice(); setStage("empty"); }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold hover:brightness-105">
               <Check size={16} />{t("setup.continue")}</button>
           )}
+        </div>
+        <div className="mt-4 text-[13px] text-[var(--color-muted)]">
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={telemetryOn} onChange={(e) => { setTelemetryOn(e.target.checked); setTelemetry(e.target.checked, true).catch((err: Error) => console.warn("[hub] the statistics choice was not saved:", err.message)); }} />
+            {t("hub.checkbox")}
+          </label>
+          <button type="button" onClick={() => setTelemetryPreview(true)} className="ml-2 underline underline-offset-2 hover:text-[var(--color-text)]">{t("hub.what")}</button>
+          {telemetryPreview && <HubTelemetryPreview onClose={() => setTelemetryPreview(false)} />}
         </div>
       </motion.div>
     </div>
@@ -4695,8 +4745,16 @@ function TranscriptView() {
 }
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const stage = useStore((s) => s.stage);                 // only re-route on stage change (not on every store write)
+  // Анонимная статистика включена по умолчанию: на первом запуске решает галочка «Первого запуска», а установка,
+  // обновившаяся мимо него, остаётся при умолчании, пока галочку не снимут в Настройках.
+  const hub = useHubState(i18n.language);
+  useEffect(() => {
+    const tel = hub?.telemetry;
+    if (stage === "setup" || !tel || tel.acknowledged || tel.disabledByEnv) return;
+    setTelemetry(tel.enabled, true).catch((e: Error) => console.warn("[hub] the statistics default was not saved:", e.message)).finally(hubChanged);
+  }, [stage, hub?.telemetry.acknowledged]);
   const projMode = useStore((s) => (s.project as Project | null)?.mode);   // transcribe -> отдельный экран
   const setPid = useStore((s) => s.setPid);
   const setProject = useStore((s) => s.setProject);

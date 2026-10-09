@@ -6,6 +6,7 @@ license.workspace = true
 description = "axum-сервер Dub Studio: тот же REST/SSE контракт, что backend/app.py"
 
 [dependencies]
+fluent-templates = "0.15.1"
 dub-core = { path = "../dub-core" }
 dub-asr = { path = "../dub-asr", features = ["cuda"] }
 dub-llm = { path = "../dub-llm" }
@@ -41,6 +42,10 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 # 206 на Range-запросы с ureq-UA (reqwest/curl-UA душит 403). Параллельные диапазоны сатурируют канал HF CDN.
 ureq = { version = "3", features = ["socks-proxy"] }   # socks-proxy: без него socks5:// паникует «Enable feature socks-proxy»
 zip = { version = "8", default-features = false, features = ["deflate"] }
+# Linux-сборки движков приходят tar.gz (llama.cpp, onnxruntime) и tar.xz (ffmpeg, BSRoformer, NVIDIA redist).
+tar = "0.4"
+flate2 = "1"
+lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "optimization", "xz"] }
 # монитор ресурсов: GPU через NVML, RAM/CPU через sysinfo.
 nvml-wrapper = "0.13"
 sysinfo = "0.39"
@@ -53,12 +58,19 @@ rfd = "0.17"
 blake3 = "1"
 # SHA-256 скачанных моделей и движков против закреплённых хэшей (HF lfs.oid, digest GitHub, PyPI/NVIDIA).
 sha2 = "0.11"
+# Studio Hub: anonymous statistics and the news feed (telemetry only after the first-run screen showed its choice).
+studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "d1593c6f34122549429b8a10916d28b9918bce11" }
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
+rust-genai = { version = "=0.3.1", default-features = false }
 
 # job object с kill-on-close: сайдкары не переживают студию (process_group.rs).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
+# Linux: CUDA driver API из libcuda.so.1 (hw.rs) через dlopen.
+[target.'cfg(not(windows))'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

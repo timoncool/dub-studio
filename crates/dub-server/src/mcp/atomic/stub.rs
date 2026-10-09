@@ -236,6 +236,7 @@ fn analyzed(before: &Value, query: &str) -> Value {
     after["tgt_lang"] = tgt.clone().into();
     after["subs"] = json!({ "mode": subs, "burn": get("burn") != "0" });
     after["meta"]["src_lang"] = get("src_lang").into();
+    after["meta"]["speaker_count"] = get("speaker_count").parse::<u64>().unwrap_or(0).into();
     after["stage_ckpts"] = json!({ "asr": "k", "translate": "t" });
     if get("detect") == "1" {
         after["stage_ckpts"]["ocr"] = json!("o");

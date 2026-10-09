@@ -222,7 +222,7 @@ impl WhisperAsr {
                     let mut parsed = match eng.run_words(&p, &lang, Some(threads_per)) {
                         Ok(w) => w,
                         Err(_) => eng.run_words(&p, &lang, Some(threads_per)).map_err(|e| {
-                            AsrError::Parakeet(format!("whisper окно {i} (offset {off:.0}s): {e}"))
+                            AsrError::Parakeet(format!("whisper window {i} (offset {off:.0}s): {e}"))
                         })?,
                     };
                     parsed.shift(off);
@@ -238,7 +238,7 @@ impl WhisperAsr {
                     }
                     Err(_) => {
                         let _ = std::fs::remove_dir_all(&tmp_dir);
-                        return Err(AsrError::Parakeet("whisper: паника окна".into()));
+                        return Err(AsrError::Parakeet("whisper: a window thread panicked".into()));
                     }
                 }
             }
@@ -316,6 +316,7 @@ impl WhisperAsr {
         cmd.env("HF_HUB_OFFLINE", "1").env("TRANSFORMERS_OFFLINE", "1");
         if let Some(dir) = self.bin.parent() {
             cmd.current_dir(abs(dir)); // ради bundled CTranslate2/oneDNN-DLL рядом с бинарём
+            dub_core::proc::libraries_beside(&mut cmd, &abs(dir));
         }
         #[cfg(target_os = "windows")]
         {
@@ -340,7 +341,7 @@ impl WhisperAsr {
             let mut tail: Vec<&str> = stderr.lines().chain(stdout.lines()).rev().take(10).collect();
             tail.reverse();
             return Err(AsrError::Parakeet(format!(
-                "whisper код {:?}: {}",
+                "whisper exit code {:?}: {}",
                 out.status.code(),
                 tail.join(" | ")
             )));
@@ -352,7 +353,7 @@ impl WhisperAsr {
             .flatten()
             .map(|e| e.path())
             .find(|p| p.extension().and_then(|s| s.to_str()) == Some("json"))
-            .ok_or_else(|| AsrError::Parakeet("whisper: нет JSON-вывода".into()))?;
+            .ok_or_else(|| AsrError::Parakeet("whisper: no JSON output".into()))?;
         let txt = std::fs::read_to_string(&json_path)
             .map_err(|e| AsrError::WavRead(json_path.display().to_string(), e.to_string()))?;
         let parsed = parse_whisper_json(&txt);
@@ -417,6 +418,7 @@ impl WhisperAsr {
         cmd.env("HF_HUB_OFFLINE", "1").env("TRANSFORMERS_OFFLINE", "1");
         if let Some(dir) = self.bin.parent() {
             cmd.current_dir(abs(dir));
+            dub_core::proc::libraries_beside(&mut cmd, &abs(dir));
         }
         #[cfg(target_os = "windows")]
         {
@@ -429,7 +431,7 @@ impl WhisperAsr {
             let stderr = String::from_utf8_lossy(&out.stderr);
             let mut tail: Vec<&str> = stderr.lines().rev().take(10).collect();
             tail.reverse();
-            return Err(AsrError::Parakeet(format!("whisper пакет код {:?}: {}", out.status.code(), tail.join(" | "))));
+            return Err(AsrError::Parakeet(format!("whisper batch exit code {:?}: {}", out.status.code(), tail.join(" | "))));
         }
         let jsons = files
             .iter()
@@ -437,7 +439,7 @@ impl WhisperAsr {
                 let stem = f
                     .file_stem()
                     .and_then(|s| s.to_str())
-                    .ok_or_else(|| AsrError::Io(format!("имя файла {}", f.display())))?;
+                    .ok_or_else(|| AsrError::Io(format!("file name {}", f.display())))?;
                 let jp = out_dir.join(format!("{stem}.json"));
                 std::fs::read_to_string(&jp).map_err(|e| AsrError::WavRead(jp.display().to_string(), e.to_string()))
             })
@@ -469,11 +471,11 @@ impl AsrEngine for WhisperAsr {
             .jsons
             .into_iter()
             .map(|j| {
-                let v: serde_json::Value = serde_json::from_str(&j?).map_err(|e| AsrError::Io(format!("ответ whisper не JSON: {e}")))?;
+                let v: serde_json::Value = serde_json::from_str(&j?).map_err(|e| AsrError::Io(format!("the whisper answer is not JSON: {e}")))?;
                 let segs = v
                     .get("segments")
                     .and_then(serde_json::Value::as_array)
-                    .ok_or_else(|| AsrError::Io("в ответе whisper нет segments".to_string()))?;
+                    .ok_or_else(|| AsrError::Io("the whisper answer has no segments".to_string()))?;
                 Ok(segs
                     .iter()
                     .filter_map(|s| s.get("text").and_then(|t| t.as_str()))
@@ -511,7 +513,7 @@ impl AsrEngine for WhisperAsr {
     /// репликам (по середине слова во временном окне реплики; слово вне всех окон -> ближайшая реплика),
     /// внутри каждой — обычная сегментация. Времена уже абсолютные.
     fn transcribe_turns(&mut self, wav: &Path, turns: &[Turn], lang: &str) -> Result<Vec<SpeakerSegment>, AsrError> {
-        eprintln!("[asr] Whisper transcribe_turns: {} реплик, wav={}", turns.len(), wav.display());
+        eprintln!("[asr] Whisper transcribe_turns: {} turns, wav={}", turns.len(), wav.display());
         let parsed = self.run_words_auto(wav, lang)?;
         if turns.is_empty() {
             // нет реплик -> single-speaker (0), как fallback
@@ -568,12 +570,12 @@ impl AsrEngine for WhisperAsr {
 /// сегментом со своими словами и в общий поток не попадает.
 fn parse_whisper_json(txt: &str) -> Result<Parsed, AsrError> {
     let v: serde_json::Value =
-        serde_json::from_str(txt).map_err(|e| AsrError::Parakeet(format!("whisper: вывод не JSON: {e}")))?;
+        serde_json::from_str(txt).map_err(|e| AsrError::Parakeet(format!("whisper: the output is not JSON: {e}")))?;
     let mut out = Parsed::default();
     let segs = v
         .get("segments")
         .and_then(|s| s.as_array())
-        .ok_or_else(|| AsrError::Parakeet("whisper: в выводе нет списка segments".into()))?;
+        .ok_or_else(|| AsrError::Parakeet("whisper: the output has no segments list".into()))?;
     for seg in segs {
         let text = seg.get("text").and_then(|x| x.as_str()).unwrap_or("").trim().to_string();
         let seg_start = seg.get("start").and_then(|x| x.as_f64()).unwrap_or(0.0);

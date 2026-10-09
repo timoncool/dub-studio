@@ -2,7 +2,7 @@
 // (часть — блок раздела, к которому прокрутить, например "cloud:key").
 export const OPEN_SETTINGS_EVENT = "dub:open-settings";
 
-export const SETTINGS_SECTIONS = ["models", "cloud", "quality", "network", "interface", "agent", "about"] as const;
+export const SETTINGS_SECTIONS = ["models", "cloud", "quality", "network", "interface", "agent", "privacy", "about"] as const;
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number];
 
 export type SettingsTarget = { section: SettingsSection; part: string | null };

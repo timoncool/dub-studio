@@ -85,7 +85,7 @@ async fn interrupted_job_is_listed_and_resumes_with_same_kind_and_args() {
     assert_eq!(st, StatusCode::OK);
     assert_eq!(snap["status"], "error", "{snap}");
     assert_eq!(snap["pid"], PID);
-    assert!(snap["error"].as_str().is_some_and(|e| e.contains("LLM недоступен")), "{snap}");
+    assert!(snap["error"].as_str().is_some_and(|e| e.contains("the LLM is unavailable")), "{snap}");
     // Снапшот живёт в истории: второй читатель тоже его видит.
     let (_, again) = call(&app, "GET", &format!("/jobs/{job_id}")).await;
     assert_eq!(again["status"], "error");
@@ -125,7 +125,7 @@ async fn analyze_rejects_malformed_post_options_before_queueing() {
     std::fs::write(dir.join("source.txt"), src.to_string_lossy().as_bytes()).unwrap();
     let app = build_router(AppState::new(&root));
 
-    for q in ["vo_gain=loud", "sub_blur=yes", "keep_original=1&container=avi", "voice_slots=%5B1%5D"] {
+    for q in ["vo_gain=loud", "sub_blur=yes", "keep_original=1&container=avi", "voice_slots=%5B1%5D", "speaker_count=-1", "speaker_count=9", "speaker_count=1.5", "speaker_count=eight"] {
         let (st, body) = call(&app, "POST", &format!("/projects/{PID}/analyze?mode=dub&{q}")).await;
         assert_eq!(st, StatusCode::BAD_REQUEST, "{q}: {body}");
     }

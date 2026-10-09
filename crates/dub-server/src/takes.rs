@@ -106,9 +106,9 @@ impl History {
     pub fn load(wd: &Path, sid: &str) -> Result<Self, String> {
         let p = dir_of(wd, sid).join(FILE);
         match std::fs::read_to_string(&p) {
-            Ok(t) => serde_json::from_str(&t).map_err(|e| format!("разбор {}: {e}", p.display())),
+            Ok(t) => serde_json::from_str(&t).map_err(|e| t!("common-parse", path = p.display().to_string(), error = e.to_string())),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(History::default()),
-            Err(e) => Err(format!("чтение {}: {e}", p.display())),
+            Err(e) => Err(t!("common-read", path = p.display().to_string(), error = e.to_string())),
         }
     }
 
@@ -197,7 +197,7 @@ impl History {
             match std::fs::remove_file(&f) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("удаление старого дубля {}: {e}", f.display())),
+                Err(e) => return Err(t!("takes-delete-old", path = f.display().to_string(), error = e.to_string())),
             }
         }
         Ok(())
@@ -206,7 +206,7 @@ impl History {
     /// Положить дубль `n` в файл сегмента и сделать активным (история сохраняется).
     pub fn restore(&mut self, wd: &Path, sid: &str, n: u32, seg_wav: &Path) -> Result<(), String> {
         if self.get(n).is_none() {
-            return Err(format!("дубля {n} нет в истории фразы {sid}"));
+            return Err(t!("takes-missing", take = n, line = sid.to_string()));
         }
         dub_core::atomic::copy(&wav(wd, sid, n), seg_wav)?;
         if self.active != Some(n) {

@@ -13,7 +13,7 @@ use dub_core::glossary::{contains_in_translation, normalize, GlossaryEntry};
 use dub_llm::{strip_think, ChatClient, Endpoint, LlmError, Message, Sampling, StructuredOutput};
 use serde_json::{json, Map, Value};
 
-use crate::TranslateError;
+use crate::{AnswerProblem, Note, TranslateError};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Format {
@@ -52,17 +52,15 @@ impl Contract {
     }
 
     /// Одна строка в журнал на джобу: каким форматом отвечает модель и почему.
-    pub(crate) fn announce(&self, llm: &ChatClient, log: &mut dyn FnMut(&str)) {
+    pub(crate) fn announce(&self, llm: &ChatClient, log: &mut dyn FnMut(&Note)) {
         if self.announced.replace(true) {
             return;
         }
         let model = llm.model().unwrap_or("Gemma (llama-server)");
         log(&match (self.format.get(), self.probing.get()) {
-            (Format::Json, false) => format!("  перевод: ответ по JSON-схеме ({model})"),
-            (Format::Json, true) => format!("  перевод: пробую ответ по JSON-схеме ({model}); откажет — нумерованные строки"),
-            (Format::Numbered, _) => format!(
-                "  перевод: нумерованные строки — модель {model} не заявляет structured_outputs в каталоге OpenRouter"
-            ),
+            (Format::Json, false) => Note::FormatJson { model },
+            (Format::Json, true) => Note::FormatJsonProbe { model },
+            (Format::Numbered, _) => Note::FormatNumbered { model },
         });
     }
 
@@ -73,7 +71,7 @@ impl Contract {
         messages: &dyn Fn(Format) -> Vec<Message>,
         s: &Sampling,
         n: usize,
-        log: &mut dyn FnMut(&str),
+        log: &mut dyn FnMut(&Note),
     ) -> Result<Answer, TranslateError> {
         if self.format.get() == Format::Json {
             let schema = schema(n);
@@ -89,22 +87,15 @@ impl Contract {
                     let numbered = if probing && !raw.contains('{') { parse_numbered(&raw, n) } else { Vec::new() };
                     if numbered.iter().any(Option::is_some) {
                         self.format.set(Format::Numbered);
-                        log(&format!(
-                            "  перевод: {} принял JSON-схему, но ответил нумерованными строками — дальше нумерованные строки",
-                            llm.model().unwrap_or("сервер")
-                        ));
+                        log(&Note::SchemaIgnored { model: llm.model() });
                         return Ok(Answer { lines: numbered, finish_reason: done.finish_reason });
                     }
-                    return Err(TranslateError::Contract(format!("{err}; ответ: {}", preview(&raw))));
+                    return Err(TranslateError::Contract { problem: err, answer: Some(preview(&raw)) });
                 }
                 Err(LlmError::Rejected { code, status, body }) if schema_refused(llm, code, &body, self.probing.get()) => {
                     self.format.set(Format::Numbered);
                     self.probing.set(false);
-                    log(&format!(
-                        "  перевод: {} отверг ответ по JSON-схеме ({status}: {}) — дальше нумерованные строки",
-                        llm.model().unwrap_or("сервер"),
-                        preview(&body)
-                    ));
+                    log(&Note::SchemaRefused { model: llm.model(), status: &status, body: preview(&body) });
                 }
                 Err(e) => return Err(e.into()),
             }
@@ -172,14 +163,14 @@ fn clean_line(s: &str) -> String {
 
 /// JSON-ответ -> строки 1..n; ключ — номер с ведущими нулями или без. Объект ищется между первой «{» и
 /// последней «}» (модель могла обернуть его в блок кода json). Не объект — ошибка.
-pub(crate) fn parse_json(raw: &str, n: usize) -> Result<Vec<Option<String>>, String> {
+pub(crate) fn parse_json(raw: &str, n: usize) -> Result<Vec<Option<String>>, AnswerProblem> {
     let (Some(a), Some(b)) = (raw.find('{'), raw.rfind('}')) else {
-        return Err("ответ не содержит JSON-объекта".into());
+        return Err(AnswerProblem::NoJsonObject);
     };
     if b < a {
-        return Err("ответ не содержит JSON-объекта".into());
+        return Err(AnswerProblem::NoJsonObject);
     }
-    let map: Map<String, Value> = serde_json::from_str(&raw[a..=b]).map_err(|e| format!("ответ не разобран как JSON: {e}"))?;
+    let map: Map<String, Value> = serde_json::from_str(&raw[a..=b]).map_err(|e| AnswerProblem::NotJson(e.to_string()))?;
     let mut by_num: HashMap<usize, &Value> = HashMap::new();
     for (key, value) in &map {
         if let Ok(k) = key.trim().parse::<usize>() {
@@ -212,21 +203,29 @@ pub(crate) fn parse_numbered(raw: &str, n: usize) -> Vec<Option<String>> {
 // ── проверки строки ───────────────────────────────────────────────────────
 
 /// Почему строка ответа не принята.
-#[derive(Clone, Debug, PartialEq)]
-pub(crate) enum Reject {
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+pub enum Reject {
     /// Строки в ответе нет.
+    #[error("missing from the answer")]
     Missing,
     /// Ответ оборван лимитом токенов (finish_reason=length).
+    #[error("the answer was cut by the token limit")]
     Cut,
     /// Не алфавит целевого языка.
+    #[error("not in the target language")]
     Untranslated,
     /// Повтор исходника.
+    #[error("repeats the source")]
     Echo,
+    #[error("too short ({got} < {min})")]
     TooShort { got: usize, min: usize },
+    #[error("too long ({got} > {max})")]
     TooLong { got: usize, max: usize },
     /// Одна n-грамма три раза подряд.
+    #[error("loops on {0:?}")]
     Loop(String),
     /// Нет обязательного по глоссарию текста.
+    #[error("the glossary term {0:?} is missing")]
     Term(String),
 }
 
@@ -237,16 +236,17 @@ impl Reject {
         matches!(self, Reject::Missing | Reject::Cut | Reject::Untranslated | Reject::Echo)
     }
 
-    pub fn describe(&self) -> String {
+    /// Стабильный код отказа (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
         match self {
-            Reject::Missing => "нет в ответе".into(),
-            Reject::Cut => "ответ оборван лимитом токенов".into(),
-            Reject::Untranslated => "не на целевом языке".into(),
-            Reject::Echo => "повторяет исходник".into(),
-            Reject::TooShort { got, min } => format!("слишком коротко ({got} < {min})"),
-            Reject::TooLong { got, max } => format!("слишком длинно ({got} > {max})"),
-            Reject::Loop(g) => format!("зацикливание «{g}»"),
-            Reject::Term(t) => format!("нет термина глоссария «{t}»"),
+            Reject::Missing => "line_missing",
+            Reject::Cut => "line_cut",
+            Reject::Untranslated => "line_untranslated",
+            Reject::Echo => "line_echo",
+            Reject::TooShort { .. } => "line_too_short",
+            Reject::TooLong { .. } => "line_too_long",
+            Reject::Loop(_) => "line_loop",
+            Reject::Term(_) => "line_term_missing",
         }
     }
 }
@@ -443,7 +443,7 @@ mod tests {
         let server = serve(vec![Reply::json(200, r#"{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}"#)]);
         let llm = ChatClient::new(server.base()).unwrap();
         let msgs = |_: Format| vec![Message::user_text("x")];
-        Contract::for_client(&llm).ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 12, &mut |_: &str| {}).unwrap();
+        Contract::for_client(&llm).ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 12, &mut |_: &Note| {}).unwrap();
         let raw = server.request(0);
         let keys: Vec<usize> = regex::Regex::new(r#""(\d+)":\{"type":"string"\}"#)
             .unwrap()
@@ -460,8 +460,8 @@ mod tests {
         let raw = "```json\n{\"1\": \" (≤20) Привет,   мир \", \"2\": \"\", \"3\": \"Пока\"}\n```";
         let lines = parse_json(raw, 3).unwrap();
         assert_eq!(lines, vec![Some("Привет, мир".into()), None, Some("Пока".into())]);
-        assert!(parse_json("1. Привет", 1).unwrap_err().contains("JSON"));
-        assert!(parse_json("{\"1\": oops}", 1).unwrap_err().contains("JSON"));
+        assert_eq!(parse_json("1. Привет", 1).unwrap_err(), AnswerProblem::NoJsonObject);
+        assert!(matches!(parse_json("{\"1\": oops}", 1).unwrap_err(), AnswerProblem::NotJson(_)));
     }
 
     #[test]
@@ -539,23 +539,23 @@ mod tests {
         ]);
         let llm = ChatClient::openai_compatible(&server.base(), "m", None).unwrap();
         let c = Contract::for_client(&llm);
-        c.announce(&llm, &mut |m: &str| log.push(m.to_string()));
-        c.announce(&llm, &mut |m: &str| log.push(m.to_string()));
+        c.announce(&llm, &mut |m: &Note| log.push(m.to_string()));
+        c.announce(&llm, &mut |m: &Note| log.push(m.to_string()));
         assert_eq!(log.len(), 1, "one line per job");
-        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |m: &str| log.push(m.to_string())).unwrap();
+        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |m: &Note| log.push(m.to_string())).unwrap();
         assert_eq!(a.lines, vec![Some("Привет".into())]);
         assert_eq!(c.format(), Format::Numbered);
         assert!(log[1].contains("400"), "{log:?}");
         assert!(body_json(&server.request(0)).get("response_format").is_some());
         assert!(body_json(&server.request(1)).get("response_format").is_none());
-        c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).unwrap();
+        c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).unwrap();
         assert!(body_json(&server.request(2)).get("response_format").is_none(), "stays numbered");
 
         let own = serve(vec![Reply::json(200, r#"{"choices":[{"message":{"content":"{\"1\":\"Hola\"}"},"finish_reason":"stop"}]}"#)]);
         let llm = ChatClient::new(own.base()).unwrap();
         let c = Contract::for_client(&llm);
         assert_eq!(c.format(), Format::Json);
-        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).unwrap();
+        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).unwrap();
         assert_eq!(a.lines, vec![Some("Hola".into())]);
         assert_eq!(body_json(&own.request(0))["response_format"]["json_schema"]["schema"]["required"], json!(["1"]));
 
@@ -567,7 +567,7 @@ mod tests {
         let llm = ChatClient::openrouter_at(&cloud.base(), "k", "vendor/m").unwrap().with_profile(Some(profile.clone()));
         let c = Contract::for_client(&llm);
         let mut log: Vec<String> = vec![];
-        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |m: &str| log.push(m.to_string())).unwrap();
+        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |m: &Note| log.push(m.to_string())).unwrap();
         assert_eq!(a.lines, vec![Some("Hola".into())]);
         assert_eq!(c.format(), Format::Numbered);
         assert!(log.len() == 1 && log[0].contains("404") && log[0].contains("vendor/m"), "{log:?}");
@@ -576,13 +576,13 @@ mod tests {
         let other = serve(vec![Reply::json(400, r#"{"error":{"message":"maximum context length exceeded"}}"#)]);
         let llm = ChatClient::openrouter_at(&other.base(), "k", "vendor/m").unwrap().with_profile(Some(profile));
         let c = Contract::for_client(&llm);
-        assert!(c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).is_err(), "not about the schema");
+        assert!(c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).is_err(), "not about the schema");
         assert_eq!(c.format(), Format::Json);
 
         let bad = serve(vec![Reply::json(400, r#"{"error":"bad"}"#)]);
         let llm = ChatClient::new(bad.base()).unwrap();
         let c = Contract::for_client(&llm);
-        assert!(c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).is_err(), "llama-server's refusal is an error");
+        assert!(c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).is_err(), "llama-server's refusal is an error");
     }
 
     #[test]
@@ -595,11 +595,11 @@ mod tests {
         let llm = ChatClient::openai_compatible(&server.base(), "m", None).unwrap();
         let c = Contract::for_client(&llm);
         let mut log: Vec<String> = vec![];
-        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 2, &mut |m: &str| log.push(m.to_string())).unwrap();
+        let a = c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 2, &mut |m: &Note| log.push(m.to_string())).unwrap();
         assert_eq!(a.lines, vec![Some("Привет".into()), Some("Мир".into())]);
         assert_eq!(c.format(), Format::Numbered);
-        assert!(log.len() == 1 && log[0].contains("нумерованными"), "{log:?}");
-        c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).unwrap();
+        assert!(log.len() == 1 && log[0].contains("numbered lines"), "{log:?}");
+        c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).unwrap();
         assert!(body_json(&server.request(1)).get("response_format").is_none());
 
         let proven = serve(vec![
@@ -608,8 +608,8 @@ mod tests {
         ]);
         let llm = ChatClient::openai_compatible(&proven.base(), "m", None).unwrap();
         let c = Contract::for_client(&llm);
-        c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).unwrap();
-        assert!(c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &str| {}).is_err(), "after the probe a broken answer is an error");
+        c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).unwrap();
+        assert!(c.ask(&llm, &msgs, &Sampling::new(0.2, 0.9, 50), 1, &mut |_: &Note| {}).is_err(), "after the probe a broken answer is an error");
         assert_eq!(c.format(), Format::Json);
     }
 }

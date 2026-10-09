@@ -20,10 +20,21 @@ pub use server::{resolve_llama_bin, LlamaServer, ServerOpts};
 
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum LlmError {
     #[error("llama-server spawn: {0}")]
     Spawn(String),
+    #[error("llama-server not found: {}", .0.display())]
+    BinaryMissing(std::path::PathBuf),
+    #[error("GGUF model not found: {}", .0.display())]
+    ModelMissing(std::path::PathBuf),
+    #[error("llama-server log {}: {error}", path.display())]
+    LogFile { path: std::path::PathBuf, error: String },
+    /// Процесс завершился до готовности; `stderr` — хвост его вывода.
+    #[error("llama-server exited before it was ready ({status}); stderr: {stderr}")]
+    ExitedEarly { status: String, stderr: String },
+    #[error("llama-server did not come up in {secs}s (port {port}); stderr: {stderr}")]
+    NotReady { secs: u64, port: u16, stderr: String },
     #[error("http: {0}")]
     Http(String),
     #[error("api: {0}")]
@@ -31,10 +42,35 @@ pub enum LlmError {
     /// Сервер отверг запрос (4xx, кроме 429): повторять тот же запрос бесполезно.
     #[error("api: {status}: {body}")]
     Rejected { code: u16, status: String, body: String },
-    #[error("ответ обрезан: {0}")]
-    CutShort(String),
-    #[error("сервер обрезал запрос: {0}")]
-    PromptCut(String),
+    /// Модель вернула пустой ответ; `finish_reason` пуст, если сервер причину не назвал.
+    #[error("model {model} returned an empty answer (finish_reason={finish_reason:?})")]
+    EmptyAnswer { model: String, finish_reason: String },
+    /// Ответ оборван лимитом токенов (finish_reason=length) и после повтора с большим лимитом.
+    #[error("the answer was cut: model {model} hit the limit of {max_tokens} tokens (finish_reason=length)")]
+    CutShort { model: String, max_tokens: u32 },
+    /// Сервер прочитал из запроса меньше, чем в нём есть, и отбросил начало: его контекст мал.
+    #[error("the server cut the request: it read only {read} tokens of {chars} characters")]
+    PromptCut { read: u64, chars: usize },
+}
+
+impl LlmError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            LlmError::Spawn(_) => "llm_spawn",
+            LlmError::BinaryMissing(_) => "llm_binary_missing",
+            LlmError::ModelMissing(_) => "llm_model_missing",
+            LlmError::LogFile { .. } => "llm_log_file",
+            LlmError::ExitedEarly { .. } => "llm_exited_early",
+            LlmError::NotReady { .. } => "llm_not_ready",
+            LlmError::Http(_) => "llm_http",
+            LlmError::Api(_) => "llm_api",
+            LlmError::Rejected { .. } => "llm_rejected",
+            LlmError::EmptyAnswer { .. } => "llm_empty_answer",
+            LlmError::CutShort { .. } => "llm_cut_short",
+            LlmError::PromptCut { .. } => "llm_prompt_cut",
+        }
+    }
 }
 
 /// Обрезать блок рассуждений <think>...</think> — как re.sub(r"<think>.*?</think>", "", ...) в питоне.

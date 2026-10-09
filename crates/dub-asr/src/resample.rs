@@ -15,18 +15,18 @@ pub fn mono(samples: &[f32], from: u32, to: u32) -> Result<Vec<f32>, AsrError> {
     }
     let input = vec![samples.iter().map(|&s| s as f64).collect::<Vec<_>>()];
     let adapter = SequentialSliceOfVecs::new(&input, 1, samples.len())
-        .map_err(|e| AsrError::Resample(format!("обёртка буфера {from}→{to} Гц: {e}")))?;
+        .map_err(|e| AsrError::Resample(format!("buffer wrap {from}->{to} Hz: {e}")))?;
     let mut resampler = Fft::<f64>::new(from as usize, to as usize, 1024, 1, FixedSync::Both)
-        .map_err(|e| AsrError::Resample(format!("ресемплер {from}→{to} Гц: {e}")))?;
+        .map_err(|e| AsrError::Resample(format!("resampler {from}->{to} Hz: {e}")))?;
     let output = resampler
         .process_all(&adapter, samples.len(), None)
-        .map_err(|e| AsrError::Resample(format!("ресемплинг {from}→{to} Гц: {e}")))?;
+        .map_err(|e| AsrError::Resample(format!("resampling {from}->{to} Hz: {e}")))?;
     (0..output.frames())
         .map(|frame| {
             output
                 .read_sample(0, frame)
                 .map(|v| v as f32)
-                .ok_or_else(|| AsrError::Resample(format!("кадр {frame} вне буфера ресемплера")))
+                .ok_or_else(|| AsrError::Resample(format!("frame {frame} is outside the resampler buffer")))
         })
         .collect()
 }

@@ -13,7 +13,7 @@ dub-core = { path = "../dub-core" }
 # Строго 0.3.8: диаризация — только Nemotron 3 Diarization (nemotron3_diar_v3.onnx, до 8 спикеров);
 # Sortformer v2 (diar_streaming_sortformer_4spk-v2.onnx) эта версия не грузит.
 # default-features = false: дефолт parakeet-rs включает ort/default (download-binaries + TLS).
-parakeet-rs = { version = "=0.3.8", default-features = false, features = ["sortformer", "load-dynamic", "api-28"] }
+parakeet-rs = { version = "=0.4.0", default-features = false, features = ["sortformer", "load-dynamic", "api-28"] }
 # ort через load-dynamic (disable-linking): onnxruntime.dll 1.28.2 грузится в рантайме через
 # ORT_DYLIB_PATH (ensure_ort_dylib), а не линкуется (статическая libort_sys собрана новее локального
 # MSVC STL и не слинкуется). Версия строго rc.13 — под onnxruntime 1.28.2; DLL с другим OrtApi

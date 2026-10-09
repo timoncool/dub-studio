@@ -124,7 +124,7 @@ fn timed_spans(screen: &[String], timed: &[(f64, f64)]) -> Vec<(usize, String, f
         .enumerate()
         .flat_map(|(li, ln)| ln.split_whitespace().map(move |w| (li, w.to_string())))
         .collect();
-    assert_eq!(words.len(), timed.len(), "тайминги слов не совпали со словами экрана: {screen:?}");
+    assert_eq!(words.len(), timed.len(), "the word timings do not match the words of the screen: {screen:?}");
     words.into_iter().zip(timed).map(|((li, w), &(ws, we))| (li, w, ws, we)).collect()
 }
 

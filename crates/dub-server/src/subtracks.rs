@@ -111,7 +111,7 @@ pub fn add_to_mkv(mkv: &Path, tracks: &[Track], work_dir: &Path, on_screen: bool
         cmd.arg(format!("-disposition:s:{i}")).arg(if default { "default" } else { "0" });
     }
     cmd.arg(&tmp);
-    let out = dub_core::proc::output(&mut cmd).map_err(|e| format!("ffmpeg запуск: {e}"))?;
+    let out = dub_core::proc::output(&mut cmd).map_err(|e| t!("common-ffmpeg-start", error = e.to_string()))?;
     for f in &files {
         let _ = std::fs::remove_file(f);
     }
@@ -119,7 +119,7 @@ pub fn add_to_mkv(mkv: &Path, tracks: &[Track], work_dir: &Path, on_screen: bool
         let _ = std::fs::remove_file(&tmp);
         let err = String::from_utf8_lossy(&out.stderr);
         let tail: String = err.chars().rev().take(1500).collect::<String>().chars().rev().collect();
-        return Err(format!("ffmpeg код {:?}:\n{tail}", out.status.code()));
+        return Err(t!("common-ffmpeg-exit", code = format!("{:?}", out.status.code()), tail = tail));
     }
     std::fs::rename(&tmp, mkv).map_err(|e| format!("{} -> {}: {e}", tmp.display(), mkv.display()))
 }

@@ -63,7 +63,7 @@ pub fn preview_frame(
         blur_boxes.extend(sub_covers.iter().map(crate::render::cover_to_blur));
     } else {
         std::fs::write(&ass_p, "[Script Info]\nScriptType: v4.00+\n\n[V4+ Styles]\n\n[Events]\n")
-            .map_err(|e| format!("пустой ASS: {e}"))?;
+            .map_err(|e| t!("frame-empty-ass", error = e.to_string()))?;
     }
 
     // Разные файлы для полного/низкого разрешения — чтобы параллельные запросы (backpressure сериализует,
@@ -79,8 +79,9 @@ pub fn preview_frame(
         proj.render.blur,
         proj.render.blur_sigma,
         scale_w,
-    )?;
-    std::fs::read(&out).map_err(|e| format!("чтение превью-кадра: {e}"))
+    )
+    .map_err(|e| crate::localize::Localize::localize(&e))?;
+    std::fs::read(&out).map_err(|e| t!("frame-read-preview", error = e.to_string()))
 }
 
 /// Сырой кадр ОРИГИНАЛА (PNG-байты) на t — без сабов/блюра/дубляжа (для before/after). Порт
@@ -100,11 +101,11 @@ pub fn source_frame(input: &Path, work_dir: &Path, t: f64) -> Result<Vec<u8>, St
         .args(["-frames:v", "1", "-update", "1"])
         .arg(&png)
         .output()
-        .map_err(|e| format!("ffmpeg запуск: {e}"))?;
+        .map_err(|e| t!("common-ffmpeg-start", error = e.to_string()))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let tail: String = err.chars().rev().take(600).collect::<String>().chars().rev().collect();
         return Err(format!("ffmpeg source_frame rc={:?}: {tail}", out.status.code()));
     }
-    std::fs::read(&png).map_err(|e| format!("чтение кадра оригинала: {e}"))
+    std::fs::read(&png).map_err(|e| t!("frame-read-source", error = e.to_string()))
 }

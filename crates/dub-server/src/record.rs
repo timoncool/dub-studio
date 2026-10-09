@@ -57,7 +57,7 @@ pub fn input_devices() -> Vec<String> {
 pub fn start(path: &std::path::Path, device: Option<String>) -> Result<(), String> {
     let mut guard = recorder().lock().map_err(|_| "recorder poisoned".to_string())?;
     if guard.is_some() {
-        return Err("Уже идёт запись".into());
+        return Err(t!("record-busy"));
     }
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -77,15 +77,15 @@ pub fn start(path: &std::path::Path, device: Option<String>) -> Result<(), Strin
         };
         let Some(device) = device else {
             let missing = match &wanted {
-                Some(name) => format!("Микрофон «{name}» не найден — он отключён или переименован; выберите другой"),
-                None => "Микрофон не найден".into(),
+                Some(name) => t!("record-mic-not-found", name = name.clone()),
+                None => t!("record-no-mic"),
             };
             let _ = ready_tx.send(Err(missing));
             return;
         };
         let supported = match device.default_input_config() {
             Ok(c) => c,
-            Err(e) => { let _ = ready_tx.send(Err(format!("конфиг микрофона: {e}"))); return; }
+            Err(e) => { let _ = ready_tx.send(Err(t!("record-mic-config", error = e.to_string()))); return; }
         };
         let fmt = supported.sample_format();
         let ch = (supported.channels() as usize).max(1);
@@ -94,7 +94,7 @@ pub fn start(path: &std::path::Path, device: Option<String>) -> Result<(), Strin
         let spec = hound::WavSpec { channels: 1, sample_rate: sr, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
         let writer = match hound::WavWriter::create(&thread_path, spec) {
             Ok(w) => Arc::new(Mutex::new(Some(w))),
-            Err(e) => { let _ = ready_tx.send(Err(format!("создать wav: {e}"))); return; }
+            Err(e) => { let _ = ready_tx.send(Err(t!("record-create-wav", error = e.to_string()))); return; }
         };
         let emit_every = (sr / 20).max(1) as usize;
 
@@ -127,14 +127,14 @@ pub fn start(path: &std::path::Path, device: Option<String>) -> Result<(), Strin
             cpal::SampleFormat::F32 => device.build_input_stream(config, cb!(f32, |s: f32| s), err_fn, None),
             cpal::SampleFormat::I16 => device.build_input_stream(config, cb!(i16, |s: i16| s as f32 / i16::MAX as f32), err_fn, None),
             cpal::SampleFormat::U16 => device.build_input_stream(config, cb!(u16, |s: u16| (s as f32 - 32768.0) / 32768.0), err_fn, None),
-            other => { let _ = ready_tx.send(Err(format!("формат {other:?} не поддержан"))); return; }
+            other => { let _ = ready_tx.send(Err(t!("record-format-unsupported", format = format!("{other:?}")))); return; }
         };
         let stream = match built {
             Ok(s) => s,
-            Err(e) => { let _ = ready_tx.send(Err(format!("открыть микрофон: {e}"))); return; }
+            Err(e) => { let _ = ready_tx.send(Err(t!("record-mic-open", error = e.to_string()))); return; }
         };
         if let Err(e) = stream.play() {
-            let _ = ready_tx.send(Err(format!("старт микрофона: {e}")));
+            let _ = ready_tx.send(Err(t!("record-mic-start", error = e.to_string())));
             return;
         }
         let _ = ready_tx.send(Ok(()));
@@ -154,7 +154,7 @@ pub fn start(path: &std::path::Path, device: Option<String>) -> Result<(), Strin
 /// Остановить запись → путь к готовому WAV.
 pub fn stop() -> Result<std::path::PathBuf, String> {
     let mut guard = recorder().lock().map_err(|_| "recorder poisoned".to_string())?;
-    let st = guard.take().ok_or_else(|| "Запись не идёт".to_string())?;
+    let st = guard.take().ok_or_else(|| t!("record-not-recording"))?;
     let _ = st.stop_tx.send(());
     std::thread::sleep(std::time::Duration::from_millis(200));
     peak_cell().store(0, Ordering::Relaxed);
@@ -239,10 +239,10 @@ pub fn catalog() -> Result<serde_json::Value, String> {
     while let Some(page) = url.take() {
         let resp = client.get(&page).send().and_then(|r| r.error_for_status()).map_err(|e| format!("{page}: {e}"))?;
         url = next_page(resp.headers());
-        let chunk: Vec<serde_json::Value> = resp.json().map_err(|e| format!("{page}: не список файлов: {e}"))?;
+        let chunk: Vec<serde_json::Value> = resp.json().map_err(|e| t!("voices-not-file-list", page = page.clone(), error = e.to_string()))?;
         items.extend(chunk);
         if items.len() > 100_000 {
-            return Err(format!("{page}: список файлов датасета не кончается"));
+            return Err(t!("voices-list-endless", page = page.clone()));
         }
     }
     let v = serde_json::json!({ "voices": voices_of(&items) });
@@ -274,21 +274,21 @@ fn fetch_checked(
             }
             got += n as u64;
             if got > size {
-                return Err(format!("{url}: больше закреплённых {size} байт"));
+                return Err(t!("voices-too-large", url = url.to_string(), size = size));
             }
             f.write_all(&buf[..n]).map_err(|e| format!("{}: {e}", part.display()))?;
             progress(got);
         }
         f.flush().map_err(|e| format!("{}: {e}", part.display()))?;
         if got != size {
-            return Err(format!("{url}: пришло {got} байт, закреплено {size}"));
+            return Err(t!("voices-size-mismatch", url = url.to_string(), got = got, size = size));
         }
         if let Some(want) = sha256 {
             let got = crate::setup::sha256_file(&part, &|| false)
                 .map_err(|e| format!("{}: {e}", part.display()))?
                 .unwrap_or_default();
             if got != want {
-                return Err(format!("{url}: SHA-256 {got} не совпал с закреплённым {want}"));
+                return Err(t!("voices-sha-mismatch", url = url.to_string(), got = got.clone(), want = want.to_string()));
             }
         }
         std::fs::rename(&part, dest).map_err(|e| format!("{}: {e}", dest.display()))
@@ -302,7 +302,7 @@ fn fetch_checked(
 /// Скачать один голос датасета (mp3 + txt, если он есть) в каталог голосов, сверив с каталогом закреплённой ревизии.
 pub fn fetch_voice(dir: &std::path::Path, name: &str) -> Result<(), String> {
     if name.is_empty() || name.contains("..") || name.contains('/') || name.contains('\\') {
-        return Err("плохое имя".into());
+        return Err(t!("voices-bad-name"));
     }
     let catalog = catalog()?;
     let entry = catalog["voices"]
@@ -311,16 +311,16 @@ pub fn fetch_voice(dir: &std::path::Path, name: &str) -> Result<(), String> {
         .flatten()
         .find(|v| v["name"] == name)
         .cloned()
-        .ok_or_else(|| format!("голоса {name} нет в датасете {VOICES_DATASET}"))?;
-    let size = entry["size"].as_u64().filter(|s| *s <= VOICE_FILE_LIMIT).ok_or_else(|| format!("{name}: размер в каталоге не годится"))?;
-    let sha256 = entry["sha256"].as_str().ok_or_else(|| format!("{name}: нет SHA-256 в каталоге"))?;
+        .ok_or_else(|| t!("voices-not-in-dataset", name = name.to_string(), dataset = VOICES_DATASET))?;
+    let size = entry["size"].as_u64().filter(|s| *s <= VOICE_FILE_LIMIT).ok_or_else(|| t!("voices-bad-size", name = name.to_string()))?;
+    let sha256 = entry["sha256"].as_str().ok_or_else(|| t!("voices-no-sha", name = name.to_string()))?;
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let client = hf_client()?;
     let base = std::path::Path::new(name).file_name().and_then(|s| s.to_str()).unwrap_or(name);
     fetch_checked(&client, &voice_file_url(&format!("{name}.mp3")), &dir.join(format!("{base}.mp3")), size, Some(sha256), &|_| {})?;
     if let Some(txt) = entry["txt_size"].as_u64() {
         if txt > VOICE_FILE_LIMIT {
-            return Err(format!("{name}.txt: размер в каталоге не годится"));
+            return Err(t!("voices-bad-size", name = format!("{name}.txt")));
         }
         fetch_checked(&client, &voice_file_url(&format!("{name}.txt")), &dir.join(format!("{base}.txt")), txt, None, &|_| {})?;
     }
@@ -330,8 +330,8 @@ pub fn fetch_voice(dir: &std::path::Path, name: &str) -> Result<(), String> {
 /// Скачать пак голосов (VibeVoice) закреплённой ревизии, сверить SHA-256 и распаковать в `dir` (плоско, .mp3+.txt
 /// пары). Прогресс -> cb.
 pub fn download_pack(dir: &std::path::Path, cb: &dyn Fn(serde_json::Value)) -> Result<serde_json::Value, String> {
-    std::fs::create_dir_all(dir).map_err(|e| format!("создать {}: {e}", dir.display()))?;
-    cb(serde_json::json!({ "stage": "voicepack", "msg": "скачивание пака голосов", "pct": 0 }));
+    std::fs::create_dir_all(dir).map_err(|e| t!("common-create-dir", path = dir.display().to_string(), error = e.to_string()))?;
+    cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-downloading"), "pct": 0 }));
     let client = dub_llm::net::builder()
         .timeout(None)
         .build()
@@ -342,11 +342,11 @@ pub fn download_pack(dir: &std::path::Path, cb: &dyn Fn(serde_json::Value)) -> R
         let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
         if got - *last >= 1 << 20 || got == VOICE_PACK_SIZE {
             *last = got;
-            cb(serde_json::json!({ "stage": "voicepack", "msg": "скачивание пака голосов", "pct": (got as f64 / VOICE_PACK_SIZE as f64 * 90.0) }));
+            cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-downloading"), "pct": (got as f64 / VOICE_PACK_SIZE as f64 * 90.0) }));
         }
     })?;
-    cb(serde_json::json!({ "stage": "voicepack", "msg": "распаковка", "pct": 92 }));
-    let zf = std::fs::File::open(&zip_path).map_err(|e| format!("открыть zip: {e}"))?;
+    cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-unpacking"), "pct": 92 }));
+    let zf = std::fs::File::open(&zip_path).map_err(|e| t!("voices-open-zip", error = e.to_string()))?;
     let mut zip = zip::ZipArchive::new(zf).map_err(|e| format!("zip: {e}"))?;
     let mut count = 0;
     for i in 0..zip.len() {
@@ -358,15 +358,15 @@ pub fn download_pack(dir: &std::path::Path, cb: &dyn Fn(serde_json::Value)) -> R
             .map(|s| s.to_string());
         let Some(name) = name else { continue };
         let out = dir.join(&name);
-        let mut o = std::fs::File::create(&out).map_err(|e| format!("создать {name}: {e}"))?;
-        std::io::copy(&mut file, &mut o).map_err(|e| format!("распаковка {name}: {e}"))?;
+        let mut o = std::fs::File::create(&out).map_err(|e| t!("voices-create-file", name = name.clone(), error = e.to_string()))?;
+        std::io::copy(&mut file, &mut o).map_err(|e| t!("voices-unpack-file", name = name.clone(), error = e.to_string()))?;
         count += 1;
     }
     drop(zip);
     if let Err(e) = std::fs::remove_file(&zip_path) {
-        tracing::warn!("{}: архив пака не удалён после распаковки: {e}", zip_path.display());
+        tracing::warn!("{}: the pack archive was not removed after unpacking: {e}", zip_path.display());
     }
-    cb(serde_json::json!({ "stage": "voicepack", "msg": format!("готово: {count} файлов"), "pct": 100 }));
+    cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-done", count = count), "pct": 100 }));
     Ok(serde_json::json!({ "extracted": count }))
 }
 

@@ -6,7 +6,7 @@ use dub_core::glossary::{normalize, GlossaryEntry, GlossarySource};
 use dub_llm::{strip_think, ChatClient, LlmError, Message, Sampling, StructuredOutput};
 use serde_json::{json, Value};
 
-use crate::TranslateError;
+use crate::{AnswerProblem, Note, TranslateError};
 
 /// Сколько символов транскрипта в одном запросе прохода модели.
 const PART_CHARS: usize = 6000;
@@ -55,15 +55,15 @@ fn parts(texts: &[String]) -> Vec<String> {
 }
 
 /// Ответ прохода -> записи. Объект ищется между первой «{» и последней «}».
-fn parse_terms(raw: &str) -> Result<Vec<GlossaryEntry>, String> {
+fn parse_terms(raw: &str) -> Result<Vec<GlossaryEntry>, AnswerProblem> {
     let (Some(a), Some(b)) = (raw.find('{'), raw.rfind('}')) else {
-        return Err("в ответе нет JSON-объекта".into());
+        return Err(AnswerProblem::NoJsonObject);
     };
     if b < a {
-        return Err("в ответе нет JSON-объекта".into());
+        return Err(AnswerProblem::NoJsonObject);
     }
-    let v: Value = serde_json::from_str(&raw[a..=b]).map_err(|e| format!("ответ не разобран как JSON: {e}"))?;
-    let items = v.get("terms").and_then(Value::as_array).ok_or("в ответе нет списка terms")?;
+    let v: Value = serde_json::from_str(&raw[a..=b]).map_err(|e| AnswerProblem::NotJson(e.to_string()))?;
+    let items = v.get("terms").and_then(Value::as_array).ok_or(AnswerProblem::NoTerms)?;
     Ok(items
         .iter()
         .filter_map(|it| {
@@ -90,14 +90,14 @@ pub fn extract_glossary(
     src_lang: &str,
     tgt_lang: &str,
     known: &[GlossaryEntry],
-    log: &mut dyn FnMut(&str),
+    log: &mut dyn FnMut(&Note),
 ) -> Result<Vec<GlossaryEntry>, TranslateError> {
     let tgt = crate::translate::lang_name(tgt_lang, tgt_lang);
     let mut with_schema = llm.structured_output() != StructuredOutput::Unsupported;
     let mut found: Vec<GlossaryEntry> = Vec::new();
     let all = parts(texts);
     for (k, part) in all.iter().enumerate() {
-        log(&format!("глоссарий: проход модели {}/{}", k + 1, all.len()));
+        log(&Note::GlossaryPass { pass: k + 1, passes: all.len() });
         let prompt = format!(
             "Below is a video transcript that will be dubbed into {tgt}. List the proper names (people, places, \
 organisations), recurring special terms, brands and titles a dubbing translator must render the same way every time. \
@@ -112,13 +112,13 @@ For each give its {tgt} rendering in `translation`, or set `verbatim` true when 
             Err(LlmError::Rejected { code, status, body })
                 if with_schema && crate::contract::schema_refused(llm, code, &body, llm.structured_output() == StructuredOutput::Untested) =>
             {
-                log(&format!("глоссарий: сервер отверг ответ по JSON-схеме ({status}) — прошу JSON текстом"));
+                log(&Note::GlossarySchemaRefused { status: &status });
                 with_schema = false;
                 llm.complete(&messages, &s, None)?
             }
             other => other?,
         };
-        let terms = parse_terms(&strip_think(&done.text)).map_err(TranslateError::Contract)?;
+        let terms = parse_terms(&strip_think(&done.text)).map_err(|problem| TranslateError::Contract { problem, answer: None })?;
         for t in terms {
             if !found.iter().any(|f| normalize(&f.term) == normalize(&t.term)) {
                 found.push(t);
@@ -160,7 +160,7 @@ mod tests {
         let llm = ChatClient::new(server.base()).unwrap();
         let texts: Vec<String> = ["Harry and Ron", "Ron at Hogwarts", "Ron, the Nimbus!"].iter().map(|s| s.to_string()).collect();
         let known = [GlossaryEntry { term: "Harry".into(), ..GlossaryEntry::default() }];
-        let got = extract_glossary(&llm, &texts, "en", "ru", &known, &mut |_: &str| {}).unwrap();
+        let got = extract_glossary(&llm, &texts, "en", "ru", &known, &mut |_: &Note| {}).unwrap();
         let terms: Vec<&str> = got.iter().map(|e| e.term.as_str()).collect();
         assert_eq!(terms, vec!["Hogwarts", "Nimbus", "Ron"]);
         assert!(got.iter().all(|e| e.source == GlossarySource::Auto && e.lang == "ru"));
@@ -184,6 +184,6 @@ mod tests {
     #[test]
     fn an_answer_without_terms_is_an_error() {
         assert!(parse_terms("no json").is_err());
-        assert!(parse_terms(r#"{"x":1}"#).unwrap_err().contains("terms"));
+        assert_eq!(parse_terms(r#"{"x":1}"#).unwrap_err(), AnswerProblem::NoTerms);
     }
 }

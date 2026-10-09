@@ -17,6 +17,7 @@
 //! запертый Windows/CUDA билд (проверено: build падает без LIBCLANG_PATH). Своя реализация без C-зависимостей
 //! повторяет Kaldi FbankComputer с параметрами WeSpeaker.
 
+use crate::FacesError;
 use crate::ort_engine::OnnxModel;
 use std::path::Path;
 
@@ -58,7 +59,7 @@ pub struct VoiceEmbedder {
 
 impl VoiceEmbedder {
     /// Загрузить ONNX (ту же onnxruntime.dll, что SCRFD/LVFace — ensure_ort_dylib внутри OnnxModel::load).
-    pub fn load(onnx: &Path) -> Result<Self, String> {
+    pub fn load(onnx: &Path) -> Result<Self, FacesError> {
         Ok(Self {
             model: OnnxModel::load(onnx)?,
             mel: MelBanks::new(),
@@ -67,21 +68,21 @@ impl VoiceEmbedder {
 
     /// Эмбеддинг для WAV-клипа (16к моно; чужой sr — ошибка, вызывающий режет ffmpeg'ом в 16к). Пустой/
     /// слишком короткий клип (<1 кадра) -> ошибка. Возвращает 256-d L2-нормированный вектор.
-    pub fn embed_wav(&mut self, wav: &Path) -> Result<Vec<f32>, String> {
+    pub fn embed_wav(&mut self, wav: &Path) -> Result<Vec<f32>, FacesError> {
         let (samples, sr) = read_wav_mono_f32(wav)?;
         if sr != SAMPLE_RATE {
-            return Err(format!("voice: ждём {SAMPLE_RATE}Гц, получено {sr}"));
+            return Err(FacesError::SampleRate { expected: SAMPLE_RATE, got: sr });
         }
         self.embed_samples(&samples)
     }
 
     /// Эмбеддинг для готовых сэмплов моно f32 @16к (в [-1,1]). Kaldi считает по int16-масштабу, поэтому
     /// внутри домножаем на 32768.
-    pub fn embed_samples(&mut self, samples: &[f32]) -> Result<Vec<f32>, String> {
+    pub fn embed_samples(&mut self, samples: &[f32]) -> Result<Vec<f32>, FacesError> {
         let feats = self.mel.fbank(samples); // [T][80], уже с CMN
         let t = feats.len();
         if t == 0 {
-            return Err("voice: клип короче одного кадра fbank".into());
+            return Err(FacesError::ClipTooShort);
         }
         // Вход графа WeSpeaker — ровно 3-D [1,T,80] (b,t,mel). Строим row-major flat и отдаём run_3d.
         let mut flat = Vec::with_capacity(t * NUM_MEL_BINS);
@@ -321,22 +322,22 @@ fn fft_inplace(re: &mut [f32], im: &mut [f32]) {
 // ─── WAV-декод (mono f32 @native sr) ────────────────────────────────────────────────────────────────
 // Порт wavio::read_mono_f32 из dub-server (крейт не должен зависеть от сервера — hound локально).
 
-fn read_wav_mono_f32(path: &Path) -> Result<(Vec<f32>, u32), String> {
+fn read_wav_mono_f32(path: &Path) -> Result<(Vec<f32>, u32), FacesError> {
     use hound::{SampleFormat, WavReader};
-    let mut r = WavReader::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    let mut r = WavReader::open(path).map_err(|e| FacesError::Io(format!("open {}: {e}", path.display())))?;
     let spec = r.spec();
     let ch = spec.channels.max(1) as usize;
     let interleaved: Vec<f32> = match spec.sample_format {
         SampleFormat::Float => r
             .samples::<f32>()
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| format!("read f32: {e}"))?,
+            .map_err(|e| FacesError::Io(format!("read f32: {e}")))?,
         SampleFormat::Int => {
             let max = (1i64 << (spec.bits_per_sample - 1)) as f32;
             r.samples::<i32>()
                 .map(|s| s.map(|v| v as f32 / max))
                 .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| format!("read int: {e}"))?
+                .map_err(|e| FacesError::Io(format!("read int: {e}")))?
         }
     };
     let mono: Vec<f32> = if ch <= 1 {

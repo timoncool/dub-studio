@@ -135,16 +135,10 @@ impl LlamaServer {
     /// процесс упал или не поднялся за ready_timeout_secs.
     pub fn start(opts: &ServerOpts) -> Result<Self, LlmError> {
         if !opts.bin.is_file() {
-            return Err(LlmError::Spawn(format!(
-                "llama-server не найден: {}",
-                opts.bin.display()
-            )));
+            return Err(LlmError::BinaryMissing(opts.bin.clone()));
         }
         if !opts.model.is_file() {
-            return Err(LlmError::Spawn(format!(
-                "GGUF-модель не найдена: {}",
-                opts.model.display()
-            )));
+            return Err(LlmError::ModelMissing(opts.model.clone()));
         }
         let port = free_port()?;
         // Env-оверрайды памяти для слабых машин (баг-репорт: OOM «prefill graph» на 32ГБ RAM — на 64ГБ
@@ -211,21 +205,20 @@ impl LlamaServer {
         let log_file: LogFile = match &opts.log_file {
             Some(path) => {
                 if let Some(dir) = path.parent() {
-                    std::fs::create_dir_all(dir).map_err(|e| {
-                        LlmError::Spawn(format!("лог llama-server {}: {e}", dir.display()))
-                    })?;
+                    std::fs::create_dir_all(dir)
+                        .map_err(|e| LlmError::LogFile { path: dir.to_path_buf(), error: e.to_string() })?;
                 }
                 let mut f = std::fs::OpenOptions::new()
                     .create(true)
                     .append(true)
                     .open(path)
-                    .map_err(|e| LlmError::Spawn(format!("лог llama-server {}: {e}", path.display())))?;
-                let _ = writeln!(f, "==== {:?} (порт {port})", cmd);
+                    .map_err(|e| LlmError::LogFile { path: path.clone(), error: e.to_string() })?;
+                let _ = writeln!(f, "==== {:?} (port {port})", cmd);
                 Some(Arc::new(Mutex::new(f)))
             }
             None => None,
         };
-        let mut child = cmd
+        let mut child = dub_core::proc::dies_with_parent(&mut cmd)
             .spawn()
             .map_err(|e| LlmError::Spawn(format!("spawn llama-server: {e}")))?;
 
@@ -262,10 +255,7 @@ impl LlamaServer {
         loop {
             // Процесс упал -> не ждём таймаут впустую.
             if let Ok(Some(status)) = self.child.try_wait() {
-                return Err(LlmError::Spawn(format!(
-                    "llama-server завершился до готовности ({status}); stderr: {}",
-                    tail_text(&self.log_tail)
-                )));
+                return Err(LlmError::ExitedEarly { status: status.to_string(), stderr: tail_text(&self.log_tail) });
             }
             match client.get(&health).send() {
                 Ok(r) if r.status().is_success() => {
@@ -281,11 +271,7 @@ impl LlamaServer {
                 _ => {}
             }
             if Instant::now() >= deadline {
-                return Err(LlmError::Spawn(format!(
-                    "llama-server не поднялся за {timeout_secs}с (порт {}); stderr: {}",
-                    self.port,
-                    tail_text(&self.log_tail)
-                )));
+                return Err(LlmError::NotReady { secs: timeout_secs, port: self.port, stderr: tail_text(&self.log_tail) });
             }
             std::thread::sleep(Duration::from_millis(400));
         }

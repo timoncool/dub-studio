@@ -92,6 +92,10 @@ Dub Studio 打开时会在 `http://127.0.0.1:8793/mcp` 提供 MCP 服务：Claud
 - **可续传下载** —— 大模型（10GB+）断线后从中断处续传，而非重新开始。
 - **想在哪算就在哪算** —— 分离、说话人分离和识别各自在 **GPU 与 CPU** 之间独立切换，识别、翻译、视觉和配音还可以交给 **OpenRouter**。下方的*各阶段运行在哪里*表列出了每个阶段实际能用什么。
 - **按硬件调优** —— 每个引擎都有多种量化（TTS Q8/Q6/Q4、翻译 Q4…Q8、ASR int8/fp32 或 Whisper tiny…large-v3-turbo、分离 Q8/Q5/Q4），在设置中切换；可限制 prefill 批大小与参考片段时长，以适配 8–12 GB 显卡和 32 GB 内存。
+- **整个应用使用你的语言** — 进度、错误、安装、选角以及智能体读取的报告都以窗口的六种语言之一显示。
+- **Google Gemini 声音** — 在本地引擎和 OpenRouter 之外可选 Gemini TTS，有独立密钥和实时模型列表；**Batch** 价格减半，停止的渲染会接上同一个已付费批次。
+- **说话人数量** — 自动或 1 到 8 人；长录音中的声音统一匹配，录音按约 90 秒的窗口识别。
+- **响度均衡** — 默认开启的开关：各句电平一致，配音为 -14 LUFS、-1 dBTP 上限；关闭则混音保持原样。
 - **完全便携** —— 不写入用户配置；删除文件夹不留痕迹。
 
 ## 截图
@@ -106,7 +110,7 @@ Dub Studio 打开时会在 `http://127.0.0.1:8793/mcp` 提供 MCP 服务：Claud
 
 ## 环境要求
 
-- **系统：** Windows 10 / 11 (x64)
+- **系统：** Windows 10 / 11 (x64)；Linux x86-64 为实验性版本（见 *Linux（实验性）*）
 - **显卡：** 显存 8 GB 及以上的 NVIDIA 显卡（提供 8、12、16、24 和 32 GB 的预设）及较新的驱动。本地配音（Higgs Audio）、翻译和视觉（Gemma）通过 CUDA 运行，字幕通过 NVENC 烧录。没有 NVIDIA 时，只有*各阶段运行在哪里*中标为 CPU 或云端的阶段可以运行，且该配置未经测试
 - **WebView2** —— Windows 11 已预装；在 Windows 10 上由安装程序下载（若失败见*故障排除*）
 - **磁盘：** 默认模型、引擎和运行库约 15 GB（首次运行时获取），另需项目空间；备用量化版本和 Whisper 模型为额外占用
@@ -146,6 +150,7 @@ Visual C++ 运行库和 PP-OCR 模型随发行包提供，不会下载；NVIDIA 
 | Higgs Audio v3 Q4_K_M | 可选 | [q4_k_m.gguf](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/q4_k_m.gguf) → `models\higgs-q4_k_m\q4_k_m.gguf`<br>[config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/config.json) → `models\higgs-q4_k_m\config.json`<br>[chat_template.jinja](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/chat_template.jinja) → `models\higgs-q4_k_m\chat_template.jinja`<br>[tokenizer.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/tokenizer.json) → `models\higgs-q4_k_m\tokenizer.json`<br>[tokenizer_config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/tokenizer_config.json) → `models\higgs-q4_k_m\tokenizer_config.json`<br>[higgs_audio_v2_tokenizer_config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/higgs_audio_v2_tokenizer_config.json) → `models\higgs-q4_k_m\higgs_audio_v2_tokenizer_config.json` | 4.1 GB | 原样放入，路径见箭头后 |
 | Parakeet-TDT 0.6B v3 fp32 | 可选 | [encoder-model.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.onnx) → `models\tdt-fp32\encoder-model.onnx`<br>[encoder-model.onnx.data](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.onnx.data) → `models\tdt-fp32\encoder-model.onnx.data`<br>[decoder_joint-model.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/decoder_joint-model.onnx) → `models\tdt-fp32\decoder_joint-model.onnx`<br>[nemo128.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx) → `models\tdt-fp32\nemo128.onnx`<br>[vocab.txt](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/vocab.txt) → `models\tdt-fp32\vocab.txt`<br>[config.json](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/config.json) → `models\tdt-fp32\config.json` | 2.5 GB | 原样放入，路径见箭头后 |
 | Parakeet Ultra 0.6B fp32 (Moondream) | 可选 | [encoder-model.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/encoder-model.onnx) → `models\tdt-ultra\encoder-model.onnx`<br>[encoder-model.onnx.data](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/encoder-model.onnx.data) → `models\tdt-ultra\encoder-model.onnx.data`<br>[decoder_joint-model.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/decoder_joint-model.onnx) → `models\tdt-ultra\decoder_joint-model.onnx`<br>[vocab.txt](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/vocab.txt) → `models\tdt-ultra\vocab.txt`<br>[nemo128.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/tdt/nemo128.onnx) → `models\tdt-ultra\nemo128.onnx`<br>[config.json](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/config.json) → `models\tdt-ultra\config.json` | 2.6 GB | 原样放入，路径见箭头后 |
+| Parakeet Ultra 0.6B int8 (Moondream) | 可选 | [encoder-model.int8.onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/encoder-model.int8.onnx) → `models\tdt-ultra-int8\encoder-model.int8.onnx`<br>[decoder_joint-model.int8.onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/decoder_joint-model.int8.onnx) → `models\tdt-ultra-int8\decoder_joint-model.int8.onnx`<br>[vocab.txt](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/vocab.txt) → `models\tdt-ultra-int8\vocab.txt`<br>[nemo128.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx) → `models\tdt-ultra-int8\nemo128.onnx`<br>[config.json](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/config.json) → `models\tdt-ultra-int8\config.json` | 0.7 GB | 原样放入，路径见箭头后 |
 | Whisper-Faster (faster-whisper standalone) | 可选 | [Whisper-Faster_r192.3_windows.zip](https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip) | 88 MB | 解压文件（不含子文件夹）到 `tools\whisper\` |
 | Whisper CUDA (cuBLAS 11, cuDNN 8) | 可选 | [libcublas-windows-x86_64-11.11.3.6-archive.zip](https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip)<br>[cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip](https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip) | 1.1 GB | 取出压缩包中所有 .dll 放入 `tools\whisper\` |
 | Whisper tiny | 可选 | [model.bin](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/model.bin) → `models\whisper\faster-whisper-tiny\model.bin`<br>[config.json](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/config.json) → `models\whisper\faster-whisper-tiny\config.json`<br>[tokenizer.json](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/tokenizer.json) → `models\whisper\faster-whisper-tiny\tokenizer.json`<br>[vocabulary.txt](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/vocabulary.txt) → `models\whisper\faster-whisper-tiny\vocabulary.txt` | 78 MB | 原样放入，路径见箭头后 |
@@ -187,6 +192,19 @@ Visual C++ 运行库和 PP-OCR 模型随发行包提供，不会下载；NVIDIA 
 
 没有 NVIDIA 时，配音、翻译、视觉和识别可以交给云端，分离和说话人分离可以用 CPU，但烧录没有 CPU 路径，因此这样的机器不属于经过测试的配置。
 
+## 匿名统计与新闻
+
+应用在启动时以及每六小时向作者的服务器获取一次新闻。请求不带任何 id，所以无论下面如何选择，新闻都会到达：新条目显示在“新功能”顶部，离线时应用显示其版本自带的新闻。
+
+首次启动界面有一个复选框 **发送匿名使用统计**，默认勾选。同样的开关在 设置 → 匿名统计 中，旁边是 **发送的内容**（今天的确切报告）和 **新的安装 ID**。勾选期间，应用每天发送一次：
+
+- 在本机生成的随机安装 id，不与硬件或账户绑定；取消勾选即删除它；
+- 应用及其版本、操作系统名称和版本、界面语言；
+- 显卡：厂商、显存档位（8 及以下、12、16、24+ GB）以及 CUDA 是否可用；
+- 当天有多少任务（分析、配音、渲染、导出、下载等）完成、失败或被取消。
+
+绝不发送：视频、转录、翻译、声音、文件名或路径，以及任何个人信息。服务器保存 Cloudflare 报告的连接所在国家，而不是 IP 地址。环境变量 `DO_NOT_TRACK=1` 或 `STUDIO_TELEMETRY=0` 会完全关闭统计：不会生成 id，也不计数任何内容。
+
 ## 故障排除
 
 **安装程序停在 WebView2。** 应用窗口运行在 Microsoft Edge WebView2 上，Windows 缺少它时由安装程序下载。连接被屏蔽或不稳定，或在拒绝微软小型引导程序的 Windows 10 版本上（错误 0x80040902），下载会失败。请使用微软的离线安装包 [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701) 安装 WebView2，然后再次运行 Dub Studio 的安装程序。
@@ -218,9 +236,17 @@ cd desktop && npm install && npx tauri build            # 3) 桌面外壳 (Tauri
 
 需要 Node 20+、Rust（MSVC 工具链）与 WebView2。原生引擎无需重建 —— 应用会下载预编译二进制。
 
+### Linux（实验性）
+
+Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份代码，配的是同一批引擎的 Linux 版本（llama.cpp、ONNX Runtime、BSRoformer.cpp、ffmpeg、Linux 版 Higgs 引擎、yt-dlp、faster-whisper），但作者在 Windows 上工作，没有在真实的 Linux 桌面上跑过。**如果你日常用 Linux，非常欢迎你把它们打磨好，再通过 pull request 把修复合回来。**
+
+- 本地配音需要 NVIDIA RTX 30 或更新的显卡：Linux 版 Higgs 引擎只为 sm 86、89 和 120 编译。云端声音在任何机器上都能用。
+- NVIDIA 驱动（580 或更新）、`libgomp1` 和 `libssl3` 由系统提供；模型、引擎和 CUDA 库由应用在首次运行时下载到 `~/.local/share/dub-studio`（`$XDG_DATA_HOME`）。
+- 手动构建：`Linux build (experimental)` workflow（`.github/workflows/release-linux.yml`）或 `scripts/build-release-linux.sh <含 models/ocr 的文件夹>`。
+
 ## 参与贡献与分支
 
-**非常欢迎协作者。** 我会由衷高兴看到 Dub Studio 被移植到其他平台和显卡上 —— 架构完全支持，我只是没有精力亲自做这些移植。如果你想让它跑在 **AMD / Intel 显卡、macOS 或 Linux** 上，尽管 fork —— 欢迎 PR。
+**非常欢迎协作者。** 我会由衷高兴看到 Dub Studio 被移植到其他平台和显卡上 —— 架构完全支持，我只是没有精力亲自做这些移植。如果你想让它跑在 **AMD / Intel 显卡、macOS 或 Linux** 上，尽管 fork —— 欢迎 PR。Linux 已经有实验性版本（见 *Linux（实验性）*）：把它打磨好是最受欢迎的帮助。
 
 **额外的本地化**同样欢迎：目前应用和落地页支持 6 种语言 —— 翻译语言文件（`frontend/src/locales/` 及 `docs/index.html` 中的字典）并提交 PR 加入你的语言。
 
@@ -233,7 +259,7 @@ cd desktop && npm install && npx tauri build            # 3) 桌面外壳 (Tauri
 
 - **[Boson AI](https://huggingface.co/bosonai)** —— Higgs Audio v3 模型；**[drbaph / Higgs-Audio-v3-Studio](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio)** —— GGUF 量化与原生 `audiocpp_engine.dll`。
 - **[NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)**（CC-BY-4.0）—— ASR；ONNX 权重来自 [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx)，运行时 [altunenes/parakeet-rs](https://github.com/altunenes/parakeet-rs)。
-- **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)**，由 **[Moondream](https://huggingface.co/moondream)** 基于 NVIDIA 的 parakeet-tdt-0.6b-v3 微调（CC-BY-4.0）—— 可选的微调 ASR，识别错误更少；ONNX 导出来自 [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs)。
+- **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)**，由 **[Moondream](https://huggingface.co/moondream)** 基于 NVIDIA 的 parakeet-tdt-0.6b-v3 微调（CC-BY-4.0）—— 可选的微调 ASR，识别错误更少；ONNX 导出来自 [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs)。 int8: [Masterx/parakeet-tdt-0.6b-ultra-onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx).
 - **[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization)**（Streaming Sortformer v3，[OpenMDW-1.1](https://openmdw.ai/license/1-1/)）—— 说话人分离，最多 8 个说话人；ONNX 导出来自 [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs)。
 - **[Google Gemma](https://huggingface.co/google/gemma-4-12b-it-qat-q4_0-gguf)** —— Gemma-4 12B（翻译与视觉）、[unsloth](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF) 的量化版本，以及运行它们的 [llama.cpp](https://github.com/ggml-org/llama.cpp)。
 - **[chenmozhijin / BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp)** 与 **[GaboxR67](https://huggingface.co/GaboxR67)** —— 原生分离引擎及其 GGUF 模型，以及 Mel-Band Roformer 检查点。

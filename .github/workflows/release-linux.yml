@@ -1,0 +1,78 @@
+name: Linux build (experimental)
+
+# Dub Studio for Linux x86-64 (.deb and AppImage), started by hand. Engines and CUDA libraries are
+# downloaded in the app; the PP-OCR models come from the portable zip of the last published release. With a
+# tag the builds are attached to that release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the builds to; empty builds only"
+        required: false
+
+concurrency:
+  group: linux-build-${{ github.ref }}-${{ inputs.tag }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config ffmpeg \
+            libssl-dev libasound2-dev libwayland-dev libxkbcommon-dev libgtk-3-dev \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev libxdo-dev \
+            patchelf file libfuse2t64
+      - name: PP-OCR models
+        run: |
+          set -e
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*portable*.zip' --dir "$RUNNER_TEMP/portable"
+          unzip -q "$RUNNER_TEMP"/portable/*.zip -d "$RUNNER_TEMP/portable/x"
+          det="$(find "$RUNNER_TEMP/portable/x" -path '*/models/ocr/det.onnx' | head -n 1)"
+          [ -n "$det" ] || { echo "no models/ocr in the $tag portable zip"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/bundled/models"
+          cp -r "$(dirname "$det")" "$RUNNER_TEMP/bundled/models/ocr"
+          ls -la "$RUNNER_TEMP/bundled/models/ocr"
+      - name: Build
+        run: bash scripts/build-release-linux.sh "$RUNNER_TEMP/bundled"
+      - name: Collect
+        run: |
+          set -e
+          mkdir -p out
+          version="$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")"
+          deb="$(find desktop/src-tauri/target/release/bundle/deb -name '*.deb' | head -n 1)"
+          appimage="$(find desktop/src-tauri/target/release/bundle/appimage -name '*.AppImage' | head -n 1)"
+          cp "$deb" "out/Dub-Studio-${version}-linux-amd64-experimental.deb"
+          cp "$appimage" "out/Dub-Studio-${version}-linux-x86_64-experimental.AppImage"
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dub-studio-linux-x64
+          path: out/*
+      - name: Attach to the release
+        if: ${{ inputs.tag != '' }}
+        run: gh release upload "${{ inputs.tag }}" out/* --clobber

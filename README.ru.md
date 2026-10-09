@@ -92,6 +92,10 @@
 - **Устойчивая докачка** — большие модели (10 ГБ+) при обрыве связи докачиваются с места, а не заново.
 - **Считай где хочешь** — сепарация, диаризация и распознавание по отдельности переключаются между **GPU и CPU**, а распознавание, перевод, vision и озвучку можно вынести в **OpenRouter**. Таблица *Что где работает* ниже показывает, что реально может использовать каждая стадия.
 - **Настройка под железо** — у каждого движка несколько квантов (TTS Q8/Q6/Q4, перевод Q4…Q8, ASR int8/fp32 или Whisper tiny…large-v3-turbo, сепарация Q8/Q5/Q4) — переключаются в настройках; лимиты prefill-батча и длины реф-клипа под 8–12 ГБ GPU и 32 ГБ RAM.
+- **Всё приложение на вашем языке** — прогресс, ошибки, установка, кастинг и отчёты для агента приходят на любом из шести языков окна.
+- **Голоса Google Gemini** — Gemini TTS рядом с локальным движком и OpenRouter, свой ключ и живой список моделей; **Batch** вдвое дешевле, а остановленный рендер подхватывает тот же оплаченный батч.
+- **Число спикеров** — авто или от 1 до 8 человек; голоса сопоставляются по всей длинной записи, а распознаётся она окнами примерно по 90 секунд.
+- **Выравнивание громкости** — переключатель, по умолчанию включён: фразы на одном уровне, дубляж на -14 LUFS с потолком -1 dBTP; выключен — микс остаётся как есть.
 - **Полностью портативная** — ничего не пишется в профиль пользователя; удалил папку — не осталось следа.
 
 ## Скриншоты
@@ -106,7 +110,7 @@
 
 ## Требования
 
-- **ОС:** Windows 10 / 11 (x64)
+- **ОС:** Windows 10 / 11 (x64); Linux x86-64 — экспериментальная сборка (см. *Linux (экспериментально)*)
 - **GPU:** NVIDIA от 8 ГБ VRAM (есть пресеты для 8, 12, 16, 24 и 32 ГБ) и свежий драйвер. Локальные озвучка (Higgs Audio), перевод и vision (Gemma) идут на CUDA, а субтитры вжигаются через NVENC. Без NVIDIA могут работать только стадии, которые в таблице *Что где работает* отмечены для CPU или облака, и такая конфигурация не проверялась
 - **WebView2** — предустановлен в Windows 11; в Windows 10 его скачивает установщик (если не вышло — см. *Решение проблем*)
 - **Диск:** ~15 ГБ на модели по умолчанию, движки и рантайм (тянутся при первом запуске) + место под проекты; альтернативные кванты и модели Whisper — сверх этого
@@ -146,6 +150,7 @@
 | Higgs Audio v3 Q4_K_M | по желанию | [q4_k_m.gguf](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/q4_k_m.gguf) → `models\higgs-q4_k_m\q4_k_m.gguf`<br>[config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/config.json) → `models\higgs-q4_k_m\config.json`<br>[chat_template.jinja](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/chat_template.jinja) → `models\higgs-q4_k_m\chat_template.jinja`<br>[tokenizer.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/tokenizer.json) → `models\higgs-q4_k_m\tokenizer.json`<br>[tokenizer_config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/tokenizer_config.json) → `models\higgs-q4_k_m\tokenizer_config.json`<br>[higgs_audio_v2_tokenizer_config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/higgs_audio_v2_tokenizer_config.json) → `models\higgs-q4_k_m\higgs_audio_v2_tokenizer_config.json` | 4.1 GB | как есть, по пути после стрелки |
 | Parakeet-TDT 0.6B v3 fp32 | по желанию | [encoder-model.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.onnx) → `models\tdt-fp32\encoder-model.onnx`<br>[encoder-model.onnx.data](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.onnx.data) → `models\tdt-fp32\encoder-model.onnx.data`<br>[decoder_joint-model.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/decoder_joint-model.onnx) → `models\tdt-fp32\decoder_joint-model.onnx`<br>[nemo128.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx) → `models\tdt-fp32\nemo128.onnx`<br>[vocab.txt](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/vocab.txt) → `models\tdt-fp32\vocab.txt`<br>[config.json](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/config.json) → `models\tdt-fp32\config.json` | 2.5 GB | как есть, по пути после стрелки |
 | Parakeet Ultra 0.6B fp32 (Moondream) | по желанию | [encoder-model.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/encoder-model.onnx) → `models\tdt-ultra\encoder-model.onnx`<br>[encoder-model.onnx.data](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/encoder-model.onnx.data) → `models\tdt-ultra\encoder-model.onnx.data`<br>[decoder_joint-model.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/decoder_joint-model.onnx) → `models\tdt-ultra\decoder_joint-model.onnx`<br>[vocab.txt](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/vocab.txt) → `models\tdt-ultra\vocab.txt`<br>[nemo128.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/tdt/nemo128.onnx) → `models\tdt-ultra\nemo128.onnx`<br>[config.json](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/config.json) → `models\tdt-ultra\config.json` | 2.6 GB | как есть, по пути после стрелки |
+| Parakeet Ultra 0.6B int8 (Moondream) | по желанию | [encoder-model.int8.onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/encoder-model.int8.onnx) → `models\tdt-ultra-int8\encoder-model.int8.onnx`<br>[decoder_joint-model.int8.onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/decoder_joint-model.int8.onnx) → `models\tdt-ultra-int8\decoder_joint-model.int8.onnx`<br>[vocab.txt](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/vocab.txt) → `models\tdt-ultra-int8\vocab.txt`<br>[nemo128.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx) → `models\tdt-ultra-int8\nemo128.onnx`<br>[config.json](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/config.json) → `models\tdt-ultra-int8\config.json` | 0.7 GB | как есть, по пути после стрелки |
 | Whisper-Faster (faster-whisper standalone) | по желанию | [Whisper-Faster_r192.3_windows.zip](https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip) | 88 MB | распаковать файлы без подпапок в `tools\whisper\` |
 | Whisper CUDA (cuBLAS 11, cuDNN 8) | по желанию | [libcublas-windows-x86_64-11.11.3.6-archive.zip](https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip)<br>[cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip](https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip) | 1.1 GB | взять все .dll из архива в `tools\whisper\` |
 | Whisper tiny | по желанию | [model.bin](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/model.bin) → `models\whisper\faster-whisper-tiny\model.bin`<br>[config.json](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/config.json) → `models\whisper\faster-whisper-tiny\config.json`<br>[tokenizer.json](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/tokenizer.json) → `models\whisper\faster-whisper-tiny\tokenizer.json`<br>[vocabulary.txt](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/vocabulary.txt) → `models\whisper\faster-whisper-tiny\vocabulary.txt` | 78 MB | как есть, по пути после стрелки |
@@ -187,6 +192,19 @@
 
 Без NVIDIA озвучку, перевод, vision и распознавание можно отправить в облако, а сепарацию и диаризацию — на CPU, но у вжигания нет пути на CPU, поэтому такая машина — непроверенная конфигурация.
 
+## Анонимная статистика и новости
+
+Приложение спрашивает новости у сервера автора при запуске и раз в шесть часов. В запросе нет никакого id, поэтому новости приходят при любом выборе ниже: новые встают сверху в «Что нового», а без сети приложение показывает новости своего релиза.
+
+На экране первого запуска есть галочка **Отправлять анонимную статистику использования**, по умолчанию включена. Тот же переключатель — в Настройках → «Анонимная статистика», рядом с **Что отправляется** (ровно сегодняшний отчёт) и **Новый id установки**. Пока галочка стоит, приложение раз в день отправляет:
+
+- случайный id установки, созданный на этом компьютере, не привязанный к железу или аккаунту; снятие галочки его удаляет;
+- приложение и его версию, название и версию ОС, язык окна;
+- видеокарту: производитель, класс видеопамяти (до 8, 12, 16, 24+ ГБ) и работает ли CUDA;
+- сколько задач (анализ, дубляж, рендер, экспорт, загрузка и остальные) за день завершились, упали или отменены.
+
+Никогда: видео, транскрипты, переводы, голоса, имена файлов и пути, ничего личного. Сервер хранит страну, которую Cloudflare сообщает для соединения, а не IP-адрес. `DO_NOT_TRACK=1` или `STUDIO_TELEMETRY=0` в окружении выключают статистику полностью: id не создаётся и ничего не считается.
+
 ## Решение проблем
 
 **Установщик останавливается на WebView2.** Окно приложения работает на Microsoft Edge WebView2, и установщик скачивает его, если в Windows его нет. При закрытом или нестабильном соединении, а также на сборках Windows 10, которые отвергают маленький загрузчик Microsoft (ошибка 0x80040902), скачивание не удаётся. Поставь WebView2 автономным установщиком Microsoft, [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701), и запусти установщик Dub Studio снова.
@@ -218,6 +236,14 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 Требуется Node 20+, Rust (MSVC toolchain) и WebView2. Нативные движки пересобирать не нужно — приложение качает готовые.
 
+### Linux (экспериментально)
+
+Сборки для Linux x86-64 (.deb и AppImage) — **экспериментальные**. Они собраны из того же кода с Linux-версиями тех же движков (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, движок Higgs для Linux, yt-dlp, faster-whisper), но автор работает на Windows и на живом Linux-десктопе их не гонял. **Будет круто, если кто-то, кто сидит на Linux, дошлифует их и вольёт правки обратно пулл-реквестом.**
+
+- Локальной озвучке нужна NVIDIA RTX 30 или новее: движок Higgs для Linux собран только под sm 86, 89 и 120. Облачные голоса работают на любой машине.
+- Драйвер NVIDIA (580 или новее), `libgomp1` и `libssl3` берутся из системы; модели, движки и CUDA-библиотеки приложение скачивает при первом запуске в `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
+- Собираются вручную: workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) или `scripts/build-release-linux.sh <папка с models/ocr>`.
+
 ## Другие портативные нейросети
 
 | Проект | Описание |
@@ -233,7 +259,7 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 ## Контрибьюторы и форки
 
-**Коллабораторам всегда рады.** Я был бы искренне рад увидеть форки Dub Studio на другие платформы и видеокарты — архитектура это позволяет, у меня просто нет сил заниматься портами самому. Хочешь запустить его на **AMD / Intel GPU, macOS или Linux** — форкай и вперёд, PR приветствуются.
+**Коллабораторам всегда рады.** Я был бы искренне рад увидеть форки Dub Studio на другие платформы и видеокарты — архитектура это позволяет, у меня просто нет сил заниматься портами самому. Хочешь запустить его на **AMD / Intel GPU, macOS или Linux** — форкай и вперёд, PR приветствуются. Для Linux уже есть экспериментальная сборка (см. *Linux (экспериментально)*): дошлифовать её — самая желанная помощь.
 
 **Дополнительные локализации** тоже приветствуются: сейчас приложение и лендинг на 6 языках — переведи файлы локалей (`frontend/src/locales/` и словарь в `docs/index.html`) и открой PR со своим языком.
 
@@ -246,7 +272,7 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 - **[Boson AI](https://huggingface.co/bosonai)** — модель Higgs Audio v3, и **[drbaph / Higgs-Audio-v3-Studio](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio)** — GGUF-кванты и нативный движок `audiocpp_engine.dll`.
 - **[NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)** (CC-BY-4.0) — ASR; ONNX-веса из [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx), рантайм [altunenes/parakeet-rs](https://github.com/altunenes/parakeet-rs).
-- **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)** от **[Moondream](https://huggingface.co/moondream)** на базе parakeet-tdt-0.6b-v3 от NVIDIA (CC-BY-4.0) — опциональный дообученный ASR с меньшим числом ошибок; ONNX-экспорт из [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs).
+- **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)** от **[Moondream](https://huggingface.co/moondream)** на базе parakeet-tdt-0.6b-v3 от NVIDIA (CC-BY-4.0) — опциональный дообученный ASR с меньшим числом ошибок; ONNX-экспорт из [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs). int8: [Masterx/parakeet-tdt-0.6b-ultra-onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx).
 - **[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization)** (Streaming Sortformer v3, [OpenMDW-1.1](https://openmdw.ai/license/1-1/)) — диаризация спикеров, до 8 голосов; ONNX-экспорт из [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs).
 - **[Google Gemma](https://huggingface.co/google/gemma-4-12b-it-qat-q4_0-gguf)** — Gemma-4 12B (перевод и vision), кванты от [unsloth](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF) и [llama.cpp](https://github.com/ggml-org/llama.cpp), на котором они запускаются.
 - **[chenmozhijin / BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp)** и **[GaboxR67](https://huggingface.co/GaboxR67)** — нативный движок сепарации с GGUF-моделями и чекпойнт Mel-Band Roformer.

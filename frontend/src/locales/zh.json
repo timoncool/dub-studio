@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "在本地为任何视频配音和翻译。"
   },
+  "speakers": {
+    "count": "说话人数",
+    "countHint": "如果已知参与者人数，请指定人数。系统会在录音的不同片段之间匹配同一个人的声音。"
+  },
   "drop": {
     "title": "拖入视频开始配音",
     "hint": "MP4 或 MOV — 全部在本机运行",
@@ -109,6 +113,8 @@
     "addSpeakerPick": "请先勾选一些句子，或将播放头移到某句上",
     "gain": "轨道增益",
     "gainHint": "增强整条音轨（重新生成/导出时应用）。",
+    "loudness": "响度均衡",
+    "loudnessHint": "将各句统一到同一响度，配音整体调到 -14 LUFS、峰值上限 -1 dBTP，与各平台播放一致。关闭：保持原始混音。",
     "origGain": "原声音量",
     "origGainHint": "旁白：原声轨道在译文下方的音量。",
     "langSearch": "搜索语言…",
@@ -205,7 +211,9 @@
       "agent": "智能体 (MCP)",
       "agentHint": "将 AI 智能体连接到工作室",
       "about": "关于",
-      "aboutHint": "版本、链接与数据文件夹"
+      "aboutHint": "版本、链接与数据文件夹",
+      "privacy": "匿名统计",
+      "privacyHint": "匿名统计与来自作者的新闻"
     },
     "voiceGroup": "语音生成",
     "diagnostics": "诊断",
@@ -779,7 +787,9 @@
     "fp32": "fp32",
     "fp32Hint": "NVIDIA 基础模型，完整 fp32 精度（约 2.6 GB）",
     "ultra": "Ultra · fp32",
-    "ultraHint": "Moondream 在基础模型上微调的版本：识别错误更少，同样支持 25 种语言 · fp32 约 2.6 GB"
+    "ultraHint": "Moondream 在基础模型上微调的版本：识别错误更少，同样支持 25 种语言 · fp32 约 2.6 GB",
+    "ultraInt8": "Ultra · int8",
+    "ultraInt8Hint": "Moondream 在基础模型上微调并量化的版本：识别错误更少，同样支持 25 种语言 · int8 约 0.7 GB"
   },
   "units": {
     "gb": "GB",
@@ -1271,5 +1281,36 @@
       "failed": "上次更新：{{error}}"
     },
     "pickQuality": "选择其他画质"
+  },
+  "google": {
+    "keyTitle": "Google Gemini API 密钥",
+    "keyHint": "直接使用 Google TTS 和批处理；密钥与设置分开存储。",
+    "envKey": "由 {{name}} 提供",
+    "savedKey": "密钥已保存；输入新密钥以替换",
+    "keyPlaceholder": "Google AI Studio API 密钥",
+    "verifySave": "验证并保存",
+    "deleteKey": "删除 Google 密钥",
+    "error": "Google：{{detail}}",
+    "model": "Google TTS 模型",
+    "pickModel": "选择模型",
+    "mode": "请求模式",
+    "standard": "标准 — 即时请求",
+    "batch": "批处理 — API 费率降低 50%",
+    "batchHint": "Google 将批处理加入队列（目标：24 小时）。取消本地任务会暂停轮询，远程批处理继续运行。恢复时读取已有结果，不会重复付费提交。用量和估算费用：MCP 中的 project_google_tts_report。",
+    "standardHint": "按云端并发设置发送并行直接请求。用量和估算费用：MCP 中的 project_google_tts_report。",
+    "provider_local": "本地 · Higgs",
+    "provider_openrouter": "通过 OpenRouter",
+    "provider_google": "Google · 直连"
+  },
+  "hub": {
+    "why": "有多少人在用 Dub Studio、用来做什么，决定接下来做什么。不含任何个人信息：没有视频、文本、声音或文件名——只有任务计数、版本和显卡档次。",
+    "checkbox": "发送匿名使用统计",
+    "what": "发送的内容",
+    "byEnv": "已被环境变量 DO_NOT_TRACK 或 STUDIO_TELEMETRY 关闭。",
+    "reset": "新的安装 ID",
+    "nothing": "今天还没有需要发送的内容。",
+    "feedSource": "新闻来源",
+    "feedNever": "尚未获取服务器新闻：工作室显示其版本自带的新闻。",
+    "refresh": "立即检查"
   }
 }

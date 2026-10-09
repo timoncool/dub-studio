@@ -139,11 +139,18 @@ impl Bench {
                     "bound": bound,
                 }),
             );
-            emit_line(&format!(
-                "  ⏱ {name}: {dur:.1}с | GPU ~{gpu_avg:.0}% (пик {gpu_max:.0}%) | CPU ~{cpu_avg:.0}% | VRAM {vram_max:.0}МБ | узко: {bound}"
+            emit_line(&t!(
+                "bench-stage",
+                name = name.clone(),
+                seconds = format!("{dur:.1}"),
+                gpu_avg = format!("{gpu_avg:.0}"),
+                gpu_max = format!("{gpu_max:.0}"),
+                cpu_avg = format!("{cpu_avg:.0}"),
+                vram = format!("{vram_max:.0}"),
+                bound = bound
             ));
         }
-        emit_line(&format!("  ⏱ {} ИТОГО: {total:.1}с", self.label));
+        emit_line(&t!("bench-total", label = self.label.clone(), seconds = format!("{total:.1}")));
         drop(samples);
         // дописать/смёржить bench.json (analyze и render пишут в один файл)
         let path = self.dir.join("bench.json");

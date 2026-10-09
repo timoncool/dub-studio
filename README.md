@@ -92,6 +92,10 @@ Load a clip once and send it into any mode — right inside the editor.
 - **One-button setup + resumable downloads + in-app auto-update** — models, engines, CUDA/VC++ runtime and ffmpeg download on first run; large models (10 GB+) **resume from where they stopped** after a dropped connection instead of restarting; the app updates itself.
 - **Run each stage where you want** — separation, diarization and recognition each switch independently between **GPU and CPU**, and recognition, translation, vision and voice can be offloaded to **OpenRouter**. The *What runs where* table below lists what each stage can actually use.
 - **Tune for your hardware** — every engine ships multiple quants (TTS Q8/Q6/Q4, translation Q4…Q8, ASR int8/fp32 or Whisper tiny…large-v3-turbo, separation Q8/Q5/Q4) — switch in settings; cap the **prefill batch** and **voice-reference length** to fit 8–12 GB GPUs and 32 GB RAM.
+- **The whole app in your language** — progress, errors, setup, casting and the reports an agent reads come in the six languages of the window.
+- **Google Gemini voices** — Gemini TTS beside the local engine and OpenRouter, with its own key and a live model list; **Batch** runs at half the price, and a stopped render picks up the same paid batch.
+- **Number of speakers** — leave it automatic or set 1 to 8 people; voices are matched across a long recording, which is transcribed in windows of about 90 seconds.
+- **Even out loudness** — a switch, on by default: phrases at one level and the dub at -14 LUFS with a -1 dBTP ceiling; off, the mix stays as it came.
 - **Fully portable** — nothing is written to your user profile; delete the folder and no trace remains.
 
 ## Screenshots
@@ -106,7 +110,7 @@ Transcript mode — diarized transcript with per-speaker layout, karaoke play-al
 
 ## Requirements
 
-- **OS:** Windows 10 / 11 (x64)
+- **OS:** Windows 10 / 11 (x64); Linux x86-64 as an experimental build (see *Linux (experimental)*)
 - **GPU:** NVIDIA with 8 GB of VRAM or more (presets exist for 8, 12, 16, 24 and 32 GB) and a recent driver. Local voice (Higgs Audio), translation and vision (Gemma) run on CUDA, and subtitles are burned in with NVENC. Without NVIDIA only the stages that *What runs where* marks for the CPU or the cloud can run, and that setup is not tested
 - **WebView2** — preinstalled on Windows 11; on Windows 10 the installer fetches it (see *Troubleshooting* if that fails)
 - **Disk:** ~15 GB for the default models, engines and runtime (fetched on first run), plus room for your projects; the alternative quantizations and Whisper models are extra
@@ -146,6 +150,7 @@ The Visual C++ runtime and the PP-OCR models come inside the release and are not
 | Higgs Audio v3 Q4_K_M | optional | [q4_k_m.gguf](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/q4_k_m.gguf) → `models\higgs-q4_k_m\q4_k_m.gguf`<br>[config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/config.json) → `models\higgs-q4_k_m\config.json`<br>[chat_template.jinja](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/chat_template.jinja) → `models\higgs-q4_k_m\chat_template.jinja`<br>[tokenizer.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/tokenizer.json) → `models\higgs-q4_k_m\tokenizer.json`<br>[tokenizer_config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/tokenizer_config.json) → `models\higgs-q4_k_m\tokenizer_config.json`<br>[higgs_audio_v2_tokenizer_config.json](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/models/higgs-q4_k_m/higgs_audio_v2_tokenizer_config.json) → `models\higgs-q4_k_m\higgs_audio_v2_tokenizer_config.json` | 4.1 GB | as is, to the path after the arrow |
 | Parakeet-TDT 0.6B v3 fp32 | optional | [encoder-model.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.onnx) → `models\tdt-fp32\encoder-model.onnx`<br>[encoder-model.onnx.data](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/encoder-model.onnx.data) → `models\tdt-fp32\encoder-model.onnx.data`<br>[decoder_joint-model.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/decoder_joint-model.onnx) → `models\tdt-fp32\decoder_joint-model.onnx`<br>[nemo128.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx) → `models\tdt-fp32\nemo128.onnx`<br>[vocab.txt](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/vocab.txt) → `models\tdt-fp32\vocab.txt`<br>[config.json](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/config.json) → `models\tdt-fp32\config.json` | 2.5 GB | as is, to the path after the arrow |
 | Parakeet Ultra 0.6B fp32 (Moondream) | optional | [encoder-model.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/encoder-model.onnx) → `models\tdt-ultra\encoder-model.onnx`<br>[encoder-model.onnx.data](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/encoder-model.onnx.data) → `models\tdt-ultra\encoder-model.onnx.data`<br>[decoder_joint-model.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/decoder_joint-model.onnx) → `models\tdt-ultra\decoder_joint-model.onnx`<br>[vocab.txt](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/parakeet-ultra/vocab.txt) → `models\tdt-ultra\vocab.txt`<br>[nemo128.onnx](https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/tdt/nemo128.onnx) → `models\tdt-ultra\nemo128.onnx`<br>[config.json](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/config.json) → `models\tdt-ultra\config.json` | 2.6 GB | as is, to the path after the arrow |
+| Parakeet Ultra 0.6B int8 (Moondream) | optional | [encoder-model.int8.onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/encoder-model.int8.onnx) → `models\tdt-ultra-int8\encoder-model.int8.onnx`<br>[decoder_joint-model.int8.onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/decoder_joint-model.int8.onnx) → `models\tdt-ultra-int8\decoder_joint-model.int8.onnx`<br>[vocab.txt](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/vocab.txt) → `models\tdt-ultra-int8\vocab.txt`<br>[nemo128.onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx) → `models\tdt-ultra-int8\nemo128.onnx`<br>[config.json](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/config.json) → `models\tdt-ultra-int8\config.json` | 0.7 GB | as is, to the path after the arrow |
 | Whisper-Faster (faster-whisper standalone) | optional | [Whisper-Faster_r192.3_windows.zip](https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip) | 88 MB | unzip the files, without subfolders, into `tools\whisper\` |
 | Whisper CUDA (cuBLAS 11, cuDNN 8) | optional | [libcublas-windows-x86_64-11.11.3.6-archive.zip](https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip)<br>[cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip](https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip) | 1.1 GB | take every .dll of the archive into `tools\whisper\` |
 | Whisper tiny | optional | [model.bin](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/model.bin) → `models\whisper\faster-whisper-tiny\model.bin`<br>[config.json](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/config.json) → `models\whisper\faster-whisper-tiny\config.json`<br>[tokenizer.json](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/tokenizer.json) → `models\whisper\faster-whisper-tiny\tokenizer.json`<br>[vocabulary.txt](https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/vocabulary.txt) → `models\whisper\faster-whisper-tiny\vocabulary.txt` | 78 MB | as is, to the path after the arrow |
@@ -187,6 +192,19 @@ Every stage has its own switch for the device. *Yes* means the code has that pat
 
 With no NVIDIA, voice, translation, vision and recognition can go to the cloud and separation and diarization to the CPU, but the burn-in has no CPU path, so such a machine is not a tested setup.
 
+## Anonymous statistics and news
+
+The app asks the author's server for news at start and every six hours. The request carries no id, so news arrive whatever you choose below: new items appear on top of What's new, and with no connection the app shows the news of its release.
+
+The first-run screen has a checkbox **Send anonymous usage statistics**, checked by default. The same switch is in Settings → Anonymous statistics, next to **What is sent** (the exact report of today) and **New install id**. While it is checked, the app sends once a day:
+
+- a random install id made on this computer, not tied to the hardware or an account; unchecking the box deletes it;
+- the app and its version, the OS name and version, the window language;
+- the graphics card as vendor, a video memory bucket (up to 8, 12, 16, 24+ GB) and whether CUDA works;
+- how many tasks (analysis, dubbing, render, export, download and the others) finished, failed or were cancelled that day.
+
+Never: videos, transcripts, translations, voices, file names or paths, anything personal. The server keeps the country Cloudflare reports for the connection, not the IP address. `DO_NOT_TRACK=1` or `STUDIO_TELEMETRY=0` in the environment turns statistics off entirely: no id exists and nothing is counted.
+
 ## Troubleshooting
 
 **The installer stops on WebView2.** The window of the app runs on Microsoft Edge WebView2, and the installer fetches it when Windows lacks it. On a blocked or unsteady connection, or on Windows 10 builds that refuse Microsoft's small bootstrapper (error 0x80040902), that fetch fails. Install WebView2 from Microsoft's standalone installer, [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701), then run the installer of Dub Studio again.
@@ -218,6 +236,14 @@ cd desktop && npm install && npx tauri build            # 3) desktop shell (Taur
 
 Needs Node 20+, Rust (MSVC toolchain) and WebView2. Native engines (`audiocpp_engine.dll`, llama.cpp, BSRoformer.cpp, ONNX Runtime) don't need rebuilding — the app downloads prebuilt binaries.
 
+### Linux (experimental)
+
+The .deb and the AppImage for Linux x86-64 are **experimental**. They come from the same code with the Linux builds of the same engines (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, the Higgs engine for Linux, yt-dlp, faster-whisper), but the author works on Windows and has not run them on a real Linux desktop. **If you live on Linux, it would be great if you polished them and sent the fixes back as a pull request.**
+
+- Local voice needs an NVIDIA RTX 30 or newer: the Higgs engine for Linux is built for sm 86, 89 and 120 only. The cloud voices work on any machine.
+- The NVIDIA driver (580 or newer), `libgomp1` and `libssl3` come from the system; models, engines and CUDA libraries the app downloads on first run into `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
+- Built by hand: the `Linux build (experimental)` workflow (`.github/workflows/release-linux.yml`) or `scripts/build-release-linux.sh <folder with models/ocr>`.
+
 ## More portable AI apps
 
 | Project | What it is |
@@ -233,7 +259,7 @@ Needs Node 20+, Rust (MSVC toolchain) and WebView2. Native engines (`audiocpp_en
 
 ## Contributing & forks
 
-**Collaborators are very welcome.** I'd be genuinely happy to see Dub Studio forked to other platforms and GPUs — the architecture is capable of it, I simply don't have the bandwidth to do the ports myself. If you want it on **AMD / Intel GPUs, macOS or Linux**, fork it and go — PRs welcome.
+**Collaborators are very welcome.** I'd be genuinely happy to see Dub Studio forked to other platforms and GPUs — the architecture is capable of it, I simply don't have the bandwidth to do the ports myself. If you want it on **AMD / Intel GPUs, macOS or Linux**, fork it and go — PRs welcome. Linux already has an experimental build (see *Linux (experimental)*): polishing it is the most welcome help.
 
 **Extra localizations** are just as welcome: the app and landing ship in 6 languages today — translate the locale files (`frontend/src/locales/` and the dict in `docs/index.html`) and open a PR to add yours.
 
@@ -246,7 +272,7 @@ Needs Node 20+, Rust (MSVC toolchain) and WebView2. Native engines (`audiocpp_en
 
 - **[Boson AI](https://huggingface.co/bosonai)** — the Higgs Audio v3 model, and **[drbaph / Higgs-Audio-v3-Studio](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio)** — the GGUF quants and the native `audiocpp_engine.dll`.
 - **[NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)** (CC-BY-4.0) — ASR; ONNX weights from [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx), runtime [altunenes/parakeet-rs](https://github.com/altunenes/parakeet-rs).
-- **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)** by **[Moondream](https://huggingface.co/moondream)**, based on parakeet-tdt-0.6b-v3 by NVIDIA (CC-BY-4.0) — optional fine-tuned ASR with fewer recognition errors; ONNX export from [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs).
+- **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)** by **[Moondream](https://huggingface.co/moondream)**, based on parakeet-tdt-0.6b-v3 by NVIDIA (CC-BY-4.0) — optional fine-tuned ASR with fewer recognition errors; ONNX export from [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs). int8: [Masterx/parakeet-tdt-0.6b-ultra-onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx).
 - **[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization)** (Streaming Sortformer v3, [OpenMDW-1.1](https://openmdw.ai/license/1-1/)) — speaker diarization, up to 8 speakers; ONNX export from [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs).
 - **[Google Gemma](https://huggingface.co/google/gemma-4-12b-it-qat-q4_0-gguf)** — Gemma-4 12B (translation and vision), the quants of [unsloth](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF), and [llama.cpp](https://github.com/ggml-org/llama.cpp) that runs them.
 - **[chenmozhijin / BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp)** and **[GaboxR67](https://huggingface.co/GaboxR67)** — the native separation engine with its GGUF models, and the Mel-Band Roformer checkpoint.

@@ -9,6 +9,7 @@
 //! dubengine/asr.py и dubengine/diarize.py: паузы >0.6с, конец предложения .!?…, макс 8.0с.
 
 mod hallucination;
+mod known_speakers;
 mod reconcile;
 mod resample;
 mod segment;
@@ -16,6 +17,7 @@ mod speaker_global;
 mod whisper;
 mod window;
 pub use hallucination::{hallucination_kind, is_hallucination, HallucinationKind, HallucinationRules};
+pub use known_speakers::SpeakerMatchError;
 pub use reconcile::{speaker_for_overlap, DiarIndex};
 pub use speaker_global::{
     cluster_embeddings, cosine, map_local_to_global, Embedding, LocalSpeaker, NullEmbedder,
@@ -116,7 +118,7 @@ fn ensure_ort_dylib() {
                     roots.push(p1.join("models"));
                 }
                 // DLL рядом с бинарём (портативная упаковка)
-                cands.push(dir.join("onnxruntime.dll"));
+                cands.push(dir.join(dub_core::runtime::ORT_LIBRARY));
             }
         }
         if let Ok(cwd) = std::env::current_dir() {
@@ -126,9 +128,7 @@ fn ensure_ort_dylib() {
             // GPU-сборка (cuda13) ПРИОРИТЕТНЕЕ: она суперсет — умеет и CPU-провайдер, и CUDA-EP. Если
             // скачана, грузим её, чтобы переключение backend gpu<->cpu работало БЕЗ рестарта (dll
             // фиксируется в процессе при первом касании ort; выбор провайдера — уже в exec_config).
-            // Имя папки = корневой каталог zip onnxruntime-win-x64-gpu_cuda13-1.28.2.zip.
-            cands.push(r.join("runtime").join("onnxruntime-win-x64-gpu_cuda13-1.28.2").join("lib").join("onnxruntime.dll"));
-            cands.push(r.join("runtime").join("onnxruntime-win-x64-1.28.2").join("lib").join("onnxruntime.dll"));
+            cands.extend(dub_core::runtime::ort_candidates(r));
         }
         for c in cands {
             if c.is_file() {
@@ -145,12 +145,30 @@ fn ensure_ort_dylib() {
 pub enum AsrError {
     #[error("parakeet: {0}")]
     Parakeet(String),
-    #[error("не удалось прочитать wav {0}: {1}")]
+    #[error("cannot read wav {0}: {1}")]
     WavRead(String, String),
     #[error("io: {0}")]
     Io(String),
-    #[error("ресемплинг: {0}")]
+    #[error("resampling: {0}")]
     Resample(String),
+    #[error("the number of speakers must be from 1 to {max}")]
+    SpeakerCount { max: usize },
+    #[error("speakers: {0}")]
+    Speakers(#[from] SpeakerMatchError),
+}
+
+impl AsrError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            AsrError::Parakeet(_) => "asr_engine",
+            AsrError::WavRead(..) => "asr_wav_read",
+            AsrError::Io(_) => "asr_io",
+            AsrError::Resample(_) => "asr_resample",
+            AsrError::SpeakerCount { .. } => "asr_speaker_count",
+            AsrError::Speakers(e) => e.code(),
+        }
+    }
 }
 
 /// Одна реплика диаризации: [start, end] в секундах, speaker — контиг. id (0..k-1).
@@ -364,7 +382,7 @@ impl Asr {
             let _ = h.join();
         }
         if failed.load(std::sync::atomic::Ordering::Relaxed) {
-            return Err(AsrError::Parakeet("параллельный оконный прогон не удался (фолбэк на последовательный)".into()));
+            return Err(AsrError::Parakeet("the parallel window run failed (falling back to sequential)".into()));
         }
         let slots = std::sync::Arc::try_unwrap(results)
             .map_err(|_| AsrError::Parakeet("results arc".into()))?
@@ -394,7 +412,7 @@ impl Asr {
         wav: impl AsRef<Path>,
         turns: &[Turn],
     ) -> Result<Vec<SpeakerSegment>, AsrError> {
-        eprintln!("[asr] Parakeet transcribe_turns: {} реплик, wav={}", turns.len(), wav.as_ref().display());
+        eprintln!("[asr] Parakeet transcribe_turns: {} turns, wav={}", turns.len(), wav.as_ref().display());
         let (audio, sr) = load_wav_16k_mono(wav.as_ref())?;
         let min_len = (0.2 * sr as f64) as usize;
         let mut out = Vec::new();
@@ -421,8 +439,10 @@ impl Asr {
 }
 
 impl AsrEngine for Asr {
+    // The model's attention holds a few minutes of audio, so a recording is heard in windows cut at
+    // pauses; a short one is a single window.
     fn transcribe(&mut self, wav: &Path, lang: &str) -> Result<Vec<Segment>, AsrError> {
-        Asr::transcribe(self, wav, lang)
+        Asr::transcribe_windowed(self, wav, lang, None)
     }
     // Parakeet-TDT сам определяет язык (мультиязычная модель) — lang игнорируем, как и в whole-clip.
     fn transcribe_turns(&mut self, wav: &Path, turns: &[Turn], _lang: &str) -> Result<Vec<SpeakerSegment>, AsrError> {
@@ -581,6 +601,55 @@ pub struct DiarTurns {
     pub ref_windows: std::collections::HashMap<i32, RefWindow>,
 }
 
+pub fn continuous_diarization_enabled() -> Result<bool, String> {
+    match std::env::var("DUB_STUDIO_DIAR_CONTINUOUS") {
+        Ok(value) => parse_continuous_diarization(Some(&value)),
+        Err(std::env::VarError::NotPresent) => Ok(false),
+        Err(error) => Err(format!("DUB_STUDIO_DIAR_CONTINUOUS: {error}")),
+    }
+}
+
+fn parse_continuous_diarization(value: Option<&str>) -> Result<bool, String> {
+    match value {
+        None | Some("0") => Ok(false),
+        Some("1") => Ok(true),
+        Some(_) => Err("DUB_STUDIO_DIAR_CONTINUOUS: expected 0 or 1".into()),
+    }
+}
+
+fn known_diarization_window(total: f64, continuous: bool) -> f64 {
+    if continuous || total <= DIAR_WINDOW_GATE_SECS {
+        total.max(1.0)
+    } else {
+        DIAR_WIN_SECS
+    }
+}
+
+#[cfg(test)]
+mod continuous_diarization_tests {
+    use super::*;
+
+    #[test]
+    fn continuous_mode_keeps_the_entire_six_hour_recording_in_one_window() {
+        let total = 6.0 * 3600.0 - 180.0;
+        let windows = known_speakers::diar_windows(total, known_diarization_window(total, true), DIAR_OVERLAP_SECS);
+        assert_eq!(windows.len(), 1);
+        assert_eq!((windows[0].start, windows[0].end, windows[0].keep_start, windows[0].keep_end), (0.0, total, 0.0, total));
+        assert_eq!(known_diarization_window(total, false), 3600.0);
+        assert_eq!(known_diarization_window(60.0, false), 60.0);
+    }
+
+    #[test]
+    fn continuous_mode_rejects_invalid_values_without_enabling_another_path() {
+        assert!(!parse_continuous_diarization(None).unwrap());
+        assert!(!parse_continuous_diarization(Some("0")).unwrap());
+        assert!(parse_continuous_diarization(Some("1")).unwrap());
+        for value in ["", "true", "2", " 1"] {
+            assert!(parse_continuous_diarization(Some(value)).unwrap_err().contains("expected 0 or 1"));
+        }
+    }
+}
+
 /// DIARIZE-FIRST: порт diarize.turns() — слить подряд идущие реплики одного спикера (merge_gap),
 /// и если «настоящих» спикеров (суммарно >= min_speaker_dur) меньше двух, схлопнуть в single-speaker
 /// (turns=[], n=1) — это ШТАТНАЯ graceful-деградация питона, не отсебятина. Иначе перенумеровать
@@ -593,6 +662,37 @@ pub fn turns(
 ) -> Result<DiarTurns, AsrError> {
     let raw = diarize(wav, diar_onnx)?;
     Ok(merge_turns(&raw, merge_gap, min_speaker_dur))
+}
+
+pub fn turns_with_speaker_count(
+    wav: impl AsRef<Path>,
+    diar_onnx: impl AsRef<Path>,
+    count: usize,
+    embed: &mut impl FnMut(&[f32]) -> Result<Vec<f32>, String>,
+) -> Result<DiarTurns, AsrError> {
+    if !(1..=MAX_SPEAKERS).contains(&count) {
+        return Err(AsrError::SpeakerCount { max: MAX_SPEAKERS });
+    }
+    if count == 1 {
+        return Ok(DiarTurns { turns: Vec::new(), n_speakers: 1, ref_windows: Default::default() });
+    }
+    ensure_ort_dylib();
+    let (audio, sr) = load_wav_16k_mono(wav.as_ref())?;
+    let mut sf = Sortformer::with_config(diar_onnx.as_ref(), Some(exec_config()), DiarizationConfig::default())
+        .map_err(|e| AsrError::Parakeet(e.to_string()))?;
+    sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+    let total = audio.len() as f64 / sr as f64;
+    let window = known_diarization_window(total, continuous_diarization_enabled().map_err(AsrError::Parakeet)?);
+    let mut tracker = known_speakers::VoiceTracker::new(count);
+    let mut out = Vec::new();
+    for range in known_speakers::diar_windows(total, window, DIAR_OVERLAP_SECS) {
+        let a0 = (range.start * sr as f64) as usize;
+        let a1 = ((range.end * sr as f64) as usize).min(audio.len());
+        let segs = sf.diarize(audio[a0..a1].to_vec(), sr, 1).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+        let local = segments_to_turns(&segs, range.start);
+        out.extend(tracker.process_window(&local, &audio[a0..a1], sr, range, embed)?);
+    }
+    Ok(known_speakers::finish_turns(out))
 }
 
 /// Порог «настоящего» спикера: 10% всей речи ролика, не меньше 1.5 с и не больше `cap`. Ложные спикеры

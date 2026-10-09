@@ -1,0 +1,21 @@
+{
+  "build": {
+    "beforeBundleCommand": ""
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": ["deb", "appimage"],
+    "resources": {
+      "staging/frontend/dist": "frontend/dist",
+      "staging/fonts": "fonts",
+      "staging/models/ocr": "models/ocr"
+    },
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png"],
+    "linux": {
+      "deb": {
+        "depends": ["libgomp1", "libssl3 | libssl3t64"]
+      }
+    }
+  }
+}

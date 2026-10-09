@@ -21,6 +21,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 pub const OPENROUTER_ENV_VAR: &str = "OPENROUTER_API_KEY";
+pub const GOOGLE_ENV_VAR: &str = "GEMINI_API_KEY";
+const GOOGLE_FILE: &str = "google-api-key";
 pub const SECRETS_DIR_ENV_VAR: &str = "DUB_STUDIO_SECRETS_DIR";
 const OPENROUTER_FILE: &str = "openrouter-api-key";
 const PROXY_PASSWORD_FILE: &str = "proxy-password";
@@ -45,6 +47,35 @@ pub fn openrouter_source() -> Option<CredentialSource> {
     openrouter_api_key().map(|(_, source)| source)
 }
 
+pub fn google_api_key() -> Option<(String, CredentialSource)> {
+    if let Some(key) = env::var(GOOGLE_ENV_VAR)
+        .ok()
+        .map(|key| key.trim().to_owned())
+        .filter(|key| !key.is_empty())
+    {
+        return Some((key, CredentialSource::Environment));
+    }
+    Some((
+        read_secret(&secrets_dir()?, GOOGLE_FILE)?,
+        CredentialSource::LocalStore,
+    ))
+}
+
+pub fn store_google_api_key(api_key: Option<&str>) -> Result<Option<CredentialSource>> {
+    if env::var(GOOGLE_ENV_VAR).is_ok_and(|key| !key.trim().is_empty()) {
+        bail!("{GOOGLE_ENV_VAR} is set in this environment and takes priority; unset it before storing a key in Studio");
+    }
+    let dir =
+        secrets_dir().context("no per-user application data directory for credential storage")?;
+    Ok(write_secret(
+        &dir,
+        GOOGLE_FILE,
+        api_key,
+        "a Google API key must be a single line",
+    )?
+    .then_some(CredentialSource::LocalStore))
+}
+
 /// Stores or clears the key. Refuses to shadow an environment credential so a
 /// user never believes they replaced a key that the process is not using.
 pub fn store_openrouter_api_key(api_key: Option<&str>) -> Result<Option<CredentialSource>> {
@@ -52,7 +83,8 @@ pub fn store_openrouter_api_key(api_key: Option<&str>) -> Result<Option<Credenti
         bail!("{OPENROUTER_ENV_VAR} is set in this environment and takes priority; unset it before storing a key in Studio");
     }
     let dir = secrets_dir().context("no per-user application data directory for credential storage")?;
-    let stored = write_secret(&dir, OPENROUTER_FILE, api_key, "an OpenRouter API key must be a single line")?;
+    let stored = write_secret(&dir, OPENROUTER_FILE, api_key, "an OpenRouter API key must be a single line",
+    )?;
     Ok(stored.then_some(CredentialSource::LocalStore))
 }
 
@@ -77,7 +109,8 @@ pub fn store_local_server_key(address: &str, key: Option<&str>) -> Result<bool> 
     store_local_server_key_in(&dir, address, key)
 }
 
-pub(crate) fn store_local_server_key_in(dir: &Path, address: &str, key: Option<&str>) -> Result<bool> {
+pub(crate) fn store_local_server_key_in(dir: &Path, address: &str, key: Option<&str>,
+) -> Result<bool> {
     let Some(key) = key.map(str::trim).filter(|key| !key.is_empty()) else {
         let stored = read_secret(dir, LOCAL_SERVER_FILE).and_then(|text| serde_json::from_str::<ServerKeyRecord>(&text).ok());
         if stored.is_some_and(|record| record.address != dub_llm::server_base(address)) {
@@ -93,7 +126,8 @@ pub(crate) fn store_local_server_key_in(dir: &Path, address: &str, key: Option<&
         bail!("a server key needs the address of its server");
     }
     let record = serde_json::json!({ "address": address, "key": key }).to_string();
-    write_secret(dir, LOCAL_SERVER_FILE, Some(&record), "a server key must be a single line")
+    write_secret(dir, LOCAL_SERVER_FILE, Some(&record), "a server key must be a single line",
+    )
 }
 
 pub(crate) fn local_server_key_in(dir: &Path, address: &str) -> Option<String> {
@@ -114,7 +148,8 @@ pub fn proxy_password() -> Option<String> {
 
 /// Записать пароль прокси; None или пусто — удалить.
 pub(crate) fn store_proxy_password_in(dir: &Path, password: Option<&str>) -> Result<bool> {
-    write_secret(dir, PROXY_PASSWORD_FILE, password, "a proxy password must be a single line")
+    write_secret(dir, PROXY_PASSWORD_FILE, password, "a proxy password must be a single line",
+    )
 }
 
 pub(crate) fn proxy_password_in(dir: &Path) -> Option<String> {
@@ -127,7 +162,8 @@ pub fn secrets_dir() -> Option<PathBuf> {
     }
     // Тесты не касаются настоящего хранилища пользователя, каким бы путём они сюда ни пришли.
     if cfg!(test) {
-        return Some(env::temp_dir().join(format!("dub-studio-test-secrets-{}", std::process::id())));
+        return Some(env::temp_dir().join(format!("dub-studio-test-secrets-{}", std::process::id())),
+        );
     }
     if let Some(app) = portable_app_dir() {
         return Some(app.join("secrets"));
@@ -175,7 +211,8 @@ fn read_secret(dir: &Path, name: &str) -> Option<String> {
 
 /// Some — записать (через tmp + rename: падение не оставит половину ключа), None или пусто — удалить.
 /// Возвращает, лежит ли теперь значение.
-fn write_secret(dir: &Path, name: &str, value: Option<&str>, multiline_error: &str) -> Result<bool> {
+fn write_secret(dir: &Path, name: &str, value: Option<&str>, multiline_error: &str,
+) -> Result<bool> {
     let path = dir.join(name);
     match value.map(str::trim).filter(|value| !value.is_empty()) {
         Some(value) => {
@@ -192,7 +229,9 @@ fn write_secret(dir: &Path, name: &str, value: Option<&str>, multiline_error: &s
             match fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                Err(error) => return Err(error).with_context(|| format!("remove {}", path.display())),
+                Err(error) => {
+                    return Err(error).with_context(|| format!("remove {}", path.display()))
+                }
             }
             Ok(false)
         }
@@ -223,7 +262,8 @@ pub(crate) fn migrate_legacy_selection_into(models_root: &Path, dir: &Path) -> R
 
     if let Some(legacy) = slots.remove("or_key") {
         if let Some(key) = legacy.as_str().map(str::trim).filter(|key| !key.is_empty()) {
-            write_secret(dir, OPENROUTER_FILE, Some(key), "an OpenRouter API key must be a single line")?;
+            write_secret(dir, OPENROUTER_FILE, Some(key), "an OpenRouter API key must be a single line",
+            )?;
             migrated.openrouter_key = true;
         }
         changed = true;
@@ -293,10 +333,12 @@ mod tests {
         let dir = scratch("server-key");
         let lan = "http://192.168.1.5:1234";
         assert!(store_local_server_key_in(&dir, lan, Some(" lm-studio-key ")).unwrap());
-        for same in [lan, "http://192.168.1.5:1234/", "http://192.168.1.5:1234/v1", " http://192.168.1.5:1234/v1/ "] {
+        for same in [lan, "http://192.168.1.5:1234/", "http://192.168.1.5:1234/v1", " http://192.168.1.5:1234/v1/ ",
+        ] {
             assert_eq!(local_server_key_in(&dir, same).as_deref(), Some("lm-studio-key"), "{same}");
         }
-        for other in ["http://attacker.example:1234", "http://192.168.1.5:1235", "https://192.168.1.5:1234", "http://127.0.0.1:11434"] {
+        for other in ["http://attacker.example:1234", "http://192.168.1.5:1235", "https://192.168.1.5:1234", "http://127.0.0.1:11434",
+        ] {
             assert_eq!(local_server_key_in(&dir, other), None, "the key must not reach {other}");
         }
         assert!(!fs::read_to_string(dir.join(LOCAL_SERVER_FILE)).unwrap().contains('\n'));

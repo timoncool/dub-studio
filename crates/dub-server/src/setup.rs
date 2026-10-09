@@ -23,6 +23,9 @@
 //!     но статус показываем;
 //!   • драйвер NVIDIA — диагностика версии драйвера и compute capability (hw::gpu_report), «скачивание» =
 //!     открыть сайт (кнопка во фронте).
+//!
+//! Сайдкары, движок Higgs и CUDA-библиотеки у каждой платформы свои (модуль `platform`): на Linux это tar-сборки
+//! тех же релизов, колёса manylinux и redist NVIDIA linux-x86_64, а VC++ runtime не нужен.
 
 use std::fs::File;
 use std::io::Read;
@@ -52,20 +55,21 @@ pub struct FileSpec {
     pub extract: Extract,
 }
 
-/// Что делать со скачанным файлом.
+/// Что делать со скачанным файлом. Архив — zip/wheel, tar.gz или tar.xz (формат по имени в dest_rel), после
+/// раскладки он удаляется.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Extract {
     /// Прямой файл — оставить как есть (dest_rel = финальный путь).
     None,
-    /// zip: распаковать плоско (только имена файлов) в каталог dest_rel-родителя, затем удалить архив.
-    ZipFlat,
-    /// zip: отобрать конкретные файлы по имени листа (ffmpeg.exe/ffprobe.exe) и положить плоско в каталог.
-    ZipPick,
-    /// zip: распаковать ВЕСЬ архив с сохранением поддерева в каталог. Для onnxruntime — чтобы получить
-    /// `onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll` ровно там, где его ищет dub-asr::ensure_ort_dylib.
-    ZipTree,
-    /// wheel (zip): достать все *.dll плоско в каталог, затем удалить архив (CUDA runtime).
-    WheelDlls,
+    /// Все файлы плоско (только имена) в каталог dest_rel-родителя: движки-сайдкары (программа + библиотеки).
+    Flat,
+    /// Только ffmpeg и ffprobe, плоско в каталог.
+    Pick,
+    /// Весь архив с сохранением поддерева: onnxruntime, чтобы `onnxruntime-*/lib/…` лёг ровно там, где его
+    /// ищет dub-asr::ensure_ort_dylib.
+    Tree,
+    /// Только динамические библиотеки платформы (*.dll / *.so*), плоско в каталог: CUDA runtime, cuDNN, cuFFT.
+    Libs,
 }
 
 /// Обязательность компонента для запуска пайплайна.
@@ -96,10 +100,10 @@ pub enum Delivery {
 #[derive(Clone, Debug)]
 pub struct Component {
     pub id: &'static str,
-    /// Человекочитаемое имя (i18n-ключ на фронте — `setup.comp.<id>.name`; здесь дефолт-строка RU для API).
-    pub name: &'static str,
-    /// Назначение (что сломается без него).
-    pub purpose: &'static str,
+    /// Человекочитаемое имя на языке окна.
+    pub name: String,
+    /// Назначение (что сломается без него) на языке окна.
+    pub purpose: String,
     pub requirement: Requirement,
     pub delivery: Delivery,
     /// Совокупный размер компонента, байт (сумма файлов; для rolling-релизов — оценка).
@@ -133,54 +137,316 @@ const HF_NEMOTRON_DIAR: &str = "https://huggingface.co/altunenes/parakeet-rs/res
 const HF_NEMOTRON_DIAR_LICENSE: &str = "https://huggingface.co/altunenes/parakeet-rs/resolve/4d2a8bc71f5c896ec40faa59732e6716295edaf2/nemotron-3-diarization/LICENSE";
 // HF: Mel-Band Roformer voc_fv6-Q8_0 (chenmozhijin/BSRoformer-GGUF).
 const HF_ROFORMER: &str = "https://huggingface.co/chenmozhijin/BSRoformer-GGUF/resolve/df802a6773d25ba6ef785ff619daa3e510503168/GaboxR67/MelBandRoformers/melbandroformers/vocals/voc_fv6-Q8_0.gguf";
-// GitHub: BSRoformer.cpp движок win-cuda-13.1.0 zip (chenmozhijin/BSRoformer.cpp v0.1.0).
-const GH_BSROFORMER_ENGINE: &str =
-    "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-cuda-13.1.0.zip";
-// GitHub: BSRoformer.cpp CPU-сборка (win-x64-msvc, без CUDA) — сепарация на процессоре: медленнее,
-// но полная функция. Статический exe 671КБ; MSVC-рантайм уже вшит компонентом vcruntime.
-const GH_BSROFORMER_ENGINE_CPU: &str =
-    "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-x64-msvc.zip";
-// GitHub: llama.cpp win-cuda-13.4 (ggml-org/llama.cpp; пин на стабильный релиз v0.5.0 = билд b11146).
-// ggml-cuda.dll импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
+/// Файлы, маркеры и размер компонента, у которого своя сборка на каждую платформу.
+pub struct Parts {
+    pub size: u64,
+    pub files: &'static [FileSpec],
+    pub markers: &'static [Marker],
+}
+
+// Сборка llama.cpp одна на обе платформы (стабильный релиз v0.5.0 = билд b11146).
 const GH_LLAMA_BUILD: &str = "b11146";
-const GH_LLAMA: &str =
-    "https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-bin-win-cuda-13.4-x64.zip";
-// GitHub: onnxruntime 1.28.2 win-x64 (microsoft/onnxruntime) — строго 1.28.x (ort rc.13 api-28; иначе дедлок).
-const GH_ORT: &str =
-    "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip";
-// GitHub: onnxruntime 1.28.2 GPU-сборка под CUDA 13 (gpu_cuda13) — CUDA-EP для Parakeet/Sortformer на
-// GPU. onnxruntime_providers_cuda.dll грузит cudart64_13/cublas64_13/cublasLt64_13 (cuda-runtime),
-// cudnn64_9 (WHEEL_CUDNN) и cufft64_12 (REDIST_CUFFT).
-// Содержит onnxruntime.dll(GPU) + onnxruntime_providers_cuda.dll + onnxruntime_providers_shared.dll.
-const GH_ORT_GPU: &str =
-    "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-gpu_cuda13-1.28.2.zip";
-// GitHub: ffmpeg static win64 GPL (BtbN/FFmpeg-Builds), master-сборка последнего дня месяца: дневные
-// autobuild BtbN удаляет через пару недель, а сборки последнего дня месяца хранит, поэтому закреплена такая.
-const GH_FFMPEG: &str =
-    "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-N-126342-gf88b741dbf-win64-gpl.zip";
-// PyPI-wheel'ы NVIDIA CUDA 13 runtime (CUDA 13.4 Update 2: cudart 13.4.92, cuBLAS 13.8.0.4).
-// Дают cudart64_13.dll, cublas64_13.dll, cublasLt64_13.dll.
-const WHEEL_CUDART: &str = "https://files.pythonhosted.org/packages/86/00/d5436004268f049214193659ebc36550b5ef3925c3d13b4cc980e13be6f5/nvidia_cuda_runtime-13.4.92-py3-none-win_amd64.whl";
-const WHEEL_CUBLAS: &str = "https://files.pythonhosted.org/packages/a3/df/f1246959833e2c437db8be3e5b477f66b87f8817821ed40de6c7561c9a36/nvidia_cublas-13.8.0.4-py3-none-win_amd64.whl";
-// PyPI: cuDNN 9 под CUDA 13 (nvidia-cudnn-cu13 9.27.0.42) — нужен для CUDA-EP onnxruntime (Parakeet/
-// Sortformer на GPU). Даёт cudnn64_9.dll + split-либы. ≈416 МБ. cudart/cublas _13 уже есть (cuda-runtime выше).
-const WHEEL_CUDNN: &str = "https://files.pythonhosted.org/packages/87/6a/e55ff0ac26a5c6e2b21f41c9d04ad096b4ed6da593fba7e25845c61b0532/nvidia_cudnn_cu13-9.27.0.42-py3-none-win_amd64.whl";
-// NVIDIA CUDA-13 redist (официальный, CUDA 13.4 Update 2): cuFFT 12.4.0.43 → даёт cufft64_12.dll.
-// onnxruntime_providers_cuda.dll (сборка cuda13) грузит именно cufft64_12.dll — без него CUDA-EP не
-// грузится («CUDA not enabled»). cuFFT сохраняет soname 12 даже в CUDA 13. Извлекается как *.dll плоско.
-const REDIST_CUFFT: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/windows-x86_64/libcufft-windows-x86_64-12.4.0.43-archive.zip";
-// CUDA-либы для whisper-faster r192.3 (CTranslate2, собран под CUDA 11!): нужны РЯДОМ с exe
-// (cublas64_11 + cudnn64_8), иначе GPU-режим Whisper падает «cublas64_11.dll not found» -> откат на CPU.
-// ВАЖНО: не-XXL сборка = CUDA 11 (cublas64_11), XXL = CUDA 12 (cublas64_12) — РАЗНЫЕ. Версии те, что
-// валидировал Purfview (cuBLAS 11.11.3.6 + cuDNN 8.9.7.29), но zip'ы у NVIDIA (WheelDlls тянет *.dll плоско).
-const REDIST_WHISPER_CUBLAS: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip";
-const REDIST_WHISPER_CUDNN: &str = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip";
-// GitHub: yt-dlp 2026.08.19 (yt-dlp/yt-dlp, SHA-256 из SHA2-256SUMS релиза) — загрузка видео по ссылке. Это опора:
-// более свежие версии ставит рядом ytdlp::update, при их провале работает эта.
-const GH_YTDLP: &str = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe";
-// GitHub: deno 2.9.7 (denoland/deno) — JS-рантайм, без которого yt-dlp не решает задачи YouTube (yt-dlp-ejs уже внутри
-// yt-dlp.exe; вики yt-dlp EJS: deno не ниже 2.3.0).
-const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-pc-windows-msvc.zip";
+
+/// Windows x64: zip-релизы, PyPI-колёса win_amd64, redist NVIDIA windows-x86_64.
+#[cfg(windows)]
+mod platform {
+    use super::{Extract, FileSpec, Marker, Parts};
+
+    // GitHub: BSRoformer.cpp движок win-cuda-13.1.0 zip (chenmozhijin/BSRoformer.cpp v0.1.0).
+    const GH_BSROFORMER_ENGINE: &str =
+        "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-cuda-13.1.0.zip";
+    // GitHub: BSRoformer.cpp CPU-сборка (win-x64-msvc, без CUDA) — сепарация на процессоре: медленнее,
+    // но полная функция. Статический exe 671КБ; MSVC-рантайм уже вшит компонентом vcruntime.
+    const GH_BSROFORMER_ENGINE_CPU: &str =
+        "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-x64-msvc.zip";
+    // GitHub: llama.cpp win-cuda-13.4 (ggml-org/llama.cpp; пин на стабильный релиз v0.5.0 = билд b11146).
+    // ggml-cuda.dll импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
+    const GH_LLAMA: &str =
+        "https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-bin-win-cuda-13.4-x64.zip";
+    // GitHub: onnxruntime 1.28.2 win-x64 (microsoft/onnxruntime) — строго 1.28.x (ort rc.13 api-28; иначе дедлок).
+    const GH_ORT: &str =
+        "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip";
+    // GitHub: onnxruntime 1.28.2 GPU-сборка под CUDA 13 (gpu_cuda13) — CUDA-EP для Parakeet/Sortformer на
+    // GPU. onnxruntime_providers_cuda.dll грузит cudart64_13/cublas64_13/cublasLt64_13 (cuda-runtime),
+    // cudnn64_9 (WHEEL_CUDNN) и cufft64_12 (REDIST_CUFFT).
+    // Содержит onnxruntime.dll(GPU) + onnxruntime_providers_cuda.dll + onnxruntime_providers_shared.dll.
+    const GH_ORT_GPU: &str =
+        "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-gpu_cuda13-1.28.2.zip";
+    // GitHub: ffmpeg static win64 GPL (BtbN/FFmpeg-Builds), master-сборка последнего дня месяца: дневные
+    // autobuild BtbN удаляет через пару недель, а сборки последнего дня месяца хранит, поэтому закреплена такая.
+    const GH_FFMPEG: &str =
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-N-126342-gf88b741dbf-win64-gpl.zip";
+    // PyPI-wheel'ы NVIDIA CUDA 13 runtime (CUDA 13.4 Update 2: cudart 13.4.92, cuBLAS 13.8.0.4).
+    // Дают cudart64_13.dll, cublas64_13.dll, cublasLt64_13.dll.
+    const WHEEL_CUDART: &str = "https://files.pythonhosted.org/packages/86/00/d5436004268f049214193659ebc36550b5ef3925c3d13b4cc980e13be6f5/nvidia_cuda_runtime-13.4.92-py3-none-win_amd64.whl";
+    const WHEEL_CUBLAS: &str = "https://files.pythonhosted.org/packages/a3/df/f1246959833e2c437db8be3e5b477f66b87f8817821ed40de6c7561c9a36/nvidia_cublas-13.8.0.4-py3-none-win_amd64.whl";
+    // PyPI: cuDNN 9 под CUDA 13 (nvidia-cudnn-cu13 9.27.0.42) — нужен для CUDA-EP onnxruntime (Parakeet/
+    // Sortformer на GPU). Даёт cudnn64_9.dll + split-либы. ≈416 МБ. cudart/cublas _13 уже есть (cuda-runtime выше).
+    const WHEEL_CUDNN: &str = "https://files.pythonhosted.org/packages/87/6a/e55ff0ac26a5c6e2b21f41c9d04ad096b4ed6da593fba7e25845c61b0532/nvidia_cudnn_cu13-9.27.0.42-py3-none-win_amd64.whl";
+    // NVIDIA CUDA-13 redist (официальный, CUDA 13.4 Update 2): cuFFT 12.4.0.43 → даёт cufft64_12.dll.
+    // onnxruntime_providers_cuda.dll (сборка cuda13) грузит именно cufft64_12.dll — без него CUDA-EP не
+    // грузится («CUDA not enabled»). cuFFT сохраняет soname 12 даже в CUDA 13. Извлекается как *.dll плоско.
+    const REDIST_CUFFT: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/windows-x86_64/libcufft-windows-x86_64-12.4.0.43-archive.zip";
+    // CUDA-либы для whisper-faster r192.3 (CTranslate2, собран под CUDA 11!): нужны РЯДОМ с exe
+    // (cublas64_11 + cudnn64_8), иначе GPU-режим Whisper падает «cublas64_11.dll not found» -> откат на CPU.
+    // ВАЖНО: не-XXL сборка = CUDA 11 (cublas64_11), XXL = CUDA 12 (cublas64_12) — РАЗНЫЕ. Версии те, что
+    // валидировал Purfview (cuBLAS 11.11.3.6 + cuDNN 8.9.7.29), но архивы у NVIDIA (Libs тянет библиотеки плоско).
+    const REDIST_WHISPER_CUBLAS: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip";
+    const REDIST_WHISPER_CUDNN: &str = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip";
+    // GitHub: yt-dlp 2026.08.19 (yt-dlp/yt-dlp, SHA-256 из SHA2-256SUMS релиза) — загрузка видео по ссылке. Это опора:
+    // более свежие версии ставит рядом ytdlp::update, при их провале работает эта.
+    const GH_YTDLP: &str = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe";
+    // GitHub: deno 2.9.7 (denoland/deno) — JS-рантайм, без которого yt-dlp не решает задачи YouTube (yt-dlp-ejs уже внутри
+    // yt-dlp.exe; вики yt-dlp EJS: deno не ниже 2.3.0).
+    const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-pc-windows-msvc.zip";
+    pub const HIGGS_ENGINE: Parts = Parts {
+        size: 71_727_104,
+        files: &[
+            FileSpec { url: "https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/engines/audiocpp_engine.dll", dest_rel: "models/higgs-engine/audiocpp_engine.dll", size: 71_727_104, sha256: "25dcf30acf54bdee059810f94c5e46ea9c59022a0b53f134d8a422291188449c", extract: Extract::None },
+        ],
+        markers: &[Marker { rel: "models/higgs-engine/audiocpp_engine.dll", expect: 71_727_104 }],
+    };
+
+    pub const WHISPER_ENGINE: Parts = Parts {
+        size: 87_654_143,
+        files: &[
+            FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip", dest_rel: "tools/whisper/_whisper.zip", size: 87_654_143, sha256: "8150ad257fd8e46d817bb7e667260c2ce4c493d9e58973862e6409c592b44ba5", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/whisper/whisper-faster.exe", expect: 0 }],
+    };
+
+    pub const WHISPER_CUDA: Parts = Parts {
+        size: 1_125_090_089,
+        files: &[
+            FileSpec { url: REDIST_WHISPER_CUBLAS, dest_rel: "tools/whisper/_wcublas.zip", size: 420_850_025, sha256: "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9", extract: Extract::Libs },
+            FileSpec { url: REDIST_WHISPER_CUDNN, dest_rel: "tools/whisper/_wcudnn.zip", size: 704_240_064, sha256: "5e45478efe71a96329e6c0d2a3a2f79c747c15b2a51fead4b84c89b02cbf1671", extract: Extract::Libs },
+        ],
+        markers: &[
+            Marker { rel: "tools/whisper/cublas64_11.dll", expect: 0 },
+            Marker { rel: "tools/whisper/cudnn64_8.dll", expect: 0 },
+        ],
+    };
+
+    pub const BSROFORMER: Parts = Parts {
+        size: 164_990_561,
+        files: &[
+            FileSpec { url: GH_BSROFORMER_ENGINE, dest_rel: "tools/bsroformer/_engine.zip", size: 164_990_561, sha256: "a7c330774c0a40ec4de09ca0613af48fdc23c28bd0d90212425697daf7b1db74", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli.exe", expect: 0 }],
+    };
+
+    pub const BSROFORMER_CPU: Parts = Parts {
+        size: 671_031,
+        files: &[
+            FileSpec { url: GH_BSROFORMER_ENGINE_CPU, dest_rel: "tools/bsroformer-cpu/_engine.zip", size: 671_031, sha256: "e002811d56605bce6a51c275cf8f9ba447a3707771289ea6fbcca7f4d3e9ba1f", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli.exe", expect: 0 }],
+    };
+
+    pub const LLAMA: Parts = Parts {
+        size: 149_758_833,
+        files: &[
+            FileSpec { url: GH_LLAMA, dest_rel: "tools/llama/_llama.zip", size: 149_758_833, sha256: "b1866c0ce76bc7bfb0c24b33e9a37e9669f1be18539b12c74ce361f81c41f047", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/llama/llama-server.exe", expect: 0 }],
+    };
+
+    pub const ORT: Parts = Parts {
+        size: 78_620_837,
+        files: &[
+            FileSpec { url: GH_ORT, dest_rel: "models/runtime/_ort.zip", size: 78_620_837, sha256: "c4eedd29489d5feca21866d054638416f3655bf6b18851b3b6b85c8313e95c35", extract: Extract::Tree },
+        ],
+        // dub-asr::ensure_ort_dylib ищет ровно этот путь под models/runtime.
+        markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll", expect: 0 }],
+    };
+
+    pub const ORT_GPU: Parts = Parts {
+        size: 365_562_963,
+        files: &[
+            FileSpec { url: GH_ORT_GPU, dest_rel: "models/runtime/_ort_gpu.zip", size: 365_562_963, sha256: "4b7a2d01a3cc96b12d06c8266af2c8f42c96365c4a0100d45fd874c71b4a2e19", extract: Extract::Tree },
+        ],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime.dll", expect: 0 }],
+    };
+
+    pub const FFMPEG: Parts = Parts {
+        size: 170_732_198,
+        files: &[
+            FileSpec { url: GH_FFMPEG, dest_rel: "tools/ffmpeg/_ffmpeg.zip", size: 170_732_198, sha256: "b4da332540eaebc6939181b59e267f163dd57407ef6596f7f3452845921d1d91", extract: Extract::Pick },
+        ],
+        markers: &[Marker { rel: "tools/ffmpeg/ffmpeg.exe", expect: 0 }],
+    };
+
+    pub const YTDLP: Parts = Parts {
+        size: 60_470_620,
+        files: &[
+            FileSpec { url: GH_YTDLP, dest_rel: "tools/yt-dlp/yt-dlp.exe", size: 17_840_399, sha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a", extract: Extract::None },
+            FileSpec { url: GH_DENO, dest_rel: "tools/yt-dlp/_deno.zip", size: 42_630_221, sha256: "a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238", extract: Extract::Flat },
+        ],
+        markers: &[
+            Marker { rel: "tools/yt-dlp/yt-dlp.exe", expect: 17_840_399 },
+            Marker { rel: "tools/yt-dlp/deno.exe", expect: 97_462_048 },
+        ],
+    };
+
+    pub const CUDA_RUNTIME: Parts = Parts {
+        size: 585_648_133,
+        files: &[
+            FileSpec { url: WHEEL_CUDART, dest_rel: "models/higgs-engine/_cudart.whl", size: 2_778_543, sha256: "08dca5e4aba480c2fd5b55075c0fa71b84ef9dcf0521f2d58baa14a803a7311c", extract: Extract::Libs },
+            FileSpec { url: WHEEL_CUBLAS, dest_rel: "models/higgs-engine/_cublas.whl", size: 423_266_897, sha256: "8c5494423bb8a46822cb6b0cb95d7fa4be2d7b96a31155dff083839ec8297910", extract: Extract::Libs },
+            // cuFFT (cufft64_12.dll) — обязателен для CUDA-EP onnxruntime (диаризация/Parakeet на GPU).
+            FileSpec { url: REDIST_CUFFT, dest_rel: "models/higgs-engine/_cufft.zip", size: 159_602_693, sha256: "69d0ad8dc3a1be66f01a748a8206d0ceaafa56939474663fbe790dc3e91d2009", extract: Extract::Libs },
+        ],
+        markers: &[
+            Marker { rel: "models/higgs-engine/cudart64_13.dll", expect: 0 },
+            Marker { rel: "models/higgs-engine/cublas64_13.dll", expect: 0 },
+            Marker { rel: "models/higgs-engine/cublasLt64_13.dll", expect: 0 },
+            Marker { rel: "models/higgs-engine/cufft64_12.dll", expect: 0 },
+        ],
+    };
+
+    pub const CUDNN: Parts = Parts {
+        size: 436_469_905,
+        files: &[
+            FileSpec { url: WHEEL_CUDNN, dest_rel: "models/higgs-engine/_cudnn.whl", size: 436_469_905, sha256: "7d96f634adafd55c72231eb0500ca77ab109ec8ebff7b33000b76e081bc4558e", extract: Extract::Libs },
+        ],
+        markers: &[Marker { rel: "models/higgs-engine/cudnn64_9.dll", expect: 0 }],
+    };
+
+}
+
+/// Linux x86-64: tar-сборки GitHub, PyPI-колёса manylinux, redist NVIDIA linux-x86_64. Библиотеки CUDA ищутся
+/// через LD_LIBRARY_PATH, который ставит `ensure_library_path` на старте студии.
+#[cfg(not(windows))]
+mod platform {
+    use super::{Extract, FileSpec, Marker, Parts};
+
+    // Тот же движок Higgs, собранный под Linux автором (engines_linux, sm 86/89/120): RUNPATH $ORIGIN, CUDA-
+    // библиотеки берёт из своего каталога (их кладёт cuda-runtime).
+    pub const HIGGS_ENGINE: Parts = Parts {
+        size: 85_339_992,
+        files: &[
+            FileSpec { url: "https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/engines_linux/libaudiocpp_engine.so", dest_rel: "models/higgs-engine/libaudiocpp_engine.so", size: 85_339_992, sha256: "6d7982e551ff311d2bc2e43dfab50d49b1b889f3f5ba515583c170cf83430ee5", extract: Extract::None },
+        ],
+        markers: &[Marker { rel: "models/higgs-engine/libaudiocpp_engine.so", expect: 85_339_992 }],
+    };
+
+    // Purfview faster-whisper r189.1 для Linux (последняя Linux-сборка не-XXL, CTranslate2 под CUDA 11).
+    pub const WHISPER_ENGINE: Parts = Parts {
+        size: 106_093_648,
+        files: &[
+            FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r189.1_linux.zip", dest_rel: "tools/whisper/_whisper.zip", size: 106_093_648, sha256: "f32f5e7abbb53300e569ca5ab3e9dd286b63b5e212209c12d47bdd9c72f923dd", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/whisper/whisper-faster", expect: 0 }],
+    };
+
+    // cuBLAS 11.11.3.6 и cuDNN 8.9.7.29 (CUDA 11) — те же версии, что на Windows, из redist NVIDIA.
+    pub const WHISPER_CUDA: Parts = Parts {
+        size: 1_361_648_788,
+        files: &[
+            FileSpec { url: "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-11.11.3.6-archive.tar.xz", dest_rel: "tools/whisper/_wcublas.tar.xz", size: 500_681_532, sha256: "045e6455c9f8789b1c7ced19957c7904d23c221f4d1d75bb574a2c856aebae98", extract: Extract::Libs },
+            FileSpec { url: "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-8.9.7.29_cuda11-archive.tar.xz", dest_rel: "tools/whisper/_wcudnn.tar.xz", size: 860_967_256, sha256: "a3e2509028cecda0117ce5a0f42106346e82e86d390f4bb9475afc976c77402e", extract: Extract::Libs },
+        ],
+        markers: &[
+            Marker { rel: "tools/whisper/libcublas.so.11", expect: 0 },
+            Marker { rel: "tools/whisper/libcudnn.so.8", expect: 0 },
+        ],
+    };
+
+    // BSRoformer.cpp v0.1.0 linux-cuda-13.1.0: RUNPATH указывает на каталог CI, свои libggml берёт через
+    // LD_LIBRARY_PATH запуска (dub-sep).
+    pub const BSROFORMER: Parts = Parts {
+        size: 239_527_692,
+        files: &[
+            FileSpec { url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-cuda-13.1.0.tar.xz", dest_rel: "tools/bsroformer/_engine.tar.xz", size: 239_527_692, sha256: "6d7e543f2985b785cfef2baf0b217fc2f891e6b5a03804ce2657b4eb70379126", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli", expect: 0 }],
+    };
+
+    pub const BSROFORMER_CPU: Parts = Parts {
+        size: 640_204,
+        files: &[
+            FileSpec { url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-x64-cpu.tar.xz", dest_rel: "tools/bsroformer-cpu/_engine.tar.xz", size: 640_204, sha256: "bc0f20237b9ed263582ebd0844dfc7dbb61309a67c31f4a8d7ba156e21292c77", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }],
+    };
+
+    // llama.cpp b11146 ubuntu-cuda-13.4: RUNPATH $ORIGIN для своих библиотек, cudart/cuBLAS 13 — из cuda-runtime,
+    // libssl.so.3 — системная.
+    pub const LLAMA: Parts = Parts {
+        size: 149_265_156,
+        files: &[
+            FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-bin-ubuntu-cuda-13.4-x64.tar.gz", dest_rel: "tools/llama/_llama.tar.gz", size: 149_265_156, sha256: "1603d9c00a4b6eac8298c5c7868cdb080a3ac31948ab1e457441d71ce274dd7e", extract: Extract::Flat },
+        ],
+        markers: &[Marker { rel: "tools/llama/llama-server", expect: 0 }],
+    };
+
+    pub const ORT: Parts = Parts {
+        size: 9_128_991,
+        files: &[
+            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-linux-x64-1.28.2.tgz", dest_rel: "models/runtime/_ort.tgz", size: 9_128_991, sha256: "d7209b8751b27b862b0c76332c2e20e203396edb5dab700ecf4bb485cf147415", extract: Extract::Tree },
+        ],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-1.28.2/lib/libonnxruntime.so.1.28.2", expect: 0 }],
+    };
+
+    // CUDA-провайдер на Linux связан с cuBLAS/cuBLASLt/cuRAND/cudart 13 (cuda-runtime) и без RUNPATH, cuDNN и
+    // cuFFT грузит сам во время работы.
+    pub const ORT_GPU: Parts = Parts {
+        size: 240_868_705,
+        files: &[
+            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-linux-x64-gpu_cuda13-1.28.2.tgz", dest_rel: "models/runtime/_ort_gpu.tgz", size: 240_868_705, sha256: "118ca8dbc4e4bb9b3b7fea137d796a89d957c9aa70e1dc3a5199a302cdd5bb32", extract: Extract::Tree },
+        ],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.2/lib/libonnxruntime.so.1.28.2", expect: 0 }],
+    };
+
+    // ffmpeg static linux64 GPL (BtbN), та же сборка последнего дня месяца, что на Windows.
+    pub const FFMPEG: Parts = Parts {
+        size: 128_065_756,
+        files: &[
+            FileSpec { url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-N-126342-gf88b741dbf-linux64-gpl.tar.xz", dest_rel: "tools/ffmpeg/_ffmpeg.tar.xz", size: 128_065_756, sha256: "d1cf19f669510448f18a4cffcdbd8fa9592ee7c15c92feb5b96ad7e9ccc30114", extract: Extract::Pick },
+        ],
+        markers: &[Marker { rel: "tools/ffmpeg/ffmpeg", expect: 0 }],
+    };
+
+    pub const YTDLP: Parts = Parts {
+        size: 82_043_018,
+        files: &[
+            FileSpec { url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux", dest_rel: "tools/yt-dlp/yt-dlp", size: 40_446_224, sha256: "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a", extract: Extract::None },
+            FileSpec { url: "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-unknown-linux-gnu.zip", dest_rel: "tools/yt-dlp/_deno.zip", size: 41_596_794, sha256: "c6527f24f4b16031d3ae4fa9f658d5f11534c8d84ce7dc8502420280919c3490", extract: Extract::Flat },
+        ],
+        markers: &[
+            Marker { rel: "tools/yt-dlp/yt-dlp", expect: 40_446_224 },
+            Marker { rel: "tools/yt-dlp/deno", expect: 95_830_104 },
+        ],
+    };
+
+    // Колёса manylinux тех же версий, что win_amd64 (cudart 13.4.92, cuBLAS 13.8.0.4, cuFFT 12.4.0.43) и cuRAND
+    // 10.4.4.72 (CUDA 13.4 Update 2): CUDA-провайдер onnxruntime на Linux связан с libcurand.so.10.
+    pub const CUDA_RUNTIME: Parts = Parts {
+        size: 665_060_003,
+        files: &[
+            FileSpec { url: "https://files.pythonhosted.org/packages/98/8a/3431271f6344874b8f1ac03f16b3d679c91493f8da63f716160403e6d0a0/nvidia_cuda_runtime-13.4.92-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", dest_rel: "models/higgs-engine/_cudart.whl", size: 2_494_438, sha256: "9641f797da20ce1dd8e779b6e96d08cf9ba564cec8e8225458811ee26423f3a5", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/7a/38/bdd540bf511d2c9b6f9efc71a81c60cb88e295be0b9312b61d19bbed2212/nvidia_cublas-13.8.0.4-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/higgs-engine/_cublas.whl", size: 439_317_144, sha256: "9f17797dfcc048694461f4e47de17d2e3c25adf172ef723d2db0a07cd8744b89", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/76/bf/3fea3d1c6262bded26ae00e3106432d63235954965d7785f5051ac146651/nvidia_cufft-12.4.0.43-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", dest_rel: "models/higgs-engine/_cufft.whl", size: 161_750_089, sha256: "0e8385013596b112d29c9ce8c63dc575b308d77636c7169104e18714f03961a8", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/07/73/3ee8e5b4cb891401e603ffd3a59b35c6afe785fd2de123afe7c7029603dc/nvidia_curand-10.4.4.72-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/higgs-engine/_curand.whl", size: 61_498_332, sha256: "25c3457ae7a224fdd484dab90b0fc5dc0e842fab5db3012afa4a5bd2af4eb7e5", extract: Extract::Libs },
+        ],
+        markers: &[
+            Marker { rel: "models/higgs-engine/libcudart.so.13", expect: 0 },
+            Marker { rel: "models/higgs-engine/libcublas.so.13", expect: 0 },
+            Marker { rel: "models/higgs-engine/libcublasLt.so.13", expect: 0 },
+            Marker { rel: "models/higgs-engine/libcufft.so.12", expect: 0 },
+            Marker { rel: "models/higgs-engine/libcurand.so.10", expect: 0 },
+        ],
+    };
+
+    pub const CUDNN: Parts = Parts {
+        size: 536_771_498,
+        files: &[
+            FileSpec { url: "https://files.pythonhosted.org/packages/af/75/96ea5c5368eb595c39d629cde08a66227a864e71ccb0e593add2612bb952/nvidia_cudnn_cu13-9.27.0.42-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/higgs-engine/_cudnn.whl", size: 536_771_498, sha256: "9677e76f21862eb5da7ee5ed69d544738b2d8b5c3ce7e5ec125c5592e6cdbdc8", extract: Extract::Libs },
+        ],
+        markers: &[Marker { rel: "models/higgs-engine/libcudnn.so.9", expect: 0 }],
+    };
+}
+
 // Страница драйверов NVIDIA (кнопка «Открыть сайт» — драйвер DLL-кой не ставится).
 pub const NVIDIA_DRIVER_URL: &str = "https://www.nvidia.com/Download/index.aspx";
 
@@ -190,12 +456,12 @@ pub const NVIDIA_DRIVER_URL: &str = "https://www.nvidia.com/Download/index.aspx"
 
 /// Полный список компонентов. Порядок = порядок показа в панели «Первый запуск».
 pub fn manifest() -> Vec<Component> {
-    vec![
+    let mut all = vec![
         // ── МОДЕЛИ ──────────────────────────────────────────────────────────
         Component {
             id: "higgs",
-            name: "Higgs Audio v3 (Q8_0)",
-            purpose: "Синтез дубляжа и клон голоса (TTS)",
+            name: "Higgs Audio v3 (Q8_0)".into(),
+            purpose: t!("setup-comp-higgs-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
             size: 5_530_678_590,
@@ -216,21 +482,19 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "higgs-engine",
-            name: "Higgs движок (audiocpp_engine.dll)",
-            purpose: "Нативный TTS-движок Higgs (C-ABI)",
+            name: t!("setup-comp-higgs-engine-name"),
+            purpose: t!("setup-comp-higgs-engine-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: 71_727_104,
-            files: &[
-                FileSpec { url: "https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/engines/audiocpp_engine.dll", dest_rel: "models/higgs-engine/audiocpp_engine.dll", size: 71_727_104, sha256: "25dcf30acf54bdee059810f94c5e46ea9c59022a0b53f134d8a422291188449c", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/higgs-engine/audiocpp_engine.dll", expect: 71_727_104 }],
+            size: platform::HIGGS_ENGINE.size,
+            files: platform::HIGGS_ENGINE.files,
+            markers: platform::HIGGS_ENGINE.markers,
             external_url: None,
         },
         Component {
             id: "gemma",
-            name: "Gemma-4 12B QAT q4_0 + vision",
-            purpose: "Перевод и vision-оркестратор субтитров/титров",
+            name: "Gemma-4 12B QAT q4_0 + vision".into(),
+            purpose: t!("setup-comp-gemma-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
             size: 7_150_992_992,
@@ -247,8 +511,8 @@ pub fn manifest() -> Vec<Component> {
         // Альтернативные кванты Gemma (выбор в настройках; тяжелее q4_0, чуть точнее). Свой mmproj на квант.
         Component {
             id: "gemma-q5_0",
-            name: "Gemma-4 12B (Q5_K_M) + vision",
-            purpose: "Перевод и vision — точнее q4_0",
+            name: "Gemma-4 12B (Q5_K_M) + vision".into(),
+            purpose: t!("setup-comp-gemma-q5-0-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 8_588_690_400,
@@ -261,8 +525,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "gemma-q6_k",
-            name: "Gemma-4 12B (Q6_K) + vision",
-            purpose: "Перевод и vision — ещё точнее",
+            name: "Gemma-4 12B (Q6_K) + vision".into(),
+            purpose: t!("setup-comp-gemma-q6-k-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 9_961_137_120,
@@ -275,8 +539,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "gemma-q8_0",
-            name: "Gemma-4 12B (Q8_0) + vision",
-            purpose: "Перевод и vision — максимальная точность",
+            name: "Gemma-4 12B (Q8_0) + vision".into(),
+            purpose: t!("setup-comp-gemma-q8-0-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 12_844_762_080,
@@ -289,8 +553,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "parakeet",
-            name: "Parakeet-TDT 0.6B v3 (int8)",
-            purpose: "Распознавание речи со словными таймстемпами (ASR)",
+            name: "Parakeet-TDT 0.6B v3 (int8)".into(),
+            purpose: t!("setup-comp-parakeet-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
             size: 670_619_803,
@@ -311,8 +575,8 @@ pub fn manifest() -> Vec<Component> {
         // Альтернативные кванты TTS Higgs (выбор в настройках; своя папка на квант, aux те же).
         Component {
             id: "higgs-q6_k",
-            name: "Higgs Audio v3 (Q6_K)",
-            purpose: "Синтез дубляжа и клон голоса (TTS) — вариант полегче Q8_0",
+            name: "Higgs Audio v3 (Q6_K)".into(),
+            purpose: t!("setup-comp-higgs-q6-k-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 5_035_080_542,
@@ -329,8 +593,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "higgs-q4_k_m",
-            name: "Higgs Audio v3 (Q4_K_M)",
-            purpose: "Синтез дубляжа и клон голоса (TTS) — самый лёгкий вариант",
+            name: "Higgs Audio v3 (Q4_K_M)".into(),
+            purpose: t!("setup-comp-higgs-q4-k-m-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 4_098_366_270,
@@ -348,8 +612,8 @@ pub fn manifest() -> Vec<Component> {
         // Альтернативный квант ASR: fp32 (точнее, тяжелее int8). Отдельная папка (fp32 приоритетнее int8).
         Component {
             id: "parakeet-fp32",
-            name: "Parakeet-TDT 0.6B v3 (fp32)",
-            purpose: "Распознавание речи (ASR) — полная точность fp32",
+            name: "Parakeet-TDT 0.6B v3 (fp32)".into(),
+            purpose: t!("setup-comp-parakeet-fp32-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 2_549_945_719,
@@ -369,8 +633,8 @@ pub fn manifest() -> Vec<Component> {
         // раскладки tdt-fp32 (файлы байт-в-байт те же, что у базовой модели). Ревизии закреплены sha коммитов.
         Component {
             id: "parakeet-ultra",
-            name: "Parakeet Ultra 0.6B (fp32)",
-            purpose: "Распознавание речи (ASR) — дообученная Moondream версия, меньше ошибок",
+            name: "Parakeet Ultra 0.6B (fp32)".into(),
+            purpose: t!("setup-comp-parakeet-ultra-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 2_596_031_917,
@@ -390,20 +654,42 @@ pub fn manifest() -> Vec<Component> {
             ],
             external_url: None,
         },
+        // Parakeet Ultra int8 (Masterx): та же дообученная Moondream модель, квантованная тем же рецептом, что
+        // istupakov int8 базовой. Своя папка: энкодер в пределах допуска по размеру от базового int8, а декодер
+        // и словарь совпадают с ним по размеру при других байтах.
+        Component {
+            id: "parakeet-ultra-int8",
+            name: "Parakeet Ultra 0.6B (int8)".into(),
+            purpose: t!("setup-comp-parakeet-ultra-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: 670_619_018,
+            files: &[
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/encoder-model.int8.onnx", dest_rel: "models/tdt-ultra-int8/encoder-model.int8.onnx", size: 652_183_214, sha256: "46e78f85f1ae43b43bd359889c966da5c7ca401df60a42eeffc2e7699b357ba6", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/decoder_joint-model.int8.onnx", dest_rel: "models/tdt-ultra-int8/decoder_joint-model.int8.onnx", size: 18_202_004, sha256: "2276a335d4c8dc48686e931475a634595954956427d485830e1214c0d1a18d07", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/8f23f0c03c8761650bdb5b40aaf3e40d2c15f1ce/nemo128.onnx", dest_rel: "models/tdt-ultra-int8/nemo128.onnx", size: 139_764, sha256: "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/vocab.txt", dest_rel: "models/tdt-ultra-int8/vocab.txt", size: 93_939, sha256: "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx/resolve/99b09f030a5a6efeaa13cf2cf54592100ce2c3f1/config.json", dest_rel: "models/tdt-ultra-int8/config.json", size: 97, sha256: "666903c76b9798caf2c210afd4f6cd60b08a8dbf9800ec8d7a3bc0d2148ac466", extract: Extract::None },
+            ],
+            markers: &[
+                Marker { rel: "models/tdt-ultra-int8/encoder-model.int8.onnx", expect: 652_183_214 },
+                Marker { rel: "models/tdt-ultra-int8/decoder_joint-model.int8.onnx", expect: 18_202_004 },
+                Marker { rel: "models/tdt-ultra-int8/vocab.txt", expect: 93_939 },
+            ],
+            external_url: None,
+        },
         // ── АЛЬТЕРНАТИВНЫЙ ASR-ДВИЖОК: Whisper (Purfview standalone faster-whisper) ──────────
         // Бинарь-onefile (CTranslate2 CPU из коробки; GPU опц. с CUDA11-либами). Выбор в настройках:
         // движок Parakeet/Whisper + РАЗНЫЕ модели (tiny…large-v3-turbo) + РАЗНЫЕ кванты (compute_type).
         Component {
             id: "whisper-engine",
-            name: "Whisper-Faster (движок ASR)",
-            purpose: "Альтернативный движок распознавания речи (faster-whisper) вместо Parakeet",
+            name: t!("setup-comp-whisper-engine-name"),
+            purpose: t!("setup-comp-whisper-engine-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: 87_654_143,
-            files: &[
-                FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip", dest_rel: "tools/whisper/_whisper.zip", size: 87_654_143, sha256: "8150ad257fd8e46d817bb7e667260c2ce4c493d9e58973862e6409c592b44ba5", extract: Extract::ZipFlat },
-            ],
-            markers: &[Marker { rel: "tools/whisper/whisper-faster.exe", expect: 0 }],
+            size: platform::WHISPER_ENGINE.size,
+            files: platform::WHISPER_ENGINE.files,
+            markers: platform::WHISPER_ENGINE.markers,
             external_url: None,
         },
         // CUDA-либы для GPU-режима Whisper (cuBLAS 12 + cuDNN 8) РЯДОМ с whisper-faster.exe. Без них
@@ -411,25 +697,19 @@ pub fn manifest() -> Vec<Component> {
         // Качается по запросу, когда стартует Whisper-джоба на GPU (см. ensure_job_components).
         Component {
             id: "whisper-cuda",
-            name: "CUDA-ускорение Whisper (cuBLAS + cuDNN)",
-            purpose: "GPU-инференс Whisper (иначе распознавание идёт на CPU, в разы медленнее)",
+            name: t!("setup-comp-whisper-cuda-name"),
+            purpose: t!("setup-comp-whisper-cuda-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: 1_125_090_089,
-            files: &[
-                FileSpec { url: REDIST_WHISPER_CUBLAS, dest_rel: "tools/whisper/_wcublas.zip", size: 420_850_025, sha256: "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9", extract: Extract::WheelDlls },
-                FileSpec { url: REDIST_WHISPER_CUDNN, dest_rel: "tools/whisper/_wcudnn.zip", size: 704_240_064, sha256: "5e45478efe71a96329e6c0d2a3a2f79c747c15b2a51fead4b84c89b02cbf1671", extract: Extract::WheelDlls },
-            ],
-            markers: &[
-                Marker { rel: "tools/whisper/cublas64_11.dll", expect: 0 },
-                Marker { rel: "tools/whisper/cudnn64_8.dll", expect: 0 },
-            ],
+            size: platform::WHISPER_CUDA.size,
+            files: platform::WHISPER_CUDA.files,
+            markers: platform::WHISPER_CUDA.markers,
             external_url: None,
         },
         Component {
             id: "whisper-tiny",
-            name: "Whisper tiny (модель ASR)",
-            purpose: "ASR Whisper — самая лёгкая и быстрая модель",
+            name: t!("setup-comp-whisper-tiny-name"),
+            purpose: t!("setup-comp-whisper-tiny-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 78_203_619,
@@ -444,8 +724,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "whisper-base",
-            name: "Whisper base (модель ASR)",
-            purpose: "ASR Whisper — лёгкая модель, точнее tiny",
+            name: t!("setup-comp-whisper-base-name"),
+            purpose: t!("setup-comp-whisper-base-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 147_882_941,
@@ -460,8 +740,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "whisper-small",
-            name: "Whisper small (модель ASR)",
-            purpose: "ASR Whisper — сбалансированная модель",
+            name: t!("setup-comp-whisper-small-name"),
+            purpose: t!("setup-comp-whisper-small-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 486_212_372,
@@ -476,8 +756,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "whisper-medium",
-            name: "Whisper medium (модель ASR)",
-            purpose: "ASR Whisper — высокая точность",
+            name: t!("setup-comp-whisper-medium-name"),
+            purpose: t!("setup-comp-whisper-medium-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 1_530_571_735,
@@ -492,8 +772,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "whisper-large-v3",
-            name: "Whisper large-v3 (модель ASR)",
-            purpose: "ASR Whisper — максимальная точность (large-v3)",
+            name: t!("setup-comp-whisper-large-v3-name"),
+            purpose: t!("setup-comp-whisper-large-v3-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 3_090_835_702,
@@ -509,8 +789,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "whisper-large-v3-turbo",
-            name: "Whisper large-v3-turbo (модель ASR)",
-            purpose: "ASR Whisper — почти large-v3, но заметно быстрее (turbo)",
+            name: t!("setup-comp-whisper-large-v3-turbo-name"),
+            purpose: t!("setup-comp-whisper-large-v3-turbo-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 1_621_665_983,
@@ -529,8 +809,8 @@ pub fn manifest() -> Vec<Component> {
         // догружается первым запуском или on-demand перед анализом. Старый файл не трогаем.
         Component {
             id: "sortformer",
-            name: "Nemotron 3 Diarization (до 8 спикеров)",
-            purpose: "Разделение спикеров (кто когда говорит), до 8 голосов",
+            name: t!("setup-comp-sortformer-name"),
+            purpose: t!("setup-comp-sortformer-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
             size: 400_509_316,
@@ -543,8 +823,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "roformer",
-            name: "Mel-Band Roformer voc_fv6 (Q8_0)",
-            purpose: "Модель вокал/инструментал сепарации",
+            name: "Mel-Band Roformer voc_fv6 (Q8_0)".into(),
+            purpose: t!("setup-comp-roformer-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
             size: 251_707_744,
@@ -557,8 +837,8 @@ pub fn manifest() -> Vec<Component> {
         // Альтернативные кванты сепарации (выбор в настройках; лёгкие, качество чуть ниже Q8_0).
         Component {
             id: "roformer-q5",
-            name: "Mel-Band Roformer voc_fv6 (Q5_0)",
-            purpose: "Сепарация — вариант полегче Q8_0",
+            name: "Mel-Band Roformer voc_fv6 (Q5_0)".into(),
+            purpose: t!("setup-comp-roformer-q5-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 167_303_008,
@@ -570,8 +850,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "roformer-q4",
-            name: "Mel-Band Roformer voc_fv6 (Q4_0)",
-            purpose: "Сепарация — самый лёгкий вариант",
+            name: "Mel-Band Roformer voc_fv6 (Q4_0)".into(),
+            purpose: t!("setup-comp-roformer-q4-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
             size: 139_168_096,
@@ -592,8 +872,8 @@ pub fn manifest() -> Vec<Component> {
         //   • WeSpeaker ResNet34-LM — голосовой эмбеддинг: cross-episode матч голосов (на Xet-CAS).
         Component {
             id: "casting",
-            name: "Модели кастинга персонажей (лица + голос)",
-            purpose: "Детект/эмбеддинг лиц (реальные + аниме) + голосовой эмбеддинг для кастинга #115",
+            name: t!("setup-comp-casting-name"),
+            purpose: t!("setup-comp-casting-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
             size: 1_331_548_084,
@@ -618,140 +898,109 @@ pub fn manifest() -> Vec<Component> {
         // ── СAЙДКАРЫ / ДВИЖКИ ───────────────────────────────────────────────
         Component {
             id: "bsroformer-engine",
-            name: "BSRoformer.cpp движок (CUDA)",
-            purpose: "Нативный движок сепарации (bs_roformer-cli + ggml-CUDA)",
+            name: t!("setup-comp-bsroformer-engine-name"),
+            purpose: t!("setup-comp-bsroformer-engine-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
-            size: 164_990_561,
-            files: &[
-                FileSpec { url: GH_BSROFORMER_ENGINE, dest_rel: "tools/bsroformer/_engine.zip", size: 164_990_561, sha256: "a7c330774c0a40ec4de09ca0613af48fdc23c28bd0d90212425697daf7b1db74", extract: Extract::ZipFlat },
-            ],
-            markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli.exe", expect: 0 }],
+            size: platform::BSROFORMER.size,
+            files: platform::BSROFORMER.files,
+            markers: platform::BSROFORMER.markers,
             external_url: None,
         },
         Component {
             id: "bsroformer-engine-cpu",
-            name: "BSRoformer.cpp движок (CPU)",
-            purpose: "Сепарация на процессоре — режим без NVIDIA (медленнее, полная функция)",
+            name: t!("setup-comp-bsroformer-engine-cpu-name"),
+            purpose: t!("setup-comp-bsroformer-engine-cpu-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: 671_031,
-            files: &[
-                FileSpec { url: GH_BSROFORMER_ENGINE_CPU, dest_rel: "tools/bsroformer-cpu/_engine.zip", size: 671_031, sha256: "e002811d56605bce6a51c275cf8f9ba447a3707771289ea6fbcca7f4d3e9ba1f", extract: Extract::ZipFlat },
-            ],
-            markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli.exe", expect: 0 }],
+            size: platform::BSROFORMER_CPU.size,
+            files: platform::BSROFORMER_CPU.files,
+            markers: platform::BSROFORMER_CPU.markers,
             external_url: None,
         },
         Component {
             id: "llama",
-            name: "llama.cpp сервер (CUDA 13.4)",
-            purpose: "Сайдкар-сервер для Gemma (перевод/vision)",
+            name: t!("setup-comp-llama-name"),
+            purpose: t!("setup-comp-llama-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
             // Размер сжатого zip (для прогресса закачки); распакованный footprint ~183 МБ.
-            size: 149_758_833,
-            files: &[
-                FileSpec { url: GH_LLAMA, dest_rel: "tools/llama/_llama.zip", size: 149_758_833, sha256: "b1866c0ce76bc7bfb0c24b33e9a37e9669f1be18539b12c74ce361f81c41f047", extract: Extract::ZipFlat },
-            ],
-            markers: &[Marker { rel: "tools/llama/llama-server.exe", expect: 0 }],
+            size: platform::LLAMA.size,
+            files: platform::LLAMA.files,
+            markers: platform::LLAMA.markers,
             external_url: None,
         },
         Component {
             id: "onnxruntime",
-            name: "ONNX Runtime 1.28.2",
-            purpose: "Рантайм ASR/OCR/диаризации (строго 1.28.x)",
+            name: "ONNX Runtime 1.28.2".into(),
+            purpose: t!("setup-comp-onnxruntime-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: 78_620_837,
-            files: &[
-                FileSpec { url: GH_ORT, dest_rel: "models/runtime/_ort.zip", size: 78_620_837, sha256: "c4eedd29489d5feca21866d054638416f3655bf6b18851b3b6b85c8313e95c35", extract: Extract::ZipTree },
-            ],
-            // dub-asr::ensure_ort_dylib ищет ровно этот путь под models/runtime.
-            markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll", expect: 0 }],
+            size: platform::ORT.size,
+            files: platform::ORT.files,
+            markers: platform::ORT.markers,
             external_url: None,
         },
         Component {
             id: "onnxruntime-gpu",
-            name: "ONNX Runtime 1.28.2 GPU (CUDA)",
-            purpose: "CUDA-провайдер для диаризации/Parakeet на GPU (режим local_backend=gpu)",
+            name: "ONNX Runtime 1.28.2 GPU (CUDA)".into(),
+            purpose: t!("setup-comp-onnxruntime-gpu-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
-            size: 365_562_963,
-            files: &[
-                FileSpec { url: GH_ORT_GPU, dest_rel: "models/runtime/_ort_gpu.zip", size: 365_562_963, sha256: "4b7a2d01a3cc96b12d06c8266af2c8f42c96365c4a0100d45fd874c71b4a2e19", extract: Extract::ZipTree },
-            ],
-            markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime.dll", expect: 0 }],
+            size: platform::ORT_GPU.size,
+            files: platform::ORT_GPU.files,
+            markers: platform::ORT_GPU.markers,
             external_url: None,
         },
         Component {
             id: "ffmpeg",
-            name: "FFmpeg (static win64)",
-            purpose: "Декод/энкод видео и аудио (NVENC)",
+            name: "FFmpeg (static)".into(),
+            purpose: t!("setup-comp-ffmpeg-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: 170_732_198,
-            files: &[
-                FileSpec { url: GH_FFMPEG, dest_rel: "tools/ffmpeg/_ffmpeg.zip", size: 170_732_198, sha256: "b4da332540eaebc6939181b59e267f163dd57407ef6596f7f3452845921d1d91", extract: Extract::ZipPick },
-            ],
-            markers: &[Marker { rel: "tools/ffmpeg/ffmpeg.exe", expect: 0 }],
+            size: platform::FFMPEG.size,
+            files: platform::FFMPEG.files,
+            markers: platform::FFMPEG.markers,
             external_url: None,
         },
         Component {
             id: "ytdlp",
-            name: "Загрузка по ссылке (yt-dlp + deno)",
-            purpose: "Скачать видео по ссылке (YouTube и другие сайты yt-dlp) в новый проект",
+            name: t!("setup-comp-ytdlp-name"),
+            purpose: t!("setup-comp-ytdlp-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: 60_470_620,
-            files: &[
-                FileSpec { url: GH_YTDLP, dest_rel: "tools/yt-dlp/yt-dlp.exe", size: 17_840_399, sha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a", extract: Extract::None },
-                FileSpec { url: GH_DENO, dest_rel: "tools/yt-dlp/_deno.zip", size: 42_630_221, sha256: "a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238", extract: Extract::ZipFlat },
-            ],
-            markers: &[
-                Marker { rel: "tools/yt-dlp/yt-dlp.exe", expect: 17_840_399 },
-                Marker { rel: "tools/yt-dlp/deno.exe", expect: 97_462_048 },
-            ],
+            size: platform::YTDLP.size,
+            files: platform::YTDLP.files,
+            markers: platform::YTDLP.markers,
             external_url: None,
         },
         // ── СИСТЕМНОЕ ────────────────────────────────────────────────────────
         Component {
             id: "cuda-runtime",
-            name: "CUDA 13 runtime (cudart + cuBLAS + cuFFT)",
-            purpose: "Редистрибутивные CUDA-DLL для движков и CUDA-EP onnxruntime (без CUDA Toolkit)",
+            name: "CUDA 13 runtime (cudart + cuBLAS + cuFFT)".into(),
+            purpose: t!("setup-comp-cuda-runtime-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: 585_648_133,
-            files: &[
-                FileSpec { url: WHEEL_CUDART, dest_rel: "models/higgs-engine/_cudart.whl", size: 2_778_543, sha256: "08dca5e4aba480c2fd5b55075c0fa71b84ef9dcf0521f2d58baa14a803a7311c", extract: Extract::WheelDlls },
-                FileSpec { url: WHEEL_CUBLAS, dest_rel: "models/higgs-engine/_cublas.whl", size: 423_266_897, sha256: "8c5494423bb8a46822cb6b0cb95d7fa4be2d7b96a31155dff083839ec8297910", extract: Extract::WheelDlls },
-                // cuFFT (cufft64_12.dll) — обязателен для CUDA-EP onnxruntime (диаризация/Parakeet на GPU).
-                FileSpec { url: REDIST_CUFFT, dest_rel: "models/higgs-engine/_cufft.zip", size: 159_602_693, sha256: "69d0ad8dc3a1be66f01a748a8206d0ceaafa56939474663fbe790dc3e91d2009", extract: Extract::WheelDlls },
-            ],
-            markers: &[
-                Marker { rel: "models/higgs-engine/cudart64_13.dll", expect: 0 },
-                Marker { rel: "models/higgs-engine/cublas64_13.dll", expect: 0 },
-                Marker { rel: "models/higgs-engine/cublasLt64_13.dll", expect: 0 },
-                Marker { rel: "models/higgs-engine/cufft64_12.dll", expect: 0 },
-            ],
+            size: platform::CUDA_RUNTIME.size,
+            files: platform::CUDA_RUNTIME.files,
+            markers: platform::CUDA_RUNTIME.markers,
             external_url: None,
         },
         Component {
             id: "cudnn",
-            name: "cuDNN 9 (CUDA 13)",
-            purpose: "Нужен CUDA-провайдеру onnxruntime для диаризации/Parakeet на GPU",
+            name: "cuDNN 9 (CUDA 13)".into(),
+            purpose: t!("setup-comp-cudnn-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
-            size: 436_469_905,
-            files: &[
-                FileSpec { url: WHEEL_CUDNN, dest_rel: "models/higgs-engine/_cudnn.whl", size: 436_469_905, sha256: "7d96f634adafd55c72231eb0500ca77ab109ec8ebff7b33000b76e081bc4558e", extract: Extract::WheelDlls },
-            ],
-            markers: &[Marker { rel: "models/higgs-engine/cudnn64_9.dll", expect: 0 }],
+            size: platform::CUDNN.size,
+            files: platform::CUDNN.files,
+            markers: platform::CUDNN.markers,
             external_url: None,
         },
         Component {
             id: "vcruntime",
-            name: "Visual C++ Runtime (2015–2022)",
-            purpose: "Системные DLL движков (идут в комплекте)",
+            name: "Visual C++ Runtime (2015–2022)".into(),
+            purpose: t!("setup-comp-vcruntime-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Bundled,
             size: 1_120_664,
@@ -769,8 +1018,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "ocr",
-            name: "OCR-модели (PP-OCR ONNX)",
-            purpose: "Детекция вшитого текста → блюр (идут в комплекте)",
+            name: t!("setup-comp-ocr-name"),
+            purpose: t!("setup-comp-ocr-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Bundled,
             size: 31_726_193,
@@ -785,8 +1034,8 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "nvidia-driver",
-            name: "Драйвер NVIDIA",
-            purpose: "GPU-ускорение (ставится отдельно, не приложением)",
+            name: t!("setup-comp-nvidia-driver-name"),
+            purpose: t!("setup-comp-nvidia-driver-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::External,
             size: 0,
@@ -794,7 +1043,12 @@ pub fn manifest() -> Vec<Component> {
             markers: &[],
             external_url: Some(NVIDIA_DRIVER_URL),
         },
-    ]
+    ];
+    // Среда исполнения Visual C++ есть только у Windows-сборок движков.
+    if !cfg!(windows) {
+        all.retain(|c| c.id != "vcruntime");
+    }
+    all
 }
 
 // ── Статус одного компонента ────────────────────────────────────────────────
@@ -841,6 +1095,7 @@ fn vram_estimate(id: &str) -> u64 {
         "parakeet" => gb(1.1),
         "parakeet-fp32" => gb(2.7),
         "parakeet-ultra" => gb(2.7),
+        "parakeet-ultra-int8" => gb(1.1),
         "sortformer" => gb(0.5),
         "roformer" => gb(0.5),
         "roformer-q5" => gb(0.45),
@@ -876,7 +1131,7 @@ fn system_dir() -> Option<PathBuf> {
     let mut buf = [0u16; 1024];
     let n = unsafe { GetSystemDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
     if n == 0 || n >= buf.len() {
-        tracing::warn!("GetSystemDirectoryW не ответил ({}) — DLL из системного каталога не засчитываются", std::io::Error::last_os_error());
+        tracing::warn!("GetSystemDirectoryW did not answer ({}); DLLs of the system folder are not counted", std::io::Error::last_os_error());
         return None;
     }
     Some(PathBuf::from(std::ffi::OsString::from_wide(&buf[..n])))
@@ -964,7 +1219,7 @@ fn read_record(repo_root: &Path, f: &FileSpec) -> Option<ArchiveRecord> {
     match serde_json::from_str(&text) {
         Ok(r) => Some(r),
         Err(e) => {
-            tracing::warn!("запись об установке {} не читается ({e}) — архив считается не установленным", p.display());
+            tracing::warn!("the install record {} is unreadable ({e}); the archive counts as not installed", p.display());
             None
         }
     }
@@ -996,12 +1251,13 @@ fn write_record(repo_root: &Path, f: &FileSpec, written: &[PathBuf]) -> Result<(
             size: file_len(p),
         })
         .collect();
-    let rec = ArchiveRecord { sha256: f.sha256.to_string(), url: f.url.to_string(), files };
+    let rec = ArchiveRecord { sha256: f.sha256.to_string(), url: f.url.to_string(), files,
+    };
     let path = record_path(repo_root, f);
     let tmp = with_suffix(&path, ".tmp");
-    let body = serde_json::to_vec_pretty(&rec).map_err(|e| DlError::new("io", format!("запись об установке: {e}")))?;
-    std::fs::write(&tmp, body).map_err(|e| DlError::new("io", format!("запись {}: {e}", tmp.display())))?;
-    std::fs::rename(&tmp, &path).map_err(|e| DlError::new("io", format!("запись {}: {e}", path.display())))
+    let body = serde_json::to_vec_pretty(&rec).map_err(|e| DlError::new("io", t!("setup-install-record", error = e.to_string())))?;
+    std::fs::write(&tmp, body).map_err(|e| DlError::new("io", t!("common-write", what = tmp.display().to_string(), error = e.to_string())))?;
+    std::fs::rename(&tmp, &path).map_err(|e| DlError::new("io", t!("common-write", what = path.display().to_string(), error = e.to_string())))
 }
 
 /// ffmpeg доступен в системном PATH? (Command::new("ffmpeg") найдёт его при рендере.)
@@ -1029,7 +1285,8 @@ pub fn component_status(repo_root: &Path, c: &Component) -> ComponentStatus {
 }
 
 /// `system` — системный каталог, где засчитываются маркеры компонентов FOUND_IN_SYSTEM_DIR.
-fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>) -> ComponentStatus {
+fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>,
+) -> ComponentStatus {
     let mut missing: Vec<String> = Vec::new();
     let mut bytes_on_disk = 0u64;
     let mut space_needed = 0u64;
@@ -1067,7 +1324,8 @@ fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>
             space_needed = 0;
             (true, Some("PATH".to_string()))
         }
-        _ => (missing.is_empty(), from_system.then(|| "system".to_string())),
+        _ => (missing.is_empty(), from_system.then(|| "system".to_string()),
+        ),
     };
     ComponentStatus {
         id: c.id.to_string(),
@@ -1090,17 +1348,20 @@ fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>
 
 /// Рекурсивно собрать карту basename(lower) -> [(path, size)] под dir (лимит глубины/файлов, чтоб не уйти в
 /// бесконечность на большом диске). Скрытые каталоги (.git, .download, .cache) пропускаем.
-fn index_dir(dir: &Path, map: &mut std::collections::HashMap<String, Vec<(PathBuf, u64)>>, depth: usize, budget: &mut usize) {
+fn index_dir(dir: &Path, map: &mut std::collections::HashMap<String, Vec<(PathBuf, u64)>>, depth: usize, budget: &mut usize,
+) {
     if depth > 8 || *budget == 0 {
         return;
     }
-    let Ok(rd) = std::fs::read_dir(dir) else { return };
+    let Ok(rd) = std::fs::read_dir(dir) else { return;
+    };
     for e in rd.flatten() {
         if *budget == 0 {
             return;
         }
         let p = e.path();
-        let Some(name) = p.file_name().and_then(|s| s.to_str()).map(str::to_string) else { continue };
+        let Some(name) = p.file_name().and_then(|s| s.to_str()).map(str::to_string) else { continue;
+        };
         if p.is_dir() {
             if !name.starts_with('.') {
                 index_dir(&p, map, depth + 1, budget);
@@ -1176,7 +1437,9 @@ pub fn import_from_dir(repo_root: &Path, src_dir: &Path, only: Option<&str>) -> 
                     report.files += 1;
                     any = true;
                 }
-                Err(e) => report.errors.push(format!("{} -> {}: {e}", src.display(), dest.display())),
+                Err(e) => {
+                    report.errors.push(format!("{} -> {}: {e}", src.display(), dest.display()))
+                }
             }
         }
         if any && component_status(repo_root, &c).installed {
@@ -1196,13 +1459,15 @@ pub fn free_bytes(path: &Path) -> Option<u64> {
     let dir = path.ancestors().find(|p| p.is_dir())?;
     let wide: Vec<u16> = dir.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
     let mut avail = 0u64;
-    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, std::ptr::null_mut(), std::ptr::null_mut()) };
+    let ok = unsafe { GetDiskFreeSpaceExW(wide.as_ptr(), &mut avail, std::ptr::null_mut(), std::ptr::null_mut(),
+        ) };
     (ok != 0).then_some(avail)
 }
 
 #[cfg(windows)]
 extern "system" {
-    fn GetDiskFreeSpaceExW(dir: *const u16, free_to_caller: *mut u64, total: *mut u64, total_free: *mut u64) -> i32;
+    fn GetDiskFreeSpaceExW(dir: *const u16, free_to_caller: *mut u64, total: *mut u64, total_free: *mut u64,
+    ) -> i32;
     fn GetSystemDirectoryW(buf: *mut u16, size: u32) -> u32;
 }
 
@@ -1211,17 +1476,13 @@ pub fn free_bytes(_path: &Path) -> Option<u64> {
     None
 }
 
-fn fmt_gb(n: u64) -> String {
-    format!("{:.1} ГБ", n as f64 / 1e9)
-}
-
 /// Отказ, если на томе моделей меньше места, чем нужно под докачку `need` байт.
 fn ensure_space(repo_root: &Path, need: u64) -> Result<(), DlError> {
     let models = repo_root.join("models");
     match free_bytes(&models) {
         Some(free) if free < need => Err(DlError::new(
             "disk_space",
-            format!("не хватает места: нужно {}, свободно {} ({})", fmt_gb(need), fmt_gb(free), models.display()),
+            t!("setup-disk-space", need = format!("{:.1}", need as f64 / 1e9), free = format!("{:.1}", free as f64 / 1e9), path = models.display().to_string()),
         )),
         _ => Ok(()),
     }
@@ -1253,8 +1514,15 @@ fn pick_import_source<'a>(
     m: &Marker,
     map: &'a std::collections::HashMap<String, Vec<(PathBuf, u64)>>,
 ) -> Option<&'a PathBuf> {
-    let base_of = |rel: &str| Path::new(rel).file_name().and_then(|s| s.to_str()).map(|s| s.to_lowercase());
+    let base_of = |rel: &str| {
+        Path::new(rel).file_name().and_then(|s| s.to_str()).map(|s| s.to_lowercase())
+    };
     let cands = map.get(&base_of(m.rel)?)?;
+    let others: Vec<Marker> = manifest().into_iter().filter(|o| o.id != c.id).flat_map(|o| o.markers.iter().copied()).collect();
+    let fits = |marker: &Marker, sz: u64| {
+        import_size_fits(marker, sz)
+            && !others.iter().any(|o| o.expect == sz && o.expect != marker.expect && base_of(o.rel) == base_of(marker.rel))
+    };
     let dest_dir = Path::new(m.rel).parent();
     let siblings: Vec<&Marker> = c
         .markers
@@ -1265,12 +1533,14 @@ fn pick_import_source<'a>(
         siblings.iter().any(|s| {
             base_of(s.rel)
                 .and_then(|b| map.get(&b))
-                .is_some_and(|files| files.iter().any(|(p, sz)| p.parent() == dir && !import_size_fits(s, *sz)))
+                .is_some_and(|files| {
+                    files.iter().any(|(p, sz)| p.parent() == dir && !fits(s, *sz))
+                })
         })
     };
     let ok: Vec<&(PathBuf, u64)> = cands
         .iter()
-        .filter(|(p, sz)| import_size_fits(m, *sz) && !dir_conflicts(p.parent()))
+        .filter(|(p, sz)| fits(m, *sz) && !dir_conflicts(p.parent()))
         .collect();
     ok.iter()
         .find(|(_, sz)| m.expect != 0 && *sz == m.expect)
@@ -1312,7 +1582,7 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
     // преселектится на первом запуске (юзер выбрал облако -> не тянет ненужные гигабайты Gemma/Higgs).
     let mroot = repo_root.join("models");
     let cloud_llm = !crate::models::local_gemma_needed(&mroot);
-    let cloud_tts = crate::models::openrouter_stage_on(&mroot, "tts");
+    let cloud_tts = crate::models::cloud_tts_on(&mroot);
     let cloud_asr = crate::models::openrouter_asr_on(&mroot);
     for c in comps.iter_mut() {
         if c.requirement != Requirement::Required {
@@ -1388,15 +1658,17 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
         let c = all
             .iter()
             .find(|c| c.id == id)
-            .ok_or_else(|| DlError::new("unknown_component", format!("нет компонента {id}")))?;
+            .ok_or_else(|| DlError::new("unknown_component", t!("setup-unknown-component", id = id.to_string())))?;
         if c.delivery != Delivery::Download {
-            return Err(DlError::new("not_removable", format!("{id} ставится не приложением")));
+            return Err(DlError::new("not_removable", t!("setup-not-removable", id = id.to_string()),
+            ));
         }
         targets.push(c);
     }
     let claim_ids: Vec<String> = targets.iter().map(|c| c.id.to_string()).collect();
     let Some(_claim) = try_claim(&claim_ids) else {
-        return Err(DlError::new("busy", "компонент сейчас качается — поставьте закачку на паузу"));
+        return Err(DlError::new("busy", t!("setup-component-busy"),
+        ));
     };
     let mut report = RemovalReport::default();
     let mroot = crate::models_root(repo_root);
@@ -1404,7 +1676,8 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
         let before = report.freed_bytes;
         let mut touched: Vec<PathBuf> = Vec::new();
         let mut drop_file = |p: &Path, report: &mut RemovalReport| {
-            let Ok(meta) = std::fs::metadata(p) else { return };
+            let Ok(meta) = std::fs::metadata(p) else { return;
+            };
             if !meta.is_file() {
                 return;
             }
@@ -1452,7 +1725,8 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
 
 /// Снять опустевшие каталоги после удаления (вверх до models/ или tools/, сами они остаются).
 fn prune_empty_dirs(repo_root: &Path, removed: &[PathBuf]) {
-    let stops = [repo_root.join("models"), repo_root.join("tools"), repo_root.to_path_buf()];
+    let stops = [repo_root.join("models"), repo_root.join("tools"), repo_root.to_path_buf(),
+    ];
     for p in removed {
         let mut dir = p.parent();
         while let Some(d) = dir {
@@ -1483,7 +1757,8 @@ pub struct DlError {
 
 impl DlError {
     pub fn new(code: &'static str, detail: impl Into<String>) -> Self {
-        DlError { code, detail: detail.into() }
+        DlError { code, detail: detail.into(),
+        }
     }
 }
 
@@ -1497,7 +1772,7 @@ impl std::fmt::Display for DlError {
 pub const CANCELLED: &str = "cancelled";
 
 fn cancelled() -> DlError {
-    DlError::new(CANCELLED, "закачка поставлена на паузу")
+    DlError::new(CANCELLED, t!("setup-paused"))
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -1517,7 +1792,8 @@ struct Claims {
 
 fn claims() -> &'static Claims {
     static C: OnceLock<Claims> = OnceLock::new();
-    C.get_or_init(|| Claims { ids: Mutex::new(Default::default()), freed: Condvar::new() })
+    C.get_or_init(|| Claims { ids: Mutex::new(Default::default()), freed: Condvar::new(),
+    })
 }
 
 struct ClaimGuard {
@@ -1544,7 +1820,8 @@ fn try_claim(ids: &[String]) -> Option<ClaimGuard> {
     Some(ClaimGuard { ids: ids.to_vec() })
 }
 
-fn claim(ids: &[String], stop: &dyn Fn() -> bool, on_wait: &dyn Fn()) -> Result<ClaimGuard, DlError> {
+fn claim(ids: &[String], stop: &dyn Fn() -> bool, on_wait: &dyn Fn(),
+) -> Result<ClaimGuard, DlError> {
     let mut told = false;
     loop {
         if let Some(g) = try_claim(ids) {
@@ -1585,7 +1862,8 @@ struct Slots {
 
 fn slots() -> &'static Slots {
     static S: OnceLock<Slots> = OnceLock::new();
-    S.get_or_init(|| Slots { used: Mutex::new(0), freed: Condvar::new() })
+    S.get_or_init(|| Slots { used: Mutex::new(0), freed: Condvar::new(),
+    })
 }
 
 struct SlotGuard;
@@ -1684,7 +1962,9 @@ fn header_str<'a>(h: &'a ureq::http::HeaderMap, name: &str) -> Option<&'a str> {
 fn asked_to_wait(h: &ureq::http::HeaderMap) -> u64 {
     header_str(h, "retry-after")
         .and_then(|v| v.trim().parse::<u64>().ok())
-        .or_else(|| header_str(h, "ratelimit").and_then(parse_rate_limit).map(|w| w.1))
+        .or_else(|| {
+            header_str(h, "ratelimit").and_then(parse_rate_limit).map(|w| w.1)
+        })
         .unwrap_or(30)
         .clamp(1, 310)
 }
@@ -1693,7 +1973,8 @@ type Resp = ureq::http::Response<ureq::Body>;
 
 /// Один GET со слотом из общего бюджета. 429/5xx — не ошибка, а очередь: ждём, сколько попросил сервер, не
 /// тратя попыток; слот на время ожидания отпускается. Вернувшийся слот держать до конца чтения тела.
-fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn() -> bool) -> Result<(Resp, SlotGuard), DlError> {
+fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn() -> bool,
+) -> Result<(Resp, SlotGuard), DlError> {
     let mut waited = 0u64;
     loop {
         wait_for_server(stop)?;
@@ -1716,7 +1997,7 @@ fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn
             if waited + pause > RATE_LIMIT_BUDGET_S {
                 return Err(DlError::new(
                     "rate_limited",
-                    format!("{url}: сервер отвечает {status} уже {} мин", waited / 60),
+                    t!("setup-rate-limited", url = url.to_string(), status = status, minutes = waited / 60),
                 ));
             }
             waited += pause;
@@ -1761,10 +2042,10 @@ fn dl_proxy(url: &reqwest::Url) -> Result<ureq::Proxy, String> {
         "socks4a" => ProxyProtocol::Socks4A,
         "socks5" => ProxyProtocol::Socks5,
         "socks5h" => ProxyProtocol::Socks5h,
-        other => return Err(format!("прокси {shown}: схема {other} закачке не подходит (http, https, socks4, socks5)")),
+        other => return Err(t!("setup-proxy-scheme", proxy = shown.to_string(), scheme = other.to_string())),
     };
-    let host = url.host_str().filter(|host| !host.is_empty()).ok_or_else(|| format!("прокси {shown}: нет хоста"))?;
-    let port = url.port_or_known_default().ok_or_else(|| format!("прокси {shown}: нет порта"))?;
+    let host = url.host_str().filter(|host| !host.is_empty()).ok_or_else(|| t!("setup-proxy-no-host", proxy = shown.to_string()))?;
+    let port = url.port_or_known_default().ok_or_else(|| t!("setup-proxy-no-port", proxy = shown.to_string()))?;
     let user = dub_llm::net::decode_userinfo(url.username());
     let password = url.password().map(dub_llm::net::decode_userinfo);
     let mut builder = ureq::Proxy::builder(protocol).host(host).port(port);
@@ -1774,13 +2055,7 @@ fn dl_proxy(url: &reqwest::Url) -> Result<ureq::Proxy, String> {
     if let Some(password) = &password {
         builder = builder.password(password);
     }
-    let unfit = || {
-        format!(
-            "прокси {shown}: закачка моделей (ureq) не может передать прокси такой логин или пароль — в нём / ? #, пробел, \
-             не-ASCII или (для SOCKS5) двоеточие в пароле; облачные запросы через этот прокси работают, для закачки \
-             нужен пароль без этих символов"
-        )
-    };
+    let unfit = || t!("setup-proxy-credentials", proxy = shown.to_string());
     let proxy = builder.build().map_err(|e| format!("{} ({e})", unfit()))?;
     let sent_user = proxy.username().unwrap_or_default();
     let sent_password = proxy.password();
@@ -1809,15 +2084,19 @@ fn probe(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool) -> Result<(u64
         }
         sleep_or_stop(Duration::from_millis(500 << attempt.min(7)), stop)?;
     }
-    Err(DlError::new("network", format!("{url}: не удалось начать за {RETRIES} попыток: {last}")))
+    Err(DlError::new("network", t!("setup-start-failed", url = url.to_string(), retries = RETRIES, error = last.clone()),
+    ))
 }
 
-fn probe_once(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool) -> Result<(u64, bool), DlError> {
+fn probe_once(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool,
+) -> Result<(u64, bool), DlError> {
     let (resp, _slot) = send(agent, url, Some((0, 0)), stop)?;
     let status = resp.status().as_u16();
     let header_num = |name: &str, last_part: bool| {
         header_str(resp.headers(), name)
-            .map(|s| if last_part { s.rsplit('/').next().unwrap_or("") } else { s })
+            .map(|s| {
+                if last_part { s.rsplit('/').next().unwrap_or("") } else { s }
+            })
             .and_then(|s| s.trim().parse::<u64>().ok())
             .unwrap_or(0)
     };
@@ -1828,7 +2107,8 @@ fn probe_once(agent: &ureq::Agent, url: &str, stop: &dyn Fn() -> bool) -> Result
         }
     }
     if !(200..300).contains(&status) {
-        return Err(DlError::new("http_status", format!("{url}: статус {status}")));
+        return Err(DlError::new("http_status", t!("setup-http-status", url = url.to_string(), status = status),
+        ));
     }
     Ok((header_num("content-length", false), false))
 }
@@ -1877,20 +2157,23 @@ fn download_range(
                 use std::io::Write;
                 m.write_all(&start.to_le_bytes())
                     .and_then(|_| m.sync_data())
-                    .map_err(|e| DlError::new("io", format!("манифест чанков: {e}")))?;
+                    .map_err(|e| DlError::new("io", t!("setup-chunk-manifest", error = e.to_string())))?;
                 return Ok(());
             }
-            Ok(()) => last = format!("неполный range: {got}/{want} байт"),
+            Ok(()) => last = t!("setup-range-incomplete", got = got, want = want),
             Err(e) if e.code != "network" => {
-                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed);
+                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed,
+                );
                 return Err(e);
             }
             Err(e) => last = e.detail,
         }
-        downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed);
+        downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed,
+        );
         sleep_or_stop(Duration::from_millis(500 << attempt.min(7)), &stop)?;
     }
-    Err(DlError::new("network", format!("range {start}-{end} после {RETRIES} попыток: {last}")))
+    Err(DlError::new("network", t!("setup-range-failed", start = start, end = end, retries = RETRIES, error = last.clone()),
+    ))
 }
 
 /// Одна попытка скачать диапазон. Пишет got = сколько байт реально записано (для отката прогресса).
@@ -1908,7 +2191,8 @@ fn download_range_once(
     let (resp, _slot) = send(agent, url, Some((start, end)), stop)?;
     let status = resp.status().as_u16();
     if status != 206 {
-        return Err(DlError::new("http_status", format!("range {start}-{end}: статус {status} (ждали 206)")));
+        return Err(DlError::new("http_status", t!("setup-range-status", start = start, end = end, status = status),
+        ));
     }
     let mut reader = resp.into_body().into_reader();
     let mut buf = vec![0u8; 262_144];
@@ -1917,13 +2201,13 @@ fn download_range_once(
         if stop() {
             return Err(cancelled());
         }
-        let n = reader.read(&mut buf).map_err(|e| DlError::new("network", format!("чтение range: {e}")))?;
+        let n = reader.read(&mut buf).map_err(|e| DlError::new("network", t!("setup-range-read", error = e.to_string())))?;
         if n == 0 {
             break;
         }
         let mut w = 0;
         while w < n {
-            let k = write_at(file, &buf[w..n], offset + w as u64).map_err(|e| DlError::new("io", format!("запись: {e}")))?;
+            let k = write_at(file, &buf[w..n], offset + w as u64).map_err(|e| DlError::new("io", t!("setup-write", error = e.to_string())))?;
             if k == 0 {
                 return Err(DlError::new("io", "short write"));
             }
@@ -1953,20 +2237,21 @@ fn download_whole(
             let (resp, _slot) = send(agent, url, None, &stop)?;
             let status = resp.status().as_u16();
             if !(200..300).contains(&status) {
-                return Err(DlError::new("http_status", format!("{url}: статус {status}")));
+                return Err(DlError::new("http_status", t!("setup-http-status", url = url.to_string(), status = status),
+                ));
             }
             let mut reader = resp.into_body().into_reader();
-            let mut file = File::create(dest).map_err(|e| DlError::new("io", format!("создать {}: {e}", dest.display())))?;
+            let mut file = File::create(dest).map_err(|e| DlError::new("io", t!("setup-create", path = dest.display().to_string(), error = e.to_string())))?;
             let mut buf = vec![0u8; 262_144];
             loop {
                 if stop() {
                     return Err(cancelled());
                 }
-                let n = reader.read(&mut buf).map_err(|e| DlError::new("network", format!("чтение: {e}")))?;
+                let n = reader.read(&mut buf).map_err(|e| DlError::new("network", t!("setup-read", error = e.to_string())))?;
                 if n == 0 {
                     break;
                 }
-                file.write_all(&buf[..n]).map_err(|e| DlError::new("io", format!("запись: {e}")))?;
+                file.write_all(&buf[..n]).map_err(|e| DlError::new("io", t!("setup-write", error = e.to_string())))?;
                 got += n as u64;
                 downloaded.fetch_add(n as u64, Ordering::Relaxed);
             }
@@ -1975,7 +2260,8 @@ fn download_whole(
         match res {
             Ok(()) => return Ok(()),
             Err(e) => {
-                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed);
+                downloaded.fetch_sub(got.min(downloaded.load(Ordering::Relaxed)), Ordering::Relaxed,
+                );
                 if e.code != "network" {
                     return Err(e);
                 }
@@ -1984,7 +2270,8 @@ fn download_whole(
         }
         sleep_or_stop(Duration::from_millis(500 << attempt.min(7)), &stop)?;
     }
-    Err(DlError::new("network", format!("{url} после {RETRIES} попыток: {last}")))
+    Err(DlError::new("network", t!("setup-download-failed", url = url.to_string(), retries = RETRIES, error = last.clone()),
+    ))
 }
 
 /// Потоковый SHA-256 файла блоками по 1 МиБ. None — остановлено (stop): пауза не ждёт конца хэширования 12 ГБ.
@@ -2005,7 +2292,8 @@ pub(crate) fn sha256_file(path: &Path, stop: &dyn Fn() -> bool) -> std::io::Resu
             return Ok(None);
         }
     }
-    Ok(Some(digest.finalize().iter().map(|b| format!("{b:02x}")).collect()))
+    Ok(Some(digest.finalize().iter().map(|b| format!("{b:02x}")).collect(),
+    ))
 }
 
 fn discard_part(part: &Path) {
@@ -2015,40 +2303,51 @@ fn discard_part(part: &Path) {
 
 /// Проверить скачанный .part (размер и SHA-256 против закреплённых) и опубликовать: прямой файл — rename в
 /// финал, архив — распаковка + запись об установке. Несовпадение — .part удаляется, следующая попытка с нуля.
-fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> bool, progress: &ProgressCb) -> Result<(), DlError> {
+fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> bool, progress: &ProgressCb,
+) -> Result<(), DlError> {
     let size = file_len(part);
     if size != f.size {
         discard_part(part);
         return Err(DlError::new(
             "size_mismatch",
-            format!("{}: скачано {size} байт, закреплено {} — файл удалён, следующая попытка начнёт заново", f.dest_rel, f.size),
+            t!("setup-size-mismatch", file = f.dest_rel, got = size, want = f.size),
         ));
     }
-    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": format!("Проверяю SHA-256 {}…", f.dest_rel) }));
-    let hash = sha256_file(part, cancel).map_err(|e| DlError::new("io", format!("чтение {}: {e}", part.display())))?;
-    let Some(hash) = hash else { return Err(cancelled()) };
+    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": t!("setup-verifying", file = f.dest_rel) }),
+    );
+    let hash = sha256_file(part, cancel).map_err(|e| DlError::new("io", t!("common-read", path = part.display().to_string(), error = e.to_string())))?;
+    let Some(hash) = hash else { return Err(cancelled());
+    };
     if hash != f.sha256 {
         discard_part(part);
         return Err(DlError::new(
             "hash_mismatch",
-            format!("{}: SHA-256 {hash} не совпал с закреплённым {} — файл удалён, следующая попытка начнёт заново", f.dest_rel, f.sha256),
+            t!("setup-hash-mismatch", file = f.dest_rel, got = hash.clone(), want = f.sha256),
         ));
     }
     let dest = repo_root.join(f.dest_rel);
     let dir = dest.parent().unwrap_or(repo_root);
     if f.extract != Extract::None {
-        progress(json!({ "stage": "download", "phase": "extract", "file": f.dest_rel, "msg": format!("Распаковываю {}…", f.dest_rel) }));
+        progress(json!({ "stage": "download", "phase": "extract", "file": f.dest_rel, "msg": t!("setup-unpacking", file = f.dest_rel) }),
+        );
     }
     let written = match f.extract {
         Extract::None => {
-            std::fs::rename(part, &dest).map_err(|e| DlError::new("io", format!("переименовать {}: {e}", dest.display())))?;
+            std::fs::rename(part, &dest).map_err(|e| {
+                DlError::new("io", t!("setup-rename", path = dest.display().to_string(), error = e.to_string()))
+            })?;
+            // Прямой файл под tools/ — программа (yt-dlp): на Linux ей нужен бит запуска.
+            #[cfg(unix)]
+            if f.dest_rel.starts_with("tools/") {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755)).map_err(|e| {
+                    DlError::new("io", t!("setup-finalize", path = dest.display().to_string(), error = e.to_string()))
+                })?;
+            }
             let _ = std::fs::remove_file(done_manifest_path(part));
             return Ok(());
         }
-        Extract::ZipFlat => extract_zip_flat(part, dir),
-        Extract::ZipPick => extract_zip_pick(part, dir),
-        Extract::ZipTree => extract_zip_tree(part, dir),
-        Extract::WheelDlls => extract_wheel_dlls(part, dir),
+        extract => extract_archive(part, f.dest_rel, extract, dir),
     };
     let written = written.map_err(|e| DlError::new("extract", e))?;
     write_record(repo_root, f, &written)?;
@@ -2066,7 +2365,7 @@ fn finish(repo_root: &Path, selected: &[&Component]) -> Value {
         if st.installed {
             for (engine, variant) in crate::models::component_selection(c.id) {
                 if let Err(e) = crate::models::set_selection(&mroot, engine, &variant) {
-                    tracing::warn!("active.json: не записан выбор {engine}={variant}: {e}");
+                    tracing::warn!("active.json: the choice {engine}={variant} was not written: {e}");
                 }
             }
         }
@@ -2091,11 +2390,13 @@ pub fn download_components(
         .filter(|c| ids.iter().any(|x| x == c.id) && c.delivery == Delivery::Download)
         .collect();
     if selected.is_empty() {
-        return Err(DlError::new("nothing_to_download", "нет скачиваемых компонентов среди выбранных id"));
+        return Err(DlError::new("nothing_to_download", t!("downloads-nothing-to-download"),
+        ));
     }
     let selected_ids: Vec<String> = selected.iter().map(|c| c.id.to_string()).collect();
     let _claim = claim(&selected_ids, cancel, &|| {
-        progress(json!({ "stage": "download", "phase": "waiting", "msg": "Жду другую закачку этих же компонентов…" }))
+        progress(json!({ "stage": "download", "phase": "waiting", "msg": t!("setup-waiting-other") }),
+        )
     })?;
     let agent = dl_agent()?;
 
@@ -2114,21 +2415,27 @@ pub fn download_components(
             if f.extract == Extract::None {
                 let dest = repo_root.join(f.dest_rel);
                 if file_ok(&dest, f.size) {
-                    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": format!("Проверяю SHA-256 {}…", f.dest_rel) }));
-                    let hash = sha256_file(&dest, cancel).map_err(|e| DlError::new("io", format!("чтение {}: {e}", dest.display())))?;
+                    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": t!("setup-verifying", file = f.dest_rel) }),
+                    );
+                    let hash = sha256_file(&dest, cancel).map_err(|e| {
+                        DlError::new("io", t!("common-read", path = dest.display().to_string(), error = e.to_string()))
+                    })?;
                     match hash {
                         None => return Err(cancelled()),
                         Some(h) if h == f.sha256 => continue,
                         Some(h) => {
-                            tracing::warn!("{}: SHA-256 {h} не совпал с закреплённым — перекачиваю", dest.display());
-                            std::fs::remove_file(&dest).map_err(|e| DlError::new("io", format!("удалить {}: {e}", dest.display())))?;
+                            tracing::warn!("{}: SHA-256 {h} does not match the pinned one; downloading again", dest.display());
+                            std::fs::remove_file(&dest).map_err(|e| {
+                                DlError::new("io", t!("setup-delete", path = dest.display().to_string(), error = e.to_string()))
+                            })?;
                         }
                     }
                 }
             } else if archive_installed(repo_root, f) {
                 continue;
             }
-            planned.push(Planned { ci, f, part: part_path(repo_root, f) });
+            planned.push(Planned { ci, f, part: part_path(repo_root, f),
+            });
         }
     }
     if planned.is_empty() {
@@ -2137,15 +2444,20 @@ pub fn download_components(
     let need: u64 = planned.iter().map(|p| file_space_needed(repo_root, p.f)).sum();
     ensure_space(repo_root, need)?;
     std::fs::create_dir_all(download_dir(repo_root))
-        .map_err(|e| DlError::new("io", format!("создать {}: {e}", download_dir(repo_root).display())))?;
+        .map_err(|e| {
+        DlError::new("io", t!("setup-create", path = download_dir(repo_root).display().to_string(), error = e.to_string()),
+        )
+    })?;
 
-    progress(json!({ "msg": "Скачиваю модели…", "stage": "download", "phase": "download" }));
+    progress(json!({ "msg": t!("setup-downloading"), "stage": "download", "phase": "download" }));
 
     // Чанки всех файлов в ОДНУ очередь; счётчик прогресса — на КАЖДЫЙ компонент (comp_done[ci]).
     enum Task {
         // done — манифест завершённых чанков (дозапись offset при успехе) для РЕЗЮМА при следующем запуске.
-        Range { file: Arc<File>, url: &'static str, start: u64, end: u64, ci: usize, done: Arc<Mutex<File>> },
-        Whole { url: &'static str, dest: PathBuf, ci: usize },
+        Range { file: Arc<File>, url: &'static str, start: u64, end: u64, ci: usize, done: Arc<Mutex<File>>,
+        },
+        Whole { url: &'static str, dest: PathBuf, ci: usize,
+        },
     }
     let ncomp = selected.len();
     let comp_done: Vec<Arc<AtomicU64>> = (0..ncomp).map(|_| Arc::new(AtomicU64::new(0))).collect();
@@ -2157,18 +2469,19 @@ pub fn download_components(
             return Err(cancelled());
         }
         if let Some(parent) = p.part.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| DlError::new("io", format!("создать {}: {e}", parent.display())))?;
+            std::fs::create_dir_all(parent).map_err(|e| DlError::new("io", t!("setup-create", path = parent.display().to_string(), error = e.to_string())))?;
         }
         let (total, ranged) = probe(&agent, p.f.url, cancel)?;
         if total != 0 && total != p.f.size {
             return Err(DlError::new(
                 "size_mismatch",
-                format!("{}: сервер отдаёт {total} байт, закреплено {} — источник изменился", p.f.url, p.f.size),
+                t!("setup-source-changed", url = p.f.url, got = total, want = p.f.size),
             ));
         }
         comp_total[p.ci] += p.f.size;
         if !(ranged && total > 0) {
-            tasks.push(Task::Whole { url: p.f.url, dest: p.part.clone(), ci: p.ci });
+            tasks.push(Task::Whole { url: p.f.url, dest: p.part.clone(), ci: p.ci,
+            });
             continue;
         }
         // Докачка: .part нужного размера и манифест рядом -> дочитываем только недостающие чанки.
@@ -2185,7 +2498,7 @@ pub fn download_components(
             .write(true)
             .truncate(!resuming)
             .open(&p.part)
-            .map_err(|e| DlError::new("io", format!("создать {}: {e}", p.part.display())))?;
+            .map_err(|e| DlError::new("io", t!("setup-create", path = p.part.display().to_string(), error = e.to_string())))?;
         if !resuming {
             file.set_len(total).map_err(|e| DlError::new("io", format!("set_len {}: {e}", p.part.display())))?;
         }
@@ -2196,7 +2509,9 @@ pub fn download_components(
                 .create(true)
                 .append(true)
                 .open(&done_path)
-                .map_err(|e| DlError::new("io", format!("манифест {}: {e}", done_path.display())))?,
+                .map_err(|e| {
+                    DlError::new("io", t!("setup-manifest-write", path = done_path.display().to_string(), error = e.to_string()))
+                })?,
         ));
         let mut start = 0u64;
         while start < total {
@@ -2204,7 +2519,8 @@ pub fn download_components(
             if completed.contains(&start) {
                 comp_done[p.ci].fetch_add(end - start + 1, Ordering::Relaxed);
             } else {
-                tasks.push(Task::Range { file: file.clone(), url: p.f.url, start, end, ci: p.ci, done: done.clone() });
+                tasks.push(Task::Range { file: file.clone(), url: p.f.url, start, end, ci: p.ci, done: done.clone(),
+                });
             }
             start += CHUNK;
         }
@@ -2221,18 +2537,22 @@ pub fn download_components(
     std::thread::scope(|sc| {
         for _ in 0..n {
             let (queue, comp_done, finished, abort, error, agent) =
-                (queue.clone(), comp_done.clone(), finished.clone(), abort.clone(), error.clone(), agent.clone());
+                (queue.clone(), comp_done.clone(), finished.clone(), abort.clone(), error.clone(), agent.clone(),
+            );
             sc.spawn(move || {
                 loop {
                     if abort.load(Ordering::Relaxed) {
                         break;
                     }
-                    let Some(task) = lock(&queue).pop_front() else { break };
+                    let Some(task) = lock(&queue).pop_front() else { break;
+                    };
                     let res = match &task {
-                        Task::Range { file, url, start, end, ci, done } => {
-                            download_range(&agent, url, file, *start, *end, &comp_done[*ci], &abort, done)
+                        Task::Range { file, url, start, end, ci, done,
+                        } => download_range(&agent, url, file, *start, *end, &comp_done[*ci], &abort, done,
+                        ),
+                        Task::Whole { url, dest, ci } => {
+                            download_whole(&agent, url, dest, &comp_done[*ci], &abort)
                         }
-                        Task::Whole { url, dest, ci } => download_whole(&agent, url, dest, &comp_done[*ci], &abort),
                     };
                     if let Err(e) = res {
                         if e.code != CANCELLED {
@@ -2275,7 +2595,7 @@ pub fn download_components(
             progress(json!({
                 "stage": "download",
                 "phase": "download",
-                "msg": "Скачиваю модели…",
+                "msg": t!("setup-downloading"),
                 "downloaded": got,
                 "total": grand_total,
                 "speed_bps": bps,
@@ -2308,7 +2628,7 @@ pub fn download_components(
             Ok(()) => {}
             Err(e) if e.code == CANCELLED => return Err(e),
             Err(e) => {
-                tracing::warn!("закачка {}: {}", p.f.dest_rel, e.detail);
+                tracing::warn!("download {}: {}", p.f.dest_rel, e.detail);
                 first_err.get_or_insert(e);
             }
         }
@@ -2321,122 +2641,197 @@ pub fn download_components(
 
 // ── Распаковка архивов (возвращают список положенных файлов для записи об установке) ──
 
-/// zip: все файлы плоско (только имя) в dir. Для движков-сайдкаров (exe + DLL в одном уровне).
-fn extract_zip_flat(zip_path: &Path, dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let file = std::fs::File::open(zip_path).map_err(|e| format!("открыть {}: {e}", zip_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("не zip: {e}"))?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("создать {}: {e}", dir.display()))?;
-    let mut written = Vec::new();
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("запись zip: {e}"))?;
-        if entry.is_dir() {
+/// Формат архива — по имени, под которым он закреплён: zip/wheel, tar.gz или tar.xz.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ArchiveFormat {
+    Zip,
+    TarGz,
+    TarXz,
+}
+
+fn archive_format(name: &str) -> ArchiveFormat {
+    let n = name.to_ascii_lowercase();
+    if n.ends_with(".tar.gz") || n.ends_with(".tgz") {
+        ArchiveFormat::TarGz
+    } else if n.ends_with(".tar.xz") {
+        ArchiveFormat::TarXz
+    } else {
+        ArchiveFormat::Zip
+    }
+}
+
+/// Программы, которые Extract::Pick берёт из сборки ffmpeg.
+#[cfg(windows)]
+const FFMPEG_PICK: &[&str] = &["ffmpeg.exe", "ffprobe.exe"];
+#[cfg(not(windows))]
+const FFMPEG_PICK: &[&str] = &["ffmpeg", "ffprobe"];
+
+/// Динамическая библиотека платформы: *.dll на Windows, *.so и *.so.N на Linux.
+fn is_shared_library(leaf: &str) -> bool {
+    let n = leaf.to_ascii_lowercase();
+    if cfg!(windows) {
+        n.ends_with(".dll")
+    } else {
+        n.ends_with(".so") || n.contains(".so.")
+    }
+}
+
+fn leaf_of(name: &str) -> &str {
+    name.rsplit('/').next().unwrap_or(name)
+}
+
+/// Путь записи внутри архива без `..`, `.` и корня (защита от zip-slip).
+fn safe_relative(name: &str) -> Option<PathBuf> {
+    let mut rel = PathBuf::new();
+    for comp in name.split('/') {
+        if comp.is_empty() || comp == "." || comp == ".." {
             continue;
         }
-        let name = entry.name().replace('\\', "/");
-        let leaf = name.rsplit('/').next().unwrap_or(&name).to_string();
+        rel.push(comp);
+    }
+    (!rel.as_os_str().is_empty()).then_some(rel)
+}
+
+/// Разложить архив по правилу `extract` в каталог `dir`. Символьные ссылки tar (libfoo.so -> libfoo.so.1)
+/// ведут на соседний файл: на Linux они ссылками и остаются, на Windows становятся копией цели.
+fn extract_archive(archive: &Path, name: &str, extract: Extract, dir: &Path) -> Result<Vec<PathBuf>, String> {
+    std::fs::create_dir_all(dir).map_err(|e| t!("common-create-dir", path = dir.display().to_string(), error = e.to_string()))?;
+    let place = |entry: &str| -> Option<PathBuf> {
+        let leaf = leaf_of(entry);
         if leaf.is_empty() {
-            continue;
+            return None;
         }
-        let out = dir.join(&leaf);
-        write_entry(&mut entry, &out)?;
-        written.push(out);
-    }
-    Ok(written)
-}
-
-/// zip: отобрать нужные файлы (ffmpeg.exe/ffprobe.exe) и положить плоско в dir.
-fn extract_zip_pick(zip_path: &Path, dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let file = std::fs::File::open(zip_path).map_err(|e| format!("открыть {}: {e}", zip_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("не zip: {e}"))?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("создать {}: {e}", dir.display()))?;
-    const WANT: &[&str] = &["ffmpeg.exe", "ffprobe.exe"];
+        match extract {
+            Extract::None => None,
+            Extract::Flat => Some(dir.join(leaf)),
+            Extract::Pick => FFMPEG_PICK.iter().any(|w| w.eq_ignore_ascii_case(leaf)).then(|| dir.join(leaf)),
+            Extract::Tree => safe_relative(entry).map(|rel| dir.join(rel)),
+            // stubs/ redist NVIDIA — заглушки для линковки с теми же именами, что настоящие библиотеки.
+            Extract::Libs => (is_shared_library(leaf) && !entry.contains("/stubs/")).then(|| dir.join(leaf)),
+        }
+    };
     let mut written = Vec::new();
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("запись zip: {e}"))?;
-        if entry.is_dir() {
-            continue;
+    let mut links: Vec<(PathBuf, String)> = Vec::new();
+    let format = archive_format(name);
+    let file = std::fs::File::open(archive).map_err(|e| t!("setup-open", path = archive.display().to_string(), error = e.to_string()))?;
+    match format {
+        ArchiveFormat::Zip => {
+            let mut zip = zip::ZipArchive::new(file).map_err(|e| t!("setup-not-zip", error = e.to_string()))?;
+            for i in 0..zip.len() {
+                let mut entry = zip.by_index(i).map_err(|e| t!("setup-zip-entry", error = e.to_string()))?;
+                if entry.is_dir() {
+                    continue;
+                }
+                let entry_name = entry.name().replace('\\', "/");
+                let Some(out) = place(&entry_name) else { continue };
+                let mode = entry.unix_mode();
+                write_entry(&mut entry, &out, mode)?;
+                written.push(out);
+            }
         }
-        let name = entry.name().replace('\\', "/");
-        let leaf_raw = name.rsplit('/').next().unwrap_or(&name);
-        if WANT.iter().any(|w| *w == leaf_raw.to_ascii_lowercase()) {
-            let out = dir.join(leaf_raw);
-            write_entry(&mut entry, &out)?;
-            written.push(out);
+        ArchiveFormat::TarGz | ArchiveFormat::TarXz => {
+            let reader: Box<dyn Read> = if format == ArchiveFormat::TarGz {
+                Box::new(flate2::read::GzDecoder::new(std::io::BufReader::new(file)))
+            } else {
+                Box::new(lzma_rust2::XzReader::new(std::io::BufReader::new(file), true))
+            };
+            let mut tar = tar::Archive::new(reader);
+            let entries = tar.entries().map_err(|e| t!("setup-zip-entry", error = e.to_string()))?;
+            for entry in entries {
+                let mut entry = entry.map_err(|e| t!("setup-zip-entry", error = e.to_string()))?;
+                let kind = entry.header().entry_type();
+                let entry_name = entry.path().map_err(|e| t!("setup-zip-entry", error = e.to_string()))?.to_string_lossy().replace('\\', "/");
+                if !(kind.is_file() || kind.is_symlink() || kind.is_hard_link()) {
+                    continue;
+                }
+                let Some(out) = place(&entry_name) else { continue };
+                if kind.is_symlink() || kind.is_hard_link() {
+                    let target = entry.link_name().ok().flatten().map(|t| t.to_string_lossy().replace('\\', "/")).unwrap_or_default();
+                    links.push((out, leaf_of(&target).to_string()));
+                    continue;
+                }
+                let mode = entry.header().mode().ok();
+                write_entry(&mut entry, &out, mode)?;
+                written.push(out);
+            }
         }
     }
-    if written.is_empty() {
-        return Err(format!("в архиве {} не найдено нужных файлов", zip_path.display()));
-    }
-    Ok(written)
-}
-
-/// zip: распаковать весь архив с сохранением поддерева в dir (onnxruntime-win-x64-*/lib/…). Защита от
-/// zip-slip: отбрасываем компоненты `..` и абсолютные пути.
-fn extract_zip_tree(zip_path: &Path, dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let file = std::fs::File::open(zip_path).map_err(|e| format!("открыть {}: {e}", zip_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("не zip: {e}"))?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("создать {}: {e}", dir.display()))?;
-    let mut written = Vec::new();
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("запись zip: {e}"))?;
-        if entry.is_dir() {
-            continue;
-        }
-        let name = entry.name().replace('\\', "/");
-        let mut rel = PathBuf::new();
-        for comp in name.split('/') {
-            if comp.is_empty() || comp == "." || comp == ".." {
+    // Ссылка может указывать на другую ссылку (libcudnn.so -> libcudnn.so.8 -> libcudnn.so.8.9.7) в любом
+    // порядке записей: проходы, пока каждая не встанет.
+    while !links.is_empty() {
+        let before = links.len();
+        let mut rest = Vec::new();
+        for (out, target) in links {
+            let source = out.parent().unwrap_or(dir).join(&target);
+            if target.is_empty() || !source.is_file() {
+                rest.push((out, target));
                 continue;
             }
-            rel.push(comp);
+            let _ = std::fs::remove_file(&out);
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&target, &out).map_err(|e| t!("setup-finalize", path = out.display().to_string(), error = e.to_string()))?;
+            #[cfg(not(unix))]
+            std::fs::copy(&source, &out).map_err(|e| t!("setup-finalize", path = out.display().to_string(), error = e.to_string()))?;
+            written.push(out);
         }
-        if rel.as_os_str().is_empty() {
-            continue;
+        if rest.len() == before {
+            return Err(t!("setup-archive-no-files", path = archive.display().to_string()));
         }
-        let out = dir.join(&rel);
-        if let Some(parent) = out.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("создать {}: {e}", parent.display()))?;
-        }
-        write_entry(&mut entry, &out)?;
-        written.push(out);
+        links = rest;
     }
-    Ok(written)
-}
-
-/// wheel/zip: все *.dll плоско в dir (CUDA runtime — cudart/cublas/cublasLt, cuDNN, cuFFT).
-fn extract_wheel_dlls(wheel_path: &Path, dir: &Path) -> Result<Vec<PathBuf>, String> {
-    let file = std::fs::File::open(wheel_path).map_err(|e| format!("открыть {}: {e}", wheel_path.display()))?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("wheel не zip: {e}"))?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("создать {}: {e}", dir.display()))?;
-    let mut written = Vec::new();
-    for i in 0..archive.len() {
-        let mut entry = archive.by_index(i).map_err(|e| format!("запись wheel: {e}"))?;
-        if entry.is_dir() {
-            continue;
-        }
-        let name = entry.name().replace('\\', "/");
-        let leaf = name.rsplit('/').next().unwrap_or(&name).to_string();
-        if !leaf.to_ascii_lowercase().ends_with(".dll") {
-            continue;
-        }
-        let out = dir.join(&leaf);
-        write_entry(&mut entry, &out)?;
-        written.push(out);
+    #[cfg(unix)]
+    if matches!(extract, Extract::Flat | Extract::Libs) {
+        add_soname_links(&mut written)?;
     }
     if written.is_empty() {
-        return Err(format!("в архиве {} нет DLL", wheel_path.display()));
+        let path = archive.display().to_string();
+        return Err(if extract == Extract::Libs { t!("setup-archive-no-dll", path = path) } else { t!("setup-archive-no-files", path = path) });
     }
     Ok(written)
 }
 
-/// Записать элемент архива в файл через .part+rename (атомарно).
-fn write_entry(entry: &mut zip::read::ZipFile<impl std::io::Read>, out: &Path) -> Result<(), String> {
+/// Как `ldconfig -n`: библиотеке `libX.so.0.15.1` без соседней `libX.so.0` поставить эту ссылку — по ней
+/// её ищет загрузчик (CPU-сборка BSRoformer для Linux приходит одними полными именами).
+#[cfg(unix)]
+fn add_soname_links(written: &mut Vec<PathBuf>) -> Result<(), String> {
+    let mut added = Vec::new();
+    for path in written.iter() {
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(at) = name.find(".so.") else { continue };
+        let version: Vec<&str> = name[at + 4..].split('.').collect();
+        if version.len() < 2 || !version.iter().all(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit())) {
+            continue;
+        }
+        let soname = format!("{}.so.{}", &name[..at], version[0]);
+        let link = path.with_file_name(&soname);
+        if link.exists() || written.contains(&link) || added.contains(&link) {
+            continue;
+        }
+        std::os::unix::fs::symlink(name, &link).map_err(|e| t!("setup-finalize", path = link.display().to_string(), error = e.to_string()))?;
+        added.push(link);
+    }
+    written.extend(added);
+    Ok(())
+}
+
+/// Записать элемент архива в файл через .part+rename (атомарно); на Linux — с правами из архива (бит запуска).
+fn write_entry(entry: &mut impl Read, out: &Path, mode: Option<u32>) -> Result<(), String> {
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| t!("common-create-dir", path = parent.display().to_string(), error = e.to_string()))?;
+    }
     let tmp = with_suffix(out, ".part");
     {
-        let mut fout = std::fs::File::create(&tmp).map_err(|e| format!("создать {}: {e}", tmp.display()))?;
-        std::io::copy(entry, &mut fout).map_err(|e| format!("распаковка {}: {e}", out.display()))?;
+        let mut fout = std::fs::File::create(&tmp).map_err(|e| t!("setup-create", path = tmp.display().to_string(), error = e.to_string()))?;
+        std::io::copy(entry, &mut fout).map_err(|e| t!("setup-unpack", path = out.display().to_string(), error = e.to_string()))?;
     }
-    std::fs::rename(&tmp, out).map_err(|e| format!("финализация {}: {e}", out.display()))?;
+    #[cfg(unix)]
+    if let Some(mode) = mode {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(mode & 0o777));
+    }
+    #[cfg(not(unix))]
+    let _ = mode;
+    std::fs::rename(&tmp, out).map_err(|e| t!("setup-finalize", path = out.display().to_string(), error = e.to_string()))?;
     Ok(())
 }
 
@@ -2454,10 +2849,14 @@ mod tests {
         use dub_llm::net::ProxyKind;
         use ureq::ProxyProtocol;
         for (address, kind, protocol) in [
-            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Socks5, ProxyProtocol::Socks5h),
-            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Http, ProxyProtocol::Http),
-            ("socks5://bob:p%40ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Socks5),
-            ("http://bob:p@ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Http),
+            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Socks5, ProxyProtocol::Socks5h,
+            ),
+            ("1.2.3.4:8000:bob:p@ss", ProxyKind::Http, ProxyProtocol::Http,
+            ),
+            ("socks5://bob:p%40ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Socks5,
+            ),
+            ("http://bob:p@ss@1.2.3.4:8000", ProxyKind::Http, ProxyProtocol::Http,
+            ),
         ] {
             let proxy = download_proxy(address, kind).unwrap();
             assert_eq!((proxy.protocol(), proxy.username(), proxy.password()), (protocol, Some("bob"), Some("p@ss")), "{address}");
@@ -2466,7 +2865,8 @@ mod tests {
         let seller = download_proxy("1.2.3.4:8000:b@b:p;=!$&'()*+,ss", ProxyKind::Socks5).unwrap();
         assert_eq!((seller.username(), seller.password()), (Some("b@b"), Some("p;=!$&'()*+,ss")));
 
-        let colon = download_proxy(&format!("http://bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo("p@ss:1")), ProxyKind::Http).unwrap();
+        let colon = download_proxy(&format!("http://bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo("p@ss:1")), ProxyKind::Http,
+        ).unwrap();
         assert_eq!(format!("{}:{}", colon.username().unwrap(), colon.password().unwrap()), "bob:p@ss:1", "CONNECT sends user:password whole");
 
         let plain = download_proxy("proxy.example:3128", ProxyKind::Http).unwrap();
@@ -2474,7 +2874,8 @@ mod tests {
         let v6 = download_proxy("[::1]:1080", ProxyKind::Socks5).unwrap();
         assert_eq!((v6.protocol(), v6.port()), (ProxyProtocol::Socks5h, 1080));
 
-        for (password, kind) in [("p@ss:1/x", ProxyKind::Http), ("p@ss:1/x", ProxyKind::Socks5), ("pa:ss", ProxyKind::Socks5), ("pa ss", ProxyKind::Http), ("p\u{e4}ss", ProxyKind::Http)] {
+        for (password, kind) in [("p@ss:1/x", ProxyKind::Http), ("p@ss:1/x", ProxyKind::Socks5), ("pa:ss", ProxyKind::Socks5), ("pa ss", ProxyKind::Http), ("p\u{e4}ss", ProxyKind::Http),
+        ] {
             let address = format!("bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo(password));
             let refused = download_proxy(&address, kind).expect_err(password);
             assert!(refused.contains("ureq") && !refused.contains(password) && !refused.contains(&dub_llm::net::encode_userinfo(password)), "{refused}");
@@ -2545,7 +2946,7 @@ mod tests {
 
     #[test]
     fn new_model_components_pinned_and_sized() {
-        for id in ["sortformer", "parakeet-ultra"] {
+        for id in ["sortformer", "parakeet-ultra", "parakeet-ultra-int8"] {
             let c = comp(id);
             let sum: u64 = c.files.iter().map(|f| f.size).sum();
             assert_eq!(c.size, sum, "{id}: size != сумме файлов");
@@ -2634,7 +3035,8 @@ mod tests {
         ("src/ultra/vocab.txt", 93_939),
     ];
 
-    fn picks(id: &str, map: &std::collections::HashMap<String, Vec<(PathBuf, u64)>>) -> Vec<Option<String>> {
+    fn picks(id: &str, map: &std::collections::HashMap<String, Vec<(PathBuf, u64)>>,
+    ) -> Vec<Option<String>> {
         let c = comp(id);
         c.markers
             .iter()
@@ -2656,11 +3058,38 @@ mod tests {
         assert!(picks("parakeet-ultra", &map).iter().all(Option::is_some));
     }
 
+    const INT8_DIR: &[(&str, u64)] = &[
+        ("src/int8/encoder-model.int8.onnx", 652_183_999),
+        ("src/int8/decoder_joint-model.int8.onnx", 18_202_004),
+        ("src/int8/vocab.txt", 93_939),
+    ];
+    const ULTRA_INT8_DIR: &[(&str, u64)] = &[
+        ("src/ultra-int8/encoder-model.int8.onnx", 652_183_214),
+        ("src/ultra-int8/decoder_joint-model.int8.onnx", 18_202_004),
+        ("src/ultra-int8/vocab.txt", 93_939),
+    ];
+
+    #[test]
+    fn import_never_mixes_base_int8_and_ultra_int8() {
+        let map = index(INT8_DIR);
+        assert!(picks("parakeet-ultra-int8", &map).iter().all(Option::is_none), "{:?}", picks("parakeet-ultra-int8", &map));
+        let map = index(ULTRA_INT8_DIR);
+        assert!(picks("parakeet", &map).iter().all(Option::is_none), "{:?}", picks("parakeet", &map));
+        let both: Vec<(&str, u64)> = INT8_DIR.iter().chain(ULTRA_INT8_DIR).copied().collect();
+        let map = index(&both);
+        for (id, dir) in [("parakeet", "src/int8/"), ("parakeet-ultra-int8", "src/ultra-int8/")] {
+            for p in picks(id, &map) {
+                assert!(p.as_deref().is_some_and(|p| p.starts_with(dir)), "{id}: {p:?}");
+            }
+        }
+    }
+
     #[test]
     fn import_takes_each_variant_from_its_own_folder() {
         let both: Vec<(&str, u64)> = FP32_DIR.iter().chain(ULTRA_DIR).copied().collect();
         let map = index(&both);
-        for (id, dir) in [("parakeet-ultra", "src/ultra/"), ("parakeet-fp32", "src/fp32/")] {
+        for (id, dir) in [("parakeet-ultra", "src/ultra/"), ("parakeet-fp32", "src/fp32/"),
+        ] {
             for p in picks(id, &map) {
                 assert!(p.as_deref().is_some_and(|p| p.starts_with(dir)), "{id}: {p:?}");
             }
@@ -2705,6 +3134,7 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
+    #[cfg(windows)]
     #[test]
     fn the_vc_runtime_counts_where_the_loader_finds_it() {
         let root = temp_root("vcrt");
@@ -2756,7 +3186,8 @@ mod tests {
     #[test]
     #[ignore]
     fn the_release_staging_carries_every_bundled_file() {
-        let stage = PathBuf::from(std::env::var("DUB_RELEASE_STAGING").expect("DUB_RELEASE_STAGING = каталог staging или портатива"));
+        let stage = PathBuf::from(std::env::var("DUB_RELEASE_STAGING").expect("DUB_RELEASE_STAGING = каталог staging или портатива"),
+        );
         let absent: Vec<String> = manifest()
             .iter()
             .filter(|c| c.delivery == Delivery::Bundled)
@@ -2801,11 +3232,13 @@ mod tests {
         for f in tiny.files {
             sized(&root.join(f.dest_rel), f.size);
         }
-        let leftover = part_path(&root, &all.iter().find(|c| c.id == "whisper-base").unwrap().files[0]);
+        let leftover = part_path(&root, &all.iter().find(|c| c.id == "whisper-base").unwrap().files[0],
+        );
         sized(&leftover, 1000);
         assert!(component_status(&root, tiny).installed);
 
-        let r = remove_components(&root, &["whisper-tiny".to_string(), "whisper-base".to_string()]).unwrap();
+        let r = remove_components(&root, &["whisper-tiny".to_string(), "whisper-base".to_string()],
+        ).unwrap();
         assert_eq!(r.removed, vec!["whisper-tiny".to_string(), "whisper-base".to_string()]);
         assert_eq!(r.freed_bytes, tiny.size + 1000);
         assert!(r.errors.is_empty(), "{:?}", r.errors);
@@ -2818,7 +3251,7 @@ mod tests {
     #[test]
     fn removal_refuses_what_the_app_does_not_install() {
         let root = temp_root("refuse");
-        assert_eq!(remove_components(&root, &["vcruntime".to_string()]).unwrap_err().code, "not_removable");
+        assert_eq!(remove_components(&root, &["ocr".to_string()]).unwrap_err().code, "not_removable");
         assert_eq!(remove_components(&root, &["nvidia-driver".to_string()]).unwrap_err().code, "not_removable");
         assert_eq!(remove_components(&root, &["nope".to_string()]).unwrap_err().code, "unknown_component");
         let _busy = try_claim(&["whisper-small".to_string()]).unwrap();
@@ -2894,7 +3327,9 @@ mod tests {
         // CARGO_MANIFEST_DIR/../..; без models/ тест пропускается.
         let repo_root = std::env::var("DUB_STUDIO_ROOT")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|_| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join(".."));
+            .unwrap_or_else(|_| {
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+            });
         if !repo_root.join("models").is_dir() {
             eprintln!("skip: нет {}/models (не приёмочная машина)", repo_root.display());
             return;
@@ -2911,5 +3346,49 @@ mod tests {
             }
         }
         assert!(broken.is_empty(), "не установлены компоненты: {broken:?}");
+    }
+
+    /// tar.gz как у redist NVIDIA: ссылки раньше своих целей и цепочкой, заглушки stubs/ с теми же именами,
+    /// заголовки рядом. Libs кладёт плоско одни библиотеки, и каждая ссылка читается как настоящий файл.
+    #[test]
+    fn a_tar_archive_unpacks_its_libraries_and_links() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lib = if cfg!(windows) { ("foo.dll", "foo64.dll") } else { ("libfoo.so.1.2.3", "libfoo.so.1") };
+        let archive = tmp.path().join("pkg.tar.gz");
+        {
+            let gz = flate2::write::GzEncoder::new(File::create(&archive).unwrap(), flate2::Compression::fast());
+            let mut tar = tar::Builder::new(gz);
+            let link = |tar: &mut tar::Builder<_>, name: &str, target: &str| {
+                let mut h = tar::Header::new_gnu();
+                h.set_entry_type(tar::EntryType::Symlink);
+                h.set_size(0);
+                h.set_mode(0o777);
+                tar.append_link(&mut h, name, target).unwrap();
+            };
+            let file = |tar: &mut tar::Builder<_>, name: &str, body: &[u8]| {
+                let mut h = tar::Header::new_gnu();
+                h.set_size(body.len() as u64);
+                h.set_mode(0o755);
+                tar.append_data(&mut h, name, body).unwrap();
+            };
+            link(&mut tar, &format!("pkg/lib/{}-alias", lib.1), lib.1);
+            link(&mut tar, &format!("pkg/lib/{}", lib.1), &format!("./{}", lib.0));
+            file(&mut tar, &format!("pkg/lib/stubs/{}", lib.1), b"stub");
+            file(&mut tar, &format!("pkg/lib/{}", lib.0), b"real library");
+            file(&mut tar, "pkg/include/foo.h", b"header");
+            tar.into_inner().unwrap().finish().unwrap();
+        }
+        assert_eq!(archive_format("x/_engine.tar.xz"), ArchiveFormat::TarXz);
+        assert_eq!(archive_format("models/runtime/_ort.tgz"), ArchiveFormat::TarGz);
+        assert_eq!(archive_format("tools/whisper/_whisper.zip"), ArchiveFormat::Zip);
+        let out = tmp.path().join("out");
+        let written = extract_archive(&archive, "pkg.tar.gz", Extract::Libs, &out).unwrap();
+        assert_eq!(std::fs::read(out.join(lib.0)).unwrap(), b"real library");
+        assert_eq!(std::fs::read(out.join(lib.1)).unwrap(), b"real library", "the link, not the stub");
+        assert!(!out.join("foo.h").exists() && !out.join("include").exists());
+        assert!(written.iter().all(|p| p.parent() == Some(out.as_path())), "{written:?}");
+        let tree = tmp.path().join("tree");
+        extract_archive(&archive, "pkg.tar.gz", Extract::Tree, &tree).unwrap();
+        assert_eq!(std::fs::read(tree.join("pkg/include/foo.h")).unwrap(), b"header");
     }
 }

@@ -15,7 +15,9 @@ use crate::credentials::{self, CredentialSource};
 use crate::AppState;
 
 fn failure(status: StatusCode, code: &str, detail: impl Into<String>) -> Response {
-    (status, Json(json!({ "error": code, "detail": detail.into() }))).into_response()
+    (status, Json(json!({ "error": code, "detail": detail.into() })),
+    )
+        .into_response()
 }
 
 fn openrouter_state() -> Value {
@@ -25,6 +27,85 @@ fn openrouter_state() -> Value {
         "source": source,
         "environment_variable": credentials::OPENROUTER_ENV_VAR,
     })
+}
+
+fn google_state() -> Value {
+    let source = credentials::google_api_key().map(|(_, s)| s);
+    json!({"configured":source.is_some(),"source":source,"environment_variable":credentials::GOOGLE_ENV_VAR})
+}
+
+pub async fn google_settings() -> Json<Value> {
+    Json(google_state())
+}
+
+pub async fn update_google_settings(Json(body): Json<Value>) -> Response {
+    let key = body["api_key"]
+        .as_str()
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    if key.is_empty() || key.contains(['\r', '\n']) {
+        return failure(
+            StatusCode::BAD_REQUEST,
+            "invalid_key",
+            "Google API key must be a nonempty single line",
+        );
+    }
+    if credentials::google_api_key().is_some_and(|(_, s)| s == CredentialSource::Environment) {
+        return failure(
+            StatusCode::CONFLICT,
+            "environment_key",
+            credentials::GOOGLE_ENV_VAR,
+        );
+    }
+    let candidate = key.clone();
+    match tokio::task::spawn_blocking(move || crate::google_tts::Client::new(candidate)?.models())
+        .await
+    {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => return failure(StatusCode::BAD_GATEWAY, "verify_failed", e),
+        Err(e) => {
+            return failure(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "verify_failed",
+                e.to_string(),
+            )
+        }
+    }
+    match credentials::store_google_api_key(Some(&key)) {
+        Ok(_) => Json(google_state()).into_response(),
+        Err(e) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "store_failed",
+            e.to_string(),
+        ),
+    }
+}
+
+pub async fn delete_google_settings() -> Response {
+    match credentials::store_google_api_key(None) {
+        Ok(_) => Json(google_state()).into_response(),
+        Err(e) => failure(StatusCode::CONFLICT, "environment_key", e.to_string()),
+    }
+}
+
+pub async fn google_models() -> Response {
+    let Some((key, _)) = credentials::google_api_key() else {
+        return failure(
+            StatusCode::BAD_REQUEST,
+            "missing_key",
+            "Google API key is not configured",
+        );
+    };
+    match tokio::task::spawn_blocking(move || crate::google_tts::Client::new(key)?.models()).await {
+        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Err(e)) => failure(StatusCode::BAD_GATEWAY, "google_models_failed", e),
+        Err(e) => failure(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "google_models_failed",
+            e.to_string(),
+        ),
+    }
 }
 
 // ─── GET /engine/openrouter/settings ────────────────────────────────────────
@@ -37,10 +118,12 @@ pub async fn openrouter_settings() -> Json<Value> {
 pub async fn update_openrouter_settings(Json(body): Json<Value>) -> Response {
     let key = body.get("api_key").and_then(Value::as_str).map(str::trim).unwrap_or_default().to_string();
     if key.is_empty() {
-        return failure(StatusCode::BAD_REQUEST, "empty_key", "api_key is empty; DELETE /engine/openrouter/settings removes the key");
+        return failure(StatusCode::BAD_REQUEST, "empty_key", "api_key is empty; DELETE /engine/openrouter/settings removes the key",
+        );
     }
     if key.contains(['\r', '\n']) {
-        return failure(StatusCode::BAD_REQUEST, "invalid_key", "an OpenRouter API key must be a single line");
+        return failure(StatusCode::BAD_REQUEST, "invalid_key", "an OpenRouter API key must be a single line",
+        );
     }
     if credentials::openrouter_source() == Some(CredentialSource::Environment) {
         return failure(
@@ -57,12 +140,15 @@ pub async fn update_openrouter_settings(Json(body): Json<Value>) -> Response {
     .unwrap_or_else(|e| Err(e.to_string()));
     match verified {
         Err(e) => return failure(StatusCode::BAD_GATEWAY, "verify_failed", e),
-        Ok(dub_llm::openrouter::KeyCheck::Rejected(detail)) => return failure(StatusCode::BAD_REQUEST, "key_rejected", detail),
+        Ok(dub_llm::openrouter::KeyCheck::Rejected(detail)) => {
+            return failure(StatusCode::BAD_REQUEST, "key_rejected", detail)
+        }
         Ok(dub_llm::openrouter::KeyCheck::Accepted(_)) => {}
     }
     match credentials::store_openrouter_api_key(Some(&key)) {
         Ok(_) => Json(openrouter_state()).into_response(),
-        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}")),
+        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}"),
+        ),
     }
 }
 
@@ -77,7 +163,8 @@ pub async fn delete_openrouter_settings() -> Response {
     }
     match credentials::store_openrouter_api_key(None) {
         Ok(_) => Json(openrouter_state()).into_response(),
-        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}")),
+        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}"),
+        ),
     }
 }
 
@@ -94,30 +181,38 @@ fn server_key_state(address: &str) -> Value {
 }
 
 // GET /engine/server/key?url=
-pub async fn server_key_settings(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
-    Json(server_key_state(&server_key_address(&st.models_root, q.get("url").map(String::as_str))))
+pub async fn server_key_settings(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>,
+) -> Json<Value> {
+    Json(server_key_state(&server_key_address(&st.models_root, q.get("url").map(String::as_str),
+    )))
 }
 
 // PUT /engine/server/key {api_key, url?}
 pub async fn update_server_key(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
     let key = body.get("api_key").and_then(Value::as_str).map(str::trim).unwrap_or_default();
     if key.is_empty() {
-        return failure(StatusCode::BAD_REQUEST, "empty_key", "api_key is empty; DELETE /engine/server/key removes the key");
+        return failure(StatusCode::BAD_REQUEST, "empty_key", "api_key is empty; DELETE /engine/server/key removes the key",
+        );
     }
     let address = server_key_address(&st.models_root, body.get("url").and_then(Value::as_str));
     match credentials::store_local_server_key(&address, Some(key)) {
         Ok(_) => Json(server_key_state(&address)).into_response(),
-        Err(e) if key.contains(['\r', '\n']) => failure(StatusCode::BAD_REQUEST, "invalid_key", format!("{e:#}")),
-        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}")),
+        Err(e) if key.contains(['\r', '\n']) => {
+            failure(StatusCode::BAD_REQUEST, "invalid_key", format!("{e:#}"))
+        }
+        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}"),
+        ),
     }
 }
 
 // DELETE /engine/server/key?url=
-pub async fn delete_server_key(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Response {
+pub async fn delete_server_key(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>,
+) -> Response {
     let address = server_key_address(&st.models_root, q.get("url").map(String::as_str));
     match credentials::store_local_server_key(&address, None) {
         Ok(_) => Json(server_key_state(&address)).into_response(),
-        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}")),
+        Err(e) => failure(StatusCode::INTERNAL_SERVER_ERROR, "store_failed", format!("{e:#}"),
+        ),
     }
 }
 
@@ -150,7 +245,8 @@ pub(crate) fn proxy_view(models_root: &Path, secrets: &Path) -> Value {
 
 /// Адрес для POST /engine/proxy/test. Пароль из тела подставляется в любой адрес, сохранённый — только в
 /// сохранённый адрес: в чужой он ушёл бы хосту из тела запроса (Proxy-Authorization, SOCKS-логин).
-pub(crate) fn proxy_test_address(models_root: &Path, secrets: Option<&Path>, url: &str, typed: Option<&str>) -> String {
+pub(crate) fn proxy_test_address(models_root: &Path, secrets: Option<&Path>, url: &str, typed: Option<&str>,
+) -> String {
     let url = url.trim();
     let password = match typed.map(str::trim).filter(|typed| !typed.is_empty()) {
         Some(typed) => Some(typed.to_string()),
@@ -176,10 +272,12 @@ pub(crate) struct FormError {
 
 impl FormError {
     fn bad(code: &'static str, detail: impl Into<String>) -> Self {
-        FormError { status: StatusCode::BAD_REQUEST, code, detail: detail.into() }
+        FormError { status: StatusCode::BAD_REQUEST, code, detail: detail.into(),
+        }
     }
     fn internal(detail: impl std::fmt::Display) -> Self {
-        FormError { status: StatusCode::INTERNAL_SERVER_ERROR, code: "store_failed", detail: detail.to_string() }
+        FormError { status: StatusCode::INTERNAL_SERVER_ERROR, code: "store_failed", detail: detail.to_string(),
+        }
     }
 }
 
@@ -188,13 +286,17 @@ impl FormError {
 /// приводится к URL со схемой по `kind`. Пароль: нет поля или пустая строка — оставить сохранённый (форма его
 /// не знает), null — удалить, строка — заменить. Пароль, вписанный прямо в адрес, тоже уходит в хранилище;
 /// в active.json адрес попадает всегда без пароля.
-pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value) -> Result<(), FormError> {
+pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value,
+) -> Result<(), FormError> {
     let change = match form.get("password") {
         None => None,
         Some(Value::Null) => Some(None),
         Some(Value::String(password)) if password.trim().is_empty() => None,
         Some(Value::String(password)) => Some(Some(password.trim().to_string())),
-        Some(_) => return Err(FormError::bad("invalid_proxy_password", "password must be a string or null")),
+        Some(_) => {
+            return Err(FormError::bad("invalid_proxy_password", "password must be a string or null",
+            ))
+        }
     };
     let on = match form.get("on") {
         None => None,
@@ -202,11 +304,19 @@ pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value)
         Some(_) => return Err(FormError::bad("invalid_proxy_on", "on must be a boolean")),
     };
     let mode = match form.get("mode") {
-        None => on.map(|on| if on { dub_llm::net::ProxyMode::Custom } else { dub_llm::net::ProxyMode::Off }),
-        Some(Value::String(mode)) => Some(
-            dub_llm::net::ProxyMode::parse(mode).ok_or_else(|| FormError::bad("invalid_proxy_mode", "mode must be off, system or custom"))?,
-        ),
-        Some(_) => return Err(FormError::bad("invalid_proxy_mode", "mode must be off, system or custom")),
+        None => on.map(|on| {
+            if on { dub_llm::net::ProxyMode::Custom } else { dub_llm::net::ProxyMode::Off }
+        }),
+        Some(Value::String(mode)) => {
+            Some(
+            dub_llm::net::ProxyMode::parse(mode).ok_or_else(|| {
+                FormError::bad("invalid_proxy_mode", "mode must be off, system or custom")
+            })?)
+        }
+        Some(_) => {
+            return Err(FormError::bad("invalid_proxy_mode", "mode must be off, system or custom",
+            ))
+        }
     };
 
     let _held = crate::models::selection_writes();
@@ -216,15 +326,22 @@ pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value)
     let kind = match form.get("kind") {
         None => crate::models::proxy_kind(&selection),
         Some(Value::String(kind)) => dub_llm::net::ProxyKind::parse(kind)
-            .ok_or_else(|| FormError::bad("invalid_proxy_kind", "kind must be http, https, socks5 or socks4"))?,
-        Some(_) => return Err(FormError::bad("invalid_proxy_kind", "kind must be http, https, socks5 or socks4")),
+            .ok_or_else(|| {
+            FormError::bad("invalid_proxy_kind", "kind must be http, https, socks5 or socks4",
+            )
+        })?,
+        Some(_) => {
+            return Err(FormError::bad("invalid_proxy_kind", "kind must be http, https, socks5 or socks4",
+            ))
+        }
     };
     let slots = selection.as_object_mut().expect("load_selection returns object");
     let store = match form.get("url") {
         None => {
             let stored = slots.get("proxy_url").and_then(Value::as_str).unwrap_or_default();
             if matches!(change, Some(Some(_))) && !crate::models::proxy_has_user(stored) {
-                return Err(FormError::bad("proxy_password_without_user", "a proxy password needs a user name in the address (user@host:port)"));
+                return Err(FormError::bad("proxy_password_without_user", "a proxy password needs a user name in the address (user@host:port)",
+                ));
             }
             change
         }
@@ -241,7 +358,8 @@ pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value)
                 change
             } else {
                 if matches!(change, Some(Some(_))) {
-                    return Err(FormError::bad("proxy_password_without_user", "a proxy password needs a user name in the address (user@host:port)"));
+                    return Err(FormError::bad("proxy_password_without_user", "a proxy password needs a user name in the address (user@host:port)",
+                    ));
                 }
                 Some(None)
             };
@@ -251,7 +369,8 @@ pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value)
         Some(_) => return Err(FormError::bad("invalid_proxy_url", "url must be a string")),
     };
     if mode == dub_llm::net::ProxyMode::Custom && slots.get("proxy_url").and_then(Value::as_str).is_none_or(|url| url.trim().is_empty()) {
-        return Err(FormError::bad("proxy_url_required", "a proxy of your own needs an address; switch the mode before removing it"));
+        return Err(FormError::bad("proxy_url_required", "a proxy of your own needs an address; switch the mode before removing it",
+        ));
     }
     if let Some(change) = store {
         credentials::store_proxy_password_in(secrets, change.as_deref()).map_err(FormError::internal)?;
@@ -265,15 +384,18 @@ pub(crate) fn apply_proxy_form(models_root: &Path, secrets: &Path, form: &Value)
 // ─── GET /engine/proxy/settings ─────────────────────────────────────────────
 pub async fn proxy_settings(State(st): State<AppState>) -> Response {
     let Some(secrets) = credentials::secrets_dir() else {
-        return failure(StatusCode::INTERNAL_SERVER_ERROR, "no_secrets_dir", "no per-user application data directory for credential storage");
+        return failure(StatusCode::INTERNAL_SERVER_ERROR, "no_secrets_dir", "no per-user application data directory for credential storage",
+        );
     };
     Json(proxy_view(&st.models_root, &secrets)).into_response()
 }
 
 // ─── PUT /engine/proxy/settings {on?, url?, password?} ──────────────────────
-pub async fn update_proxy_settings(State(st): State<AppState>, Json(form): Json<Value>) -> Response {
+pub async fn update_proxy_settings(State(st): State<AppState>, Json(form): Json<Value>,
+) -> Response {
     let Some(secrets) = credentials::secrets_dir() else {
-        return failure(StatusCode::INTERNAL_SERVER_ERROR, "no_secrets_dir", "no per-user application data directory for credential storage");
+        return failure(StatusCode::INTERNAL_SERVER_ERROR, "no_secrets_dir", "no per-user application data directory for credential storage",
+        );
     };
     match apply_proxy_form(&st.models_root, &secrets, &form) {
         Ok(()) => {
@@ -300,14 +422,16 @@ mod tests {
 
     fn resolved(models: &Path, secrets: &Path) -> String {
         let bare = crate::models::load_selection(models)["proxy_url"].as_str().unwrap().to_string();
-        crate::models::proxy_with_password(&bare, credentials::proxy_password_in(secrets).as_deref())
+        crate::models::proxy_with_password(&bare, credentials::proxy_password_in(secrets).as_deref(),
+        )
     }
 
     #[test]
     fn saving_the_proxy_form_unchanged_keeps_the_password() {
         let models = scratch("form-models");
         let secrets = scratch("form-secrets");
-        apply_proxy_form(&models, &secrets, &json!({ "on": true, "url": "http://alice:hunter2@proxy.lan:3128" })).unwrap();
+        apply_proxy_form(&models, &secrets, &json!({ "on": true, "url": "http://alice:hunter2@proxy.lan:3128" }),
+        ).unwrap();
         let active = std::fs::read_to_string(models.join("active.json")).unwrap();
         assert!(!active.contains("hunter2"));
         assert_eq!(resolved(&models, &secrets), "http://alice:hunter2@proxy.lan:3128");
@@ -328,17 +452,20 @@ mod tests {
         }
         assert_eq!(proxy_view(&models, &secrets)["on"], false);
 
-        apply_proxy_form(&models, &secrets, &json!({ "url": "http://alice@proxy2.lan:3128", "password": "n3w" })).unwrap();
+        apply_proxy_form(&models, &secrets, &json!({ "url": "http://alice@proxy2.lan:3128", "password": "n3w" }),
+        ).unwrap();
         assert_eq!(resolved(&models, &secrets), "http://alice:n3w@proxy2.lan:3128");
 
         apply_proxy_form(&models, &secrets, &json!({ "password": null })).unwrap();
         assert_eq!(proxy_view(&models, &secrets)["password_set"], false);
         assert_eq!(resolved(&models, &secrets), "http://alice@proxy2.lan:3128");
 
-        let refused = apply_proxy_form(&models, &secrets, &json!({ "url": "socks5://proxy.lan:1080", "password": "x" }));
+        let refused = apply_proxy_form(&models, &secrets, &json!({ "url": "socks5://proxy.lan:1080", "password": "x" }),
+        );
         assert_eq!(refused.err().map(|e| e.code), Some("proxy_password_without_user"));
 
-        apply_proxy_form(&models, &secrets, &json!({ "url": "http://bob:pw@proxy.lan:8080" })).unwrap();
+        apply_proxy_form(&models, &secrets, &json!({ "url": "http://bob:pw@proxy.lan:8080" }),
+        ).unwrap();
         apply_proxy_form(&models, &secrets, &json!({ "url": "" })).unwrap();
         assert!(crate::models::load_selection(&models).get("proxy_url").is_none());
         assert_eq!(credentials::proxy_password_in(&secrets), None);
@@ -351,7 +478,8 @@ mod tests {
     fn a_seller_address_is_stored_as_a_url_without_its_password() {
         let models = scratch("seller-models");
         let secrets = scratch("seller-secrets");
-        apply_proxy_form(&models, &secrets, &json!({ "mode": "custom", "kind": "socks5", "url": "1.2.3.4:8000:bob:p@ss" })).unwrap();
+        apply_proxy_form(&models, &secrets, &json!({ "mode": "custom", "kind": "socks5", "url": "1.2.3.4:8000:bob:p@ss" }),
+        ).unwrap();
         let active = std::fs::read_to_string(models.join("active.json")).unwrap();
         assert!(!active.contains("p@ss") && !active.contains("p%40ss"), "{active}");
         let view = proxy_view(&models, &secrets);
@@ -373,7 +501,8 @@ mod tests {
         let bad = apply_proxy_form(&models, &secrets, &json!({ "mode": "custom" }));
         assert_eq!(bad.err().map(|e| e.code), Some("proxy_url_required"));
 
-        std::fs::write(models.join("active.json"), r#"{"proxy_on":"1","proxy_url":"http://carol@legacy.lan:3128"}"#).unwrap();
+        std::fs::write(models.join("active.json"), r#"{"proxy_on":"1","proxy_url":"http://carol@legacy.lan:3128"}"#,
+        ).unwrap();
         apply_proxy_form(&models, &secrets, &json!({ "password": "pw" })).unwrap();
         let view = proxy_view(&models, &secrets);
         assert_eq!((view["mode"].as_str(), view["url"].as_str()), (Some("custom"), Some("http://carol@legacy.lan:3128")), "the old switch stays on");
@@ -381,7 +510,8 @@ mod tests {
         assert_eq!(bad.err().map(|e| e.code), Some("proxy_url_required"));
         assert_eq!(credentials::proxy_password_in(&secrets).as_deref(), Some("pw"), "a refused form changes nothing");
 
-        std::fs::write(models.join("active.json"), r#"{"proxy_mode":"custom","proxy_url":"garbage"}"#).unwrap();
+        std::fs::write(models.join("active.json"), r#"{"proxy_mode":"custom","proxy_url":"garbage"}"#,
+        ).unwrap();
         assert!(proxy_view(&models, &secrets)["problem"].as_str().is_some_and(|p| p.contains("garbage")));
 
         std::fs::remove_dir_all(&models).unwrap();
@@ -392,8 +522,11 @@ mod tests {
     fn the_saved_proxy_password_goes_only_to_the_saved_address() {
         let models = scratch("probe-models");
         let secrets = scratch("probe-secrets");
-        apply_proxy_form(&models, &secrets, &json!({ "on": false, "url": "http://alice:hunter2@proxy.lan:3128" })).unwrap();
-        let probe = |url: &str, typed: Option<&str>| proxy_test_address(&models, Some(&secrets), url, typed);
+        apply_proxy_form(&models, &secrets, &json!({ "on": false, "url": "http://alice:hunter2@proxy.lan:3128" }),
+        ).unwrap();
+        let probe = |url: &str, typed: Option<&str>| {
+            proxy_test_address(&models, Some(&secrets), url, typed)
+        };
 
         assert_eq!(probe("http://alice@proxy.lan:3128", None), "http://alice:hunter2@proxy.lan:3128");
         assert_eq!(probe(" http://alice@proxy.lan:3128 ", Some("  ")), "http://alice:hunter2@proxy.lan:3128");
@@ -412,7 +545,8 @@ mod tests {
         assert_eq!(probe("", None), "");
         assert_eq!(proxy_test_address(&models, None, "http://alice@proxy.lan:3128", None), "http://alice@proxy.lan:3128");
 
-        apply_proxy_form(&models, &secrets, &json!({ "url": "http://alice@proxy2.lan:3128" })).unwrap();
+        apply_proxy_form(&models, &secrets, &json!({ "url": "http://alice@proxy2.lan:3128" }),
+        ).unwrap();
         assert_eq!(probe("http://alice@proxy.lan:3128", None), "http://alice@proxy.lan:3128");
         assert_eq!(probe("http://alice@proxy2.lan:3128", None), "http://alice:hunter2@proxy2.lan:3128");
 
@@ -424,7 +558,8 @@ mod tests {
     fn a_password_with_url_delimiters_keeps_the_route() {
         let models = scratch("delimiters-models");
         let secrets = scratch("delimiters-secrets");
-        for password in ["pa/ss", "pa?ss", "pa#ss", "p@ss", "pa:ss", "p@ss:1/x", "pa\\ss", "100%", "пароль"] {
+        for password in ["pa/ss", "pa?ss", "pa#ss", "p@ss", "pa:ss", "p@ss:1/x", "pa\\ss", "100%", "пароль",
+        ] {
             let encoded = dub_llm::net::encode_userinfo(password);
             for form in [
                 json!({ "mode": "custom", "url": "http://bob@1.2.3.4:8000", "password": password }),
@@ -442,7 +577,8 @@ mod tests {
                 assert!(!shown.contains(password) && !shown.contains(&encoded), "{shown}");
 
                 let selection = crate::models::load_selection(&models);
-                let address = crate::models::proxy_address(&selection, credentials::proxy_password_in(&secrets).as_deref()).unwrap();
+                let address = crate::models::proxy_address(&selection, credentials::proxy_password_in(&secrets).as_deref(),
+                ).unwrap();
                 let settings = dub_llm::net::ProxySettings {
                     mode: dub_llm::net::ProxyMode::Custom,
                     address: Some(address.clone()),
@@ -453,7 +589,8 @@ mod tests {
                 assert_eq!(dub_llm::net::decode_userinfo(through.password().unwrap()), password);
                 let logged = dub_llm::net::masked(through.as_str());
                 assert!(!logged.contains(&encoded) && !logged.contains(password), "{logged}");
-                let probe = proxy_test_address(&models, Some(&secrets), view["url"].as_str().unwrap(), None);
+                let probe = proxy_test_address(&models, Some(&secrets), view["url"].as_str().unwrap(), None,
+                );
                 assert_eq!(probe, address, "the test probes the saved route");
             }
         }
@@ -470,7 +607,8 @@ mod tests {
         let models = scratch("probe-real-models");
         let secrets = scratch("probe-real-secrets");
         let saved = proxy.base().replace("http://", "http://bob@");
-        apply_proxy_form(&models, &secrets, &json!({ "mode": "custom", "url": saved, "password": "p@ss:1/x" })).unwrap();
+        apply_proxy_form(&models, &secrets, &json!({ "mode": "custom", "url": saved, "password": "p@ss:1/x" }),
+        ).unwrap();
         let address = proxy_test_address(&models, Some(&secrets), &saved, None);
         let settings = dub_llm::net::ProxySettings {
             mode: dub_llm::net::ProxyMode::Custom,
@@ -527,32 +665,47 @@ mod tests {
         assert_eq!(parsed["selection"]["proxy_password_set"], true);
         assert_eq!(parsed["selection"]["proxy_url"], "http://alice@proxy.lan:3128");
 
-        let (status, selected) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "bench", "value": "0" })))).await;
+        let (status, selected) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "bench", "value": "0" })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::OK);
-        let (status, by_component) = body_text(&app, local("POST", "/engine/select", Some(json!({ "id": "higgs-q6_k" })))).await;
+        let (status, by_component) = body_text(&app, local("POST", "/engine/select", Some(json!({ "id": "higgs-q6_k" })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::OK);
         let (_, openrouter) = body_text(&app, local("GET", "/engine/openrouter/settings", None)).await;
         let (_, proxy) = body_text(&app, local("GET", "/engine/proxy/settings", None)).await;
-        let (status, server_key) = body_text(&app, local("PUT", "/engine/server/key", Some(json!({ "api_key": "lm-leaktest" })))).await;
+        let (status, server_key) = body_text(&app, local("PUT", "/engine/server/key", Some(json!({ "api_key": "lm-leaktest" })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::OK);
         assert_eq!(serde_json::from_str::<Value>(&server_key).unwrap()["configured"], true);
         let (_, capabilities_again) = body_text(&app, local("GET", "/engine/capabilities", None)).await;
-        for answer in [&capabilities, &selected, &by_component, &openrouter, &proxy, &server_key, &capabilities_again] {
+        for answer in [&capabilities, &selected, &by_component, &openrouter, &proxy, &server_key, &capabilities_again,
+        ] {
             assert!(!answer.contains("lm-leaktest"), "{answer}");
             assert!(!answer.contains("sk-or-v1-leaktest") && !answer.contains("hunter2"), "{answer}");
         }
         assert_eq!(serde_json::from_str::<Value>(&openrouter).unwrap()["configured"], true);
         assert_eq!(serde_json::from_str::<Value>(&proxy).unwrap()["password_set"], true);
 
-        let (status, _) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "or_key", "value": "sk-x" })))).await;
+        let (status, _) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "or_key", "value": "sk-x" })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        let (status, _) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "proxy_url", "value": "http://a:b@h:1" })))).await;
+        let (status, _) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "proxy_url", "value": "http://a:b@h:1" })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        let (status, _) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "srv_key", "value": "x" })))).await;
+        let (status, _) = body_text(&app, local("POST", "/engine/select", Some(json!({ "key": "srv_key", "value": "x" })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         let (status, _) = body_text(&app, local("DELETE", "/engine/server/key", None)).await;
         assert_eq!(status, StatusCode::OK);
-        let (status, empty) = body_text(&app, local("PUT", "/engine/openrouter/settings", Some(json!({ "api_key": " " })))).await;
+        let (status, empty) = body_text(&app, local("PUT", "/engine/openrouter/settings", Some(json!({ "api_key": " " })),
+            ),
+        ).await;
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(empty.contains("empty_key"));
 

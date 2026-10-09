@@ -339,6 +339,14 @@ pub fn with_proxy(builder: reqwest::blocking::ClientBuilder) -> reqwest::blockin
     }))
 }
 
+/// Асинхронный строитель с тем же маршрутом настроек (Studio Hub в tokio).
+pub fn async_builder() -> reqwest::ClientBuilder {
+    reqwest::Client::builder().user_agent(USER_AGENT).proxy(reqwest::Proxy::custom(|url| {
+        let route = route().read().expect("proxy route");
+        proxy_for(&route.settings, &route.system, url)
+    }))
+}
+
 /// Клиент к процессу на этой машине (llama-server): мимо любого прокси, включая переменные окружения.
 pub fn local_builder() -> reqwest::blocking::ClientBuilder {
     reqwest::blocking::Client::builder().no_proxy()

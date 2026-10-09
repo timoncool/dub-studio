@@ -3,7 +3,7 @@
 //! GPU-декод. burn_frame — ОДИН кадр в PNG (input-seek, без ре-энкода) для превью.
 
 use crate::ass;
-use crate::types::BlurBox;
+use crate::types::{BlurBox, CaptionsError};
 use std::path::Path;
 use std::process::Command;
 
@@ -193,7 +193,7 @@ pub fn burn(
     cq: i64,
     src_codec: Option<&str>,
     blur_sigma: i64,
-) -> Result<(), String> {
+) -> Result<(), CaptionsError> {
     let ass_f = ass_filter(ass_path);
     let (w, h) = frame_size.unwrap_or((1_000_000_000, 1_000_000_000));
     let hevc = matches!(src_codec.map(|c| c.to_lowercase()).as_deref(), Some("hevc") | Some("h265"));
@@ -220,7 +220,7 @@ pub fn burn(
         // (репро: 342 бокса = 37КБ аргументов), а CreateProcess ограничен 32767 символами —
         // spawn падал с ENAMETOOLONG, и burn умирал мгновенно.
         let graph_file = out.with_extension("filter");
-        std::fs::write(&graph_file, &graph).map_err(|e| format!("filter-скрипт: {e}"))?;
+        std::fs::write(&graph_file, &graph).map_err(|e| CaptionsError::FilterScript(e.to_string()))?;
         vec![
             filter_script_flag().into(),
             graph_file.to_string_lossy().into_owned(),
@@ -256,7 +256,7 @@ fn run_ffmpeg(
     out: &Path,
     gpu_decode: bool,
     timeout_secs: u64,
-) -> Result<(), String> {
+) -> Result<(), CaptionsError> {
     let mut cmd = Command::new(FFMPEG);
     cmd.arg("-y");
     if gpu_decode {
@@ -273,7 +273,7 @@ fn run_ffmpeg(
     let o = output_with_timeout(cmd, timeout_secs, true)?;
     if !o.status.success() {
         let tail = stderr_tail(&o.stderr);
-        return Err(format!("ffmpeg caption burn failed:\n{tail}"));
+        return Err(CaptionsError::BurnFailed { tail });
     }
     Ok(())
 }
@@ -287,14 +287,14 @@ const BURN_TIMEOUT_SECS: u64 = 30 * 60;
 /// ошибка с хвостом stderr. Никакой внешней зависимости: try_wait в цикле с шагом 250мс.
 /// `log_cmd` — печатать cmdline в stderr: полный burn да (диагностика долгих джоб), превью-кадр
 /// нет (иначе каждый тик плеера спамит лог строкой на 37КБ).
-fn output_with_timeout(mut cmd: Command, secs: u64, log_cmd: bool) -> Result<std::process::Output, String> {
+fn output_with_timeout(mut cmd: Command, secs: u64, log_cmd: bool) -> Result<std::process::Output, CaptionsError> {
     use std::io::Read;
     use std::process::Stdio;
     if log_cmd {
         eprintln!("[burn] ffmpeg: {cmd:?}");
     }
     cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("ffmpeg запуск: {e}"))?;
+    let mut child = cmd.spawn().map_err(|e| CaptionsError::Spawn(e.to_string()))?;
     let _tracked = dub_core::proc::track(child.id());
     let mut so = child.stdout.take().expect("piped stdout");
     let mut se = child.stderr.take().expect("piped stderr");
@@ -322,10 +322,10 @@ fn output_with_timeout(mut cmd: Command, secs: u64, log_cmd: bool) -> Result<std
                 let _ = child.wait();
                 let tail = stderr_tail(&drain(th_err, 10));
                 drain(th_out, 1);
-                return Err(format!("ffmpeg не завершился за {secs}с — убит (зависание).\n{tail}"));
+                return Err(CaptionsError::Timeout { secs, tail });
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(250)),
-            Err(e) => return Err(format!("ffmpeg wait: {e}")),
+            Err(e) => return Err(CaptionsError::Wait(e.to_string())),
         }
     };
     let stdout = drain(th_out, 15);
@@ -346,7 +346,7 @@ pub fn burn_frame(
     blur: bool,
     blur_sigma: i64,
     scale_w: Option<i64>,
-) -> Result<(), String> {
+) -> Result<(), CaptionsError> {
     let t = t.max(0.0);
     let ass_f = ass_filter(ass_path);
     let (mut w, mut h) = frame_size.unwrap_or((1_000_000_000, 1_000_000_000));
@@ -391,7 +391,7 @@ pub fn burn_frame(
         let graph = blur_graph(&ass_f, boxes, w, h, blur_sigma, &lead, "sel");
         // Граф в файл — тот же 32767-символьный лимит CreateProcess, что и у полного burn.
         let graph_file = out_png.with_extension("filter");
-        std::fs::write(&graph_file, &graph).map_err(|e| format!("filter-скрипт: {e}"))?;
+        std::fs::write(&graph_file, &graph).map_err(|e| CaptionsError::FilterScript(e.to_string()))?;
         vec![
             filter_script_flag().into(),
             graph_file.to_string_lossy().into_owned(),
@@ -420,7 +420,7 @@ pub fn burn_frame(
     let o = output_with_timeout(cmd, 120, false)?;
     if !o.status.success() {
         let tail = stderr_tail(&o.stderr);
-        return Err(format!("ffmpeg preview frame failed:\n{tail}"));
+        return Err(CaptionsError::FrameFailed { tail });
     }
     Ok(())
 }

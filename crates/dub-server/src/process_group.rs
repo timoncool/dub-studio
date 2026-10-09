@@ -120,7 +120,7 @@ pub fn terminate_group_members() {
         ) != 0
     };
     if !ok {
-        eprintln!("[ERROR] список процессов группы студии не прочитан: сайдкары могут пережить выход");
+        eprintln!("[ERROR] the studio process group list was not read: sidecars may outlive the exit");
         return;
     }
     for &pid in list.pids.iter().take(list.listed as usize) {
@@ -130,11 +130,11 @@ pub fn terminate_group_members() {
         unsafe {
             let h = OpenProcess(PROCESS_TERMINATE, 0, pid as u32);
             if h.is_null() {
-                eprintln!("[ERROR] процесс {pid} группы студии не открыт для завершения");
+                eprintln!("[ERROR] process {pid} of the studio group was not opened for termination");
                 continue;
             }
             if TerminateProcess(h, 1) == 0 {
-                eprintln!("[ERROR] процесс {pid} группы студии не завершён");
+                eprintln!("[ERROR] process {pid} of the studio group was not terminated");
             }
             CloseHandle(h);
         }

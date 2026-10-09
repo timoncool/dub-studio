@@ -93,7 +93,7 @@ fn recover_interrupted(state: &mut PersistentState) -> bool {
     }
     job.status = DownloadStatus::Interrupted;
     job.error_code = Some("interrupted".into());
-    job.error = Some("закачка оборвалась вместе с приложением; скачанное сохранено в .part и докачается с места".into());
+    job.error = Some(t!("downloads-interrupted"));
     job.speed_bps = 0;
     job.waiting_s = 0;
     true
@@ -113,7 +113,7 @@ impl Downloads {
         let state_path = repo_root.join("models").join(".setup-download.json");
         let mut state: PersistentState = match std::fs::read_to_string(&state_path) {
             Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
-                tracing::warn!("{} не читается ({e}) — прошлая закачка забыта", state_path.display());
+                tracing::warn!("{} is unreadable ({e}); the previous download is forgotten", state_path.display());
                 PersistentState::default()
             }),
             Err(_) => PersistentState::default(),
@@ -154,11 +154,11 @@ impl Downloads {
             .map(|c| c.id.to_string())
             .collect();
         if known.is_empty() {
-            return Err(DlError::new("nothing_to_download", "нет скачиваемых компонентов среди выбранных id"));
+            return Err(DlError::new("nothing_to_download", t!("downloads-nothing-to-download")));
         }
         let mut state = lock(&self.inner.state);
         if state.active.as_ref().is_some_and(|j| j.status == DownloadStatus::Downloading) {
-            return Err(DlError::new("busy", "закачка уже идёт"));
+            return Err(DlError::new("busy", t!("downloads-busy")));
         }
         setup::check_space(&self.inner.repo_root, &known)?;
         let pause = Arc::new(AtomicBool::new(false));
@@ -192,10 +192,10 @@ impl Downloads {
                 if let Some(j) = state.active.as_mut() {
                     j.status = DownloadStatus::Failed;
                     j.error_code = Some("io".into());
-                    j.error = Some(format!("поток закачки не запустился: {e}"));
+                    j.error = Some(t!("downloads-thread-failed", error = e.to_string()));
                 }
                 self.save(&state);
-                DlError::new("io", format!("поток закачки не запустился: {e}"))
+                DlError::new("io", t!("downloads-thread-failed", error = e.to_string()))
             })?;
         Ok(job)
     }
@@ -223,7 +223,7 @@ impl Downloads {
                     job.status = DownloadStatus::Paused;
                 }
                 Err(e) => {
-                    tracing::warn!("закачка {:?}: {} ({})", job.ids, e.detail, e.code);
+                    tracing::warn!("download {:?}: {} ({})", job.ids, e.detail, e.code);
                     job.status = DownloadStatus::Failed;
                     job.error_code = Some(e.code.to_string());
                     job.error = Some(e.detail);

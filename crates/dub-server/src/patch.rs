@@ -432,6 +432,14 @@ fn op_gain(p: &mut Project, edit: &Value) -> PatchResult {
     Ok(())
 }
 
+/// loudness — выравнивание громкости дубляжа {on: bool}. Только пересведение, ре-TTS не нужен.
+fn op_loudness(p: &mut Project, edit: &Value) -> PatchResult {
+    if let Some(on) = edit.get("on").and_then(|v| v.as_bool()) {
+        p.audio.loudness_normalize = on;
+    }
+    Ok(())
+}
+
 /// Громкость ОРИГИНАЛЬНОЙ дорожки в режиме voiceover (закадровый). 0 = в полную силу, отрицательное =
 /// тише перевода. Ре-TTS не нужен — только пересведение (лёгкий ре-рендер), сегменты из кэша.
 fn op_voiceover_gain(p: &mut Project, edit: &Value) -> PatchResult {
@@ -805,6 +813,7 @@ pub fn apply(p: &mut Project, edit: &Value) -> PatchResult {
         "regen" => op_regen(p, edit),
         "regen_all" => op_regen_all(p, edit),
         "gain" => op_gain(p, edit),
+        "loudness" => op_loudness(p, edit),
         "voiceover_gain" => op_voiceover_gain(p, edit),
         "sub_blur" => op_sub_blur(p, edit),
         "keep_original" => op_keep_original(p, edit),

@@ -130,5 +130,5 @@ fn parse_opts(opts_json: &str) -> Result<serde_json::Value, EngineError> {
         return Ok(serde_json::json!({}));
     }
     serde_json::from_str(s)
-        .map_err(|e| EngineError::InvalidParam(format!("невалидный opts_json: {e}")))
+        .map_err(|e| EngineError::InvalidParam(format!("invalid opts_json: {e}")))
 }

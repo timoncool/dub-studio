@@ -4,6 +4,26 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## 2026-10-09 — 4.1.0
+
+### Added
+
+- **Everything the studio says is in the window's language.** Progress, errors, setup and download messages, casting, the voice library and the reports an agent reads come from the server in the six languages of the window, not in Russian or English whatever the window shows (#7).
+- **Even out loudness** is a switch beside the track gain, on by default as before: every phrase is brought to one level and the dub to -14 LUFS with a -1 dBTP ceiling, as streaming platforms play it; off, the mix stays as it came. Agents use `loudness_set`.
+- **Anonymous statistics and news from the hub.** The first-run screen and Settings - Anonymous statistics have a checkbox, on by default, with which the app sends once a day how many tasks finished, failed or were cancelled, its version, the OS and the class of the graphics card - never videos, transcripts, translations, voices or file names; What is sent shows the report, and DO_NOT_TRACK=1 or STUDIO_TELEMETRY=0 turns it off entirely. News from the author arrive without an update, on top of What's new.
+- **Parakeet Ultra int8.** The Moondream fine-tune of Parakeet, quantized to int8 (about 0.7 GB instead of 2.6 GB), is a recogniser of its own in the variant picker and in the model list. The base int8 model stays the default and the fp32 Ultra stays where it is; the importer no longer takes the base int8 files for the Ultra ones or the other way round, though their sizes are nearly the same.
+- **Direct Google Gemini TTS and Batch.** Choose Google alongside local voices and OpenRouter, with a separate API key and a live TTS model list. Batch runs use the `rust-genai` SDK and persist their Google job name; continuing a stopped render retrieves the same paid batch. MCP exposes the key settings, model list and project usage report with audio duration, wall time and tariff-based cost estimates.
+- **An experimental Linux build** (x86-64, .deb and AppImage), made by hand by the `Linux build (experimental)` workflow. "First run" downloads the Linux builds of the same engines and CUDA libraries (llama.cpp, ONNX Runtime with CUDA, BSRoformer.cpp, ffmpeg, the Higgs engine for Linux, yt-dlp with deno, faster-whisper), unpacks tar.gz and tar.xz with their library links, and keeps everything in `~/.local/share/dub-studio`. The studio checks the card through `libcuda.so.1`; local voice on Linux needs an RTX 30 or newer, since the Higgs engine for Linux is built for those cards only. Engines started by the studio end with it. The build is not tested on a real Linux desktop: fixes from people who use Linux are very welcome.
+- **The number of speakers in a recording.** The launch form leaves it automatic or takes 1 to 8 people. With a number given, voices are matched across the parts of a long recording with WeSpeaker; the choice is saved and available through MCP. From [pull request #13](https://github.com/timoncool/dub-studio/pull/13) by lostintired.
+
+### Fixed
+
+- **Per-line Gemini voice direction.** The renderer forwards `tts_style` as speech metadata and includes it, the provider and request mode in take cache keys. Style instructions are never prepended to spoken dialogue.
+- **A video in a language Parakeet does not know** no longer comes out undubbed. Parakeet transcribes 25 European languages; on Chinese it heard one word in minutes of speech. With Auto as the source, a run where the voice is heard but almost no words stops and says to pick the source language (picking one outside Europe switches recognition to Whisper); with such a language set while Parakeet is selected, for example from an agent, the analysis says to choose Whisper.
+- **Recognition on parakeet-rs 0.4.0:** repeated words keep their timestamps, and diarization no longer fails on some recording lengths.
+- **Long recordings are transcribed in windows** of about 90 seconds cut at pauses; one pass over more than about ten minutes failed with a broadcast error or ran out of memory (#4, #9, #11).
+- **Speaker labels of a long recording.** With a number of voices given, continuous diarization can be turned on with `DUB_STUDIO_DIAR_CONTINUOUS=1`: the model keeps its state across the whole track, and the results of this mode have a cache of their own. It needs memory for the whole recording. From pull request #13 by lostintired.
+
 ## 2026-10-01 — 4.0.0
 
 ### Added

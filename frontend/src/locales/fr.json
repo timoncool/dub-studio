@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "Doublez et traduisez n'importe quelle vidéo — en local."
   },
+  "speakers": {
+    "count": "Nombre de locuteurs",
+    "countHint": "Si vous connaissez le nombre de participants, indiquez-le. Les mêmes voix seront reconnues entre les différents passages de l’enregistrement."
+  },
   "drop": {
     "title": "Déposez une vidéo à doubler",
     "hint": "MP4 ou MOV — tout tourne sur votre machine",
@@ -109,6 +113,8 @@
     "addSpeakerPick": "Cochez d'abord des lignes ou placez la tête de lecture sur une ligne",
     "gain": "Gain",
     "gainHint": "Amplifier toute la piste (au rendu/export).",
+    "loudness": "Égaliser le volume",
+    "loudnessHint": "Met les phrases au même niveau et le doublage à -14 LUFS avec un plafond à -1 dBTP, comme le jouent les plateformes. Désactivé : le mixage tel quel.",
     "origGain": "Volume d’origine",
     "origGainHint": "Voix off : volume de la piste originale sous la traduction.",
     "langSearch": "Rechercher une langue…",
@@ -207,7 +213,9 @@
       "agent": "Agent IA (MCP)",
       "agentHint": "Connecter un agent IA au studio",
       "about": "À propos",
-      "aboutHint": "Version, liens et dossier de données"
+      "aboutHint": "Version, liens et dossier de données",
+      "privacy": "Statistiques anonymes",
+      "privacyHint": "Statistiques anonymes et nouvelles de l'auteur"
     },
     "voiceGroup": "Génération de la voix",
     "diagnostics": "Diagnostic",
@@ -801,7 +809,9 @@
     "fp32": "fp32",
     "fp32Hint": "Modèle de base NVIDIA en pleine précision fp32 (~2,6 Go)",
     "ultra": "Ultra · fp32",
-    "ultraHint": "Version du modèle de base affinée par Moondream : moins d'erreurs de reconnaissance, les mêmes 25 langues · fp32 ~2,6 Go"
+    "ultraHint": "Version du modèle de base affinée par Moondream : moins d'erreurs de reconnaissance, les mêmes 25 langues · fp32 ~2,6 Go",
+    "ultraInt8": "Ultra · int8",
+    "ultraInt8Hint": "Version du modèle de base affinée par Moondream, quantifiée : moins d'erreurs de reconnaissance, les mêmes 25 langues · int8 ~0,7 Go"
   },
   "units": {
     "gb": "Go",
@@ -1307,5 +1317,36 @@
       "failed": "Dernière mise à jour : {{error}}"
     },
     "pickQuality": "Choisir une autre qualité"
+  },
+  "google": {
+    "keyTitle": "Clé API Google Gemini",
+    "keyHint": "TTS et Batch directement auprès de Google ; la clé est stockée à part des paramètres.",
+    "envKey": "Fournie par {{name}}",
+    "savedKey": "Clé enregistrée ; saisissez-en une autre pour la remplacer",
+    "keyPlaceholder": "Clé API Google AI Studio",
+    "verifySave": "Vérifier et enregistrer",
+    "deleteKey": "Supprimer la clé Google",
+    "error": "Google : {{detail}}",
+    "model": "Modèle TTS Google",
+    "pickModel": "Choisir un modèle",
+    "mode": "Mode de requête",
+    "standard": "Standard — requêtes immédiates",
+    "batch": "Batch — tarif API réduit de 50 %",
+    "batchHint": "Google place le lot en attente (objectif : 24 heures). Annuler la tâche locale suspend les consultations ; le lot distant continue. Reprendre récupère le résultat sans nouvel envoi payant. Usage et coût estimé : project_google_tts_report dans MCP.",
+    "standardHint": "Requêtes directes en parallèle selon le paramètre de concurrence du cloud. Usage et coût estimé : project_google_tts_report dans MCP.",
+    "provider_local": "En local · Higgs",
+    "provider_openrouter": "Via OpenRouter",
+    "provider_google": "Google · directement"
+  },
+  "hub": {
+    "why": "Combien de personnes utilisent Dub Studio et pour quoi faire aide à décider de la suite. Rien de personnel : ni vidéos, ni textes, ni voix, ni noms de fichiers — seulement le nombre de tâches, la version et la classe de carte graphique.",
+    "checkbox": "Envoyer des statistiques d'utilisation anonymes",
+    "what": "Ce qui est envoyé",
+    "byEnv": "Désactivées par DO_NOT_TRACK ou STUDIO_TELEMETRY dans l'environnement.",
+    "reset": "Nouvel identifiant d'installation",
+    "nothing": "Rien à envoyer aujourd'hui pour l'instant.",
+    "feedSource": "Nouvelles de",
+    "feedNever": "Les nouvelles du serveur ne sont pas encore arrivées : le studio montre celles de sa version.",
+    "refresh": "Vérifier maintenant"
   }
 }

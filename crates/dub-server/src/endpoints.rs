@@ -41,7 +41,7 @@ pub async fn openrouter_models(State(st): State<AppState>, Query(q): Query<HashM
             let models: Vec<Value> = cached.catalog().models_for(capability).map(model_view).collect();
             Json(json!({ "models": models, "refreshed_at": cached.refreshed_at })).into_response()
         }
-        Err(e) => (StatusCode::BAD_GATEWAY, format!("каталог OpenRouter: {e}")).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, t!("openrouter-catalog-failed", error = e)).into_response(),
     }
 }
 
@@ -79,7 +79,7 @@ pub async fn openrouter_catalog(State(st): State<AppState>) -> Response {
     let models_root = st.models_root.clone();
     match tokio::task::spawn_blocking(move || crate::openrouter::catalog(&models_root)).await.unwrap_or_else(|e| Err(e.to_string())) {
         Ok(cached) => Json(catalog_summary(&cached)).into_response(),
-        Err(e) => (StatusCode::BAD_GATEWAY, format!("каталог OpenRouter: {e}")).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, t!("openrouter-catalog-failed", error = e)).into_response(),
     }
 }
 
@@ -87,7 +87,7 @@ pub async fn openrouter_catalog_refresh(State(st): State<AppState>) -> Response 
     let models_root = st.models_root.clone();
     match tokio::task::spawn_blocking(move || crate::openrouter::refresh(&models_root)).await.unwrap_or_else(|e| Err(e.to_string())) {
         Ok(cached) => Json(catalog_summary(&cached)).into_response(),
-        Err(e) => (StatusCode::BAD_GATEWAY, format!("каталог OpenRouter: {e}")).into_response(),
+        Err(e) => (StatusCode::BAD_GATEWAY, t!("openrouter-catalog-failed", error = e)).into_response(),
     }
 }
 
@@ -97,7 +97,7 @@ pub async fn openrouter_catalog_refresh(State(st): State<AppState>) -> Response 
 pub async fn openrouter_verify(Json(body): Json<Value>) -> Response {
     let key = body.get("key").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     if key.is_empty() {
-        return (StatusCode::BAD_REQUEST, "пустой ключ").into_response();
+        return (StatusCode::BAD_REQUEST, t!("openrouter-empty-key")).into_response();
     }
     let res = tokio::task::spawn_blocking(move || {
         dub_llm::openrouter::OpenRouter::new(Some(key)).and_then(|client| client.check_key()).map_err(|e| format!("{e:#}"))
@@ -134,7 +134,7 @@ pub async fn server_models(State(st): State<AppState>, Query(q): Query<HashMap<S
 pub(crate) fn list_server_models(url: &str, key: Option<String>) -> Result<Vec<String>, String> {
     let base = dub_llm::server_base(url);
     if base.is_empty() {
-        return Err("адрес сервера не задан".into());
+        return Err(t!("llm-server-no-address"));
     }
     let endpoint = format!("{base}/v1/models");
     let client = dub_llm::net::builder()
@@ -145,16 +145,16 @@ pub(crate) fn list_server_models(url: &str, key: Option<String>) -> Result<Vec<S
     if let Some(key) = key {
         request = request.bearer_auth(key);
     }
-    let response = request.send().map_err(|e| format!("сервер {base} не ответил: {}", dub_llm::net::why(&e)))?;
+    let response = request.send().map_err(|e| t!("llm-server-no-answer", base = base.clone(), reason = dub_llm::net::why(&e)))?;
     let status = response.status();
     if !status.is_success() {
-        return Err(format!("{endpoint} ответил {status}"));
+        return Err(t!("llm-server-status", endpoint = endpoint.clone(), status = status.to_string()));
     }
-    let body: Value = response.json().map_err(|e| format!("{endpoint} вернул не JSON: {e}"))?;
+    let body: Value = response.json().map_err(|e| t!("llm-server-not-json", endpoint = endpoint.clone(), error = e.to_string()))?;
     let models = body
         .get("data")
         .and_then(Value::as_array)
-        .ok_or_else(|| format!("{endpoint} вернул не список моделей OpenAI (нет поля data)"))?;
+        .ok_or_else(|| t!("llm-server-not-model-list", endpoint = endpoint.clone()))?;
     Ok(models.iter().filter_map(|item| item.get("id").and_then(Value::as_str).map(str::to_string)).collect())
 }
 
@@ -211,7 +211,7 @@ pub async fn presets_list(State(_st): State<AppState>) -> Response {
         .unwrap_or_else(|_| crate::presets::recommend());
     let list: Vec<Value> = crate::presets::PRESETS
         .iter()
-        .map(|p| json!({ "id": p.id, "title": p.title, "subtitle": p.subtitle }))
+        .map(|p| json!({ "id": p.id, "title": (p.title)(), "subtitle": (p.subtitle)() }))
         .collect();
     Json(json!({ "presets": list, "hardware": rec })).into_response()
 }
@@ -404,16 +404,16 @@ pub(crate) async fn remix_enqueue(st: &AppState, pid: &str, args: &Value) -> Res
         use dub_translate::{flat_rewrite, Seg};
 
         let read = |path: &std::path::Path| -> Result<Project, String> {
-            let text = std::fs::read_to_string(path).map_err(|e| format!("чтение {}: {e}", path.display()))?;
-            Project::from_json(&text).map_err(|e| format!("разбор {}: {e}", path.display()))
+            let text = std::fs::read_to_string(path).map_err(|e| t!("common-read", path = path.display().to_string(), error = e.to_string()))?;
+            Project::from_json(&text).map_err(|e| t!("common-parse", path = path.display().to_string(), error = e.to_string()))
         };
         let p = read(&proj_path)?;
         if p.segments.is_empty() {
             return Err("no transcript to remix — analyze first".into());
         }
         progress(json!({ "type": "progress",
-            "msg": format!("ремикс {} строк → {}", p.segments.len(),
-                           &instr[..instr.len().min(60)]) }));
+            "msg": t!("remix-start", count = p.segments.len(),
+                           instruction = instr[..instr.len().min(60)].to_string()) }));
 
         // LLM-провайдер перевода: своя Gemma, локальный сервер или OpenRouter (плоский rewrite).
         // Text-режим: mmproj не нужен (передаём пустой путь — фабрика его в Text-режиме игнорирует).
@@ -426,7 +426,7 @@ pub(crate) async fn remix_enqueue(st: &AppState, pid: &str, args: &Value) -> Res
             },
             crate::llm_provider::LlmMode::Text,
         )
-        .map_err(|e| format!("ремикс: LLM недоступен — {e}"))?;
+        .map_err(|e| t!("remix-no-llm", error = e.to_string()))?;
         let client = prov.client();
 
         let inputs: Vec<(String, String)> = p.segments.iter().map(|s| (s.id.clone(), s.src_text.clone())).collect();
@@ -440,14 +440,14 @@ pub(crate) async fn remix_enqueue(st: &AppState, pid: &str, args: &Value) -> Res
             .collect();
         let r = flat_rewrite(client, &mut segs, &instr, "auto", &p.tgt_lang, false, &p.audio.translate_style);
         drop(prov);
-        r.map_err(|e| format!("remix: {e}"))?;
+        r.map_err(|e| t!("remix-failed", error = crate::localize::Localize::localize(&e)))?;
 
         // Ремикс шёл минутами: правки, сделанные за это время, остаются, а новый текст ложится, только пока
         // реплики те же, что переписывались.
         let _held = crate::project_writes();
         let mut fresh = read(&proj_path)?;
         if fresh.segments.iter().map(|s| (s.id.clone(), s.src_text.clone())).collect::<Vec<_>>() != inputs {
-            return Err("ремикс: реплики изменились, пока шёл ремикс — проект не менялся, запустите ремикс ещё раз".into());
+            return Err(t!("remix-lines-changed"));
         }
         for (s, sg) in fresh.segments.iter_mut().zip(segs) {
             if !sg.tgt.trim().is_empty() {

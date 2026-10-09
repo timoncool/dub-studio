@@ -95,6 +95,24 @@ connected and the address to paste.
 
 ## One call on a file, or work in the studio
 
+### Direct Google TTS and Batch
+
+`google_status` reports whether a key is configured; `google_set_key` verifies and stores it,
+`google_delete_key` removes it. The key is never returned. `google_models` lists available TTS
+model IDs and generation methods. Set `tts_provider=google`, `google_tts_model` to an ID without
+`models/`, and `google_tts_mode=standard|batch` using `settings_set`. Voices and autocasting use
+`or_tts_voice` and `or_tts_autocast`; standard concurrency uses `or_concurrency`.
+
+Run `project_dub_audio` or `project_render`, then `studio_wait`. Batch uses Google's discounted
+asynchronous service and may wait in its queue for up to the documented 24-hour target.
+`project_google_tts_report` returns persisted Google Batch names/states and the latest usage,
+audio duration, elapsed time and tariff-based estimated USD cost, not an invoice.
+Cancelling the local job pauses polling; it does not cancel the remote Google batch. Use
+`project_resume` to retrieve that same paid batch. An uncertain submission is blocked from
+automatic resubmission; inspect the recorded Google displayName before retrying.
+`tts_style` on each segment is voice direction metadata, never part of the spoken text.
+The renderer keeps existing takes; pinned takes remain protected until explicitly unpinned.
+
 The same results come two ways.
 
 - **One call on a file** - when the user wants a result of a file and nothing more: "the
@@ -386,7 +404,7 @@ without it they answer that the window is not open, and everything else still wo
 - **what the project makes**: `project_mode_set`, `audio_output_set`,
   `subtitles_content_set`, `subtitles_burn_set`, `subtitles_position_set`,
   `translation_target_set`, `translation_style_set`, `rewrite_set`, `voice_set`,
-  `gain_set`, `voiceover_gain_set`, `original_track_set`.
+  `gain_set`, `loudness_set` (even out loudness, on by default), `voiceover_gain_set`, `original_track_set`.
 - **subtitles, titles, blur**: `caption_style_set` (all lines or one), `caption_preset_set`,
   `title_add`, `title_update`, `titles_delete`, `blur_add`, `blur_update`, `blurs_delete`,
   `blur_enable`.

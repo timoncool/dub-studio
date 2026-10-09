@@ -70,15 +70,15 @@ pub fn read(dir: &Path) -> Result<Option<JobRecord>, String> {
     let text = match std::fs::read_to_string(&p) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(e) => return Err(format!("чтение {}: {e}", p.display())),
+        Err(e) => return Err(t!("common-read", path = p.display().to_string(), error = e.to_string())),
     };
     serde_json::from_str(&text)
         .map(Some)
-        .map_err(|e| format!("разбор {}: {e}", p.display()))
+        .map_err(|e| t!("common-parse", path = p.display().to_string(), error = e.to_string()))
 }
 
 fn write(dir: &Path, rec: &JobRecord) -> Result<(), String> {
-    let body = serde_json::to_vec_pretty(rec).map_err(|e| format!("сериализация job.json: {e}"))?;
+    let body = serde_json::to_vec_pretty(rec).map_err(|e| t!("jobs-serialize-record", error = e.to_string()))?;
     dub_core::atomic::write(&dir.join(FILE), &body)
 }
 
@@ -117,7 +117,7 @@ fn record_writes() -> std::sync::MutexGuard<'static, ()> {
 /// Read-modify-write записи. Нет записи — ошибка (обновлять нечего).
 pub fn update(dir: &Path, f: impl FnOnce(&mut JobRecord)) -> Result<(), String> {
     let _held = record_writes();
-    let mut rec = read(dir)?.ok_or_else(|| format!("{} нет в {}", FILE, dir.display()))?;
+    let mut rec = read(dir)?.ok_or_else(|| t!("jobs-record-missing", file = FILE, dir = dir.display().to_string()))?;
     f(&mut rec);
     rec.updated_at = now_secs();
     write(dir, &rec)
@@ -134,7 +134,7 @@ pub fn update_owned(dir: &Path, job_id: &str, f: impl FnOnce(&mut JobRecord)) ->
             write(dir, &rec)
         }
         Some(_) => Ok(()),
-        None => Err(format!("{} нет в {}", FILE, dir.display())),
+        None => Err(t!("jobs-record-missing", file = FILE, dir = dir.display().to_string())),
     }
 }
 
@@ -210,6 +210,26 @@ mod tests {
         assert_eq!(read(&done).unwrap().unwrap().state, STATE_DONE);
         assert_eq!(read(&queued).unwrap().unwrap().state, STATE_INTERRUPTED);
         let _ = std::fs::remove_dir_all(&ws);
+    }
+
+    #[test]
+    fn interrupted_analysis_preserves_speaker_count_when_requeued() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("project");
+        std::fs::create_dir(&dir).unwrap();
+        let args = json!({ "speaker_count": "8", "mode": "transcribe", "src_lang": "ru", "tgt_lang": "ru" });
+        write_queued(&dir, "analyze", &args, "first").unwrap();
+        update(&dir, |r| r.state = STATE_RUNNING.into()).unwrap();
+        assert_eq!(recover(root.path()), 1);
+        let interrupted = read(&dir).unwrap().unwrap();
+        assert!(interrupted.resumable());
+        assert_eq!(interrupted.args, args);
+        write_queued(&dir, &interrupted.kind, &interrupted.args, "resumed").unwrap();
+        let resumed = read(&dir).unwrap().unwrap();
+        assert_eq!(resumed.kind, "analyze");
+        assert_eq!(resumed.args["speaker_count"], "8");
+        assert_eq!(resumed.args, args);
+        assert_eq!(resumed.resumes, 1);
     }
 
     #[test]

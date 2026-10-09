@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "Dub & translate any video — locally."
   },
+  "speakers": {
+    "count": "Number of speakers",
+    "countHint": "If you know how many people are speaking, enter that number. The same voices will be matched across recording sections."
+  },
   "drop": {
     "title": "Drop a video to dub",
     "hint": "MP4, MOV, MKV, WEBM, AVI and more — everything runs on your machine",
@@ -141,6 +145,8 @@
     "addSpeakerPick": "First tick some lines, or move the playhead onto a line",
     "gain": "Track boost",
     "gainHint": "Boost the whole track (applied on regen/export).",
+    "loudness": "Even out loudness",
+    "loudnessHint": "Brings the phrases to one level and the dub to -14 LUFS with a -1 dBTP ceiling, as streaming platforms play it. Off: the mix as it came.",
     "origGain": "Original volume",
     "origGainHint": "Voice-over: how loud the original track sits under the translation.",
     "langSearch": "Search language…",
@@ -238,7 +244,9 @@
       "agent": "Agent (MCP)",
       "agentHint": "Connect an AI agent to the studio",
       "about": "About",
-      "aboutHint": "Version, links and the data folder"
+      "aboutHint": "Version, links and the data folder",
+      "privacy": "Anonymous statistics",
+      "privacyHint": "Anonymous statistics and news from the author"
     },
     "voiceGroup": "Voice generation",
     "diagnostics": "Diagnostics",
@@ -790,7 +798,9 @@
     "fp32": "fp32",
     "fp32Hint": "NVIDIA base model at full fp32 precision (~2.6 GB)",
     "ultra": "Ultra · fp32",
-    "ultraHint": "Moondream fine-tune of the base model: fewer recognition errors, same 25 languages · fp32 ~2.6 GB"
+    "ultraHint": "Moondream fine-tune of the base model: fewer recognition errors, same 25 languages · fp32 ~2.6 GB",
+    "ultraInt8": "Ultra · int8",
+    "ultraInt8Hint": "Moondream fine-tune of the base model, quantized: fewer recognition errors, same 25 languages · int8 ~0.7 GB"
   },
   "units": {
     "gb": "GB",
@@ -1289,5 +1299,36 @@
       "failed": "Last update: {{error}}"
     },
     "pickQuality": "Choose another quality"
+  },
+  "google": {
+    "keyTitle": "Google Gemini API key",
+    "keyHint": "Direct Google TTS and Batch; stored separately from settings.",
+    "envKey": "Provided by {{name}}",
+    "savedKey": "Key saved; enter a new one to replace it",
+    "keyPlaceholder": "Google AI Studio API key",
+    "verifySave": "Verify and save",
+    "deleteKey": "Remove Google key",
+    "error": "Google: {{detail}}",
+    "model": "Google TTS model",
+    "pickModel": "Choose a model",
+    "mode": "Request mode",
+    "standard": "Standard — immediate requests",
+    "batch": "Batch — 50% lower API tariff",
+    "batchHint": "Google queues the batch (target: 24 hours). Cancelling the local job pauses polling; the remote batch continues. Resume retrieves it without another paid submission. Usage and estimated cost: project_google_tts_report in MCP.",
+    "standardHint": "Parallel direct requests using the cloud concurrency setting. Usage and estimated cost: project_google_tts_report in MCP.",
+    "provider_local": "Local · Higgs",
+    "provider_openrouter": "OpenRouter",
+    "provider_google": "Google · direct"
+  },
+  "hub": {
+    "why": "How many people use Dub Studio and what for helps decide what to work on next. Nothing personal: no videos, texts, voices or file names — only counts of jobs, the version and the graphics card class.",
+    "checkbox": "Send anonymous usage statistics",
+    "what": "What is sent",
+    "byEnv": "Turned off by DO_NOT_TRACK or STUDIO_TELEMETRY in the environment.",
+    "reset": "New install id",
+    "nothing": "Nothing is waiting to be sent today.",
+    "feedSource": "News from",
+    "feedNever": "News have not been fetched from the server yet: the studio shows the news of its release.",
+    "refresh": "Check now"
   }
 }

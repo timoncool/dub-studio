@@ -3,6 +3,10 @@
     "name": "Dub Studio",
     "tagline": "Dobla y traduce cualquier video — en local."
   },
+  "speakers": {
+    "count": "Número de hablantes",
+    "countHint": "Si sabes cuántas personas hablan, indica ese número. Se identificarán las mismas voces entre los fragmentos de la grabación."
+  },
   "drop": {
     "title": "Suelta un video para doblar",
     "hint": "MP4 o MOV — todo se ejecuta en tu equipo",
@@ -109,6 +113,8 @@
     "addSpeakerPick": "Primero marca algunas líneas o coloca el cursor sobre una línea",
     "gain": "Ganancia",
     "gainHint": "Amplificar toda la pista (al regenerar/exportar).",
+    "loudness": "Igualar volumen",
+    "loudnessHint": "Lleva las frases a un mismo nivel y el doblaje a -14 LUFS con techo de -1 dBTP, como lo reproducen las plataformas. Desactivado: la mezcla tal cual.",
     "origGain": "Volumen original",
     "origGainHint": "Voz superpuesta: volumen de la pista original bajo la traducción.",
     "langSearch": "Buscar idioma…",
@@ -207,7 +213,9 @@
       "agent": "Agente (MCP)",
       "agentHint": "Conecta un agente de IA al estudio",
       "about": "Acerca de",
-      "aboutHint": "Versión, enlaces y carpeta de datos"
+      "aboutHint": "Versión, enlaces y carpeta de datos",
+      "privacy": "Estadísticas anónimas",
+      "privacyHint": "Estadísticas anónimas y noticias del autor"
     },
     "voiceGroup": "Generación de voz",
     "diagnostics": "Diagnóstico",
@@ -801,7 +809,9 @@
     "fp32": "fp32",
     "fp32Hint": "Modelo base de NVIDIA con precisión completa fp32 (~2,6 GB)",
     "ultra": "Ultra · fp32",
-    "ultraHint": "Versión del modelo base ajustada por Moondream: menos errores de reconocimiento, los mismos 25 idiomas · fp32 ~2,6 GB"
+    "ultraHint": "Versión del modelo base ajustada por Moondream: menos errores de reconocimiento, los mismos 25 idiomas · fp32 ~2,6 GB",
+    "ultraInt8": "Ultra · int8",
+    "ultraInt8Hint": "Versión del modelo base ajustada por Moondream, cuantizada: menos errores de reconocimiento, los mismos 25 idiomas · int8 ~0,7 GB"
   },
   "units": {
     "gb": "GB",
@@ -1307,5 +1317,36 @@
       "failed": "Última actualización: {{error}}"
     },
     "pickQuality": "Elegir otra calidad"
+  },
+  "google": {
+    "keyTitle": "Clave de Google Gemini API",
+    "keyHint": "TTS y Batch directamente con Google; la clave se guarda aparte de los ajustes.",
+    "envKey": "Proporcionada por {{name}}",
+    "savedKey": "Clave guardada; escribe otra para reemplazarla",
+    "keyPlaceholder": "Clave API de Google AI Studio",
+    "verifySave": "Verificar y guardar",
+    "deleteKey": "Eliminar clave de Google",
+    "error": "Error de Google: {{detail}}",
+    "model": "Modelo TTS de Google",
+    "pickModel": "Elige un modelo",
+    "mode": "Modo de solicitud",
+    "standard": "Estándar — solicitudes inmediatas",
+    "batch": "Batch — tarifa API un 50% menor",
+    "batchHint": "Google pone el lote en cola (objetivo: 24 horas). Cancelar la tarea local pausa las consultas; el lote remoto continúa. Reanudar recupera el resultado sin otro envío de pago. Uso y coste estimado: project_google_tts_report en MCP.",
+    "standardHint": "Solicitudes directas en paralelo según el ajuste de concurrencia de la nube. Uso y coste estimado: project_google_tts_report en MCP.",
+    "provider_local": "En local · Higgs",
+    "provider_openrouter": "Mediante OpenRouter",
+    "provider_google": "Google · directo"
+  },
+  "hub": {
+    "why": "Cuánta gente usa Dub Studio y para qué ayuda a decidir qué hacer después. Nada personal: ni vídeos, ni textos, ni voces, ni nombres de archivo — solo recuentos de tareas, la versión y la clase de tarjeta gráfica.",
+    "checkbox": "Enviar estadísticas de uso anónimas",
+    "what": "Qué se envía",
+    "byEnv": "Desactivadas por DO_NOT_TRACK o STUDIO_TELEMETRY en el entorno.",
+    "reset": "Nuevo id de instalación",
+    "nothing": "Hoy no hay nada pendiente de enviar.",
+    "feedSource": "Noticias de",
+    "feedNever": "Aún no se han recibido noticias del servidor: el estudio muestra las de su versión.",
+    "refresh": "Comprobar ahora"
   }
 }

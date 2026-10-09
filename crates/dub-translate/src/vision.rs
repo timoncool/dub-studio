@@ -11,7 +11,7 @@ use serde_json::{Map, Value};
 
 use dub_llm::{strip_think, ChatClient, Message, Part, Sampling};
 
-use crate::TranslateError;
+use crate::{Note, TranslateError};
 
 pub const FONTS: &str = "Montserrat, Oswald, Roboto, Russo One, Pacifico, Playfair Display, Caveat";
 
@@ -77,7 +77,7 @@ fn frame_b64(video: &Path, t: f64, tmp: &Path) -> Result<String, TranslateError>
             "pad='max(iw,ih)':'max(iw,ih)':'(ow-iw)/2':'(oh-ih)/2':color=black"])
         .arg(tmp)
         .output()
-        .map_err(|e| TranslateError::Frame(format!("ffmpeg запуск: {e}")))?;
+        .map_err(|e| TranslateError::Frame(format!("ffmpeg start: {e}")))?;
     if !out.status.success() || !tmp.exists() {
         return Err(TranslateError::Frame(format!(
             "ffmpeg frame extract failed at {t:.1}s (rc={:?})",
@@ -177,7 +177,7 @@ pub fn classify_content_type(
     video: &Path,
     tmp: &Path,
     total: f64,
-    mut log: impl FnMut(&str),
+    mut log: impl FnMut(&Note),
 ) -> String {
     const N: usize = 4;
     let prompt = "Look at this single video frame. Is it LIVE-ACTION (filmed real people and places \
@@ -204,7 +204,7 @@ pub fn classify_content_type(
         }
     }
     let decided = most_common(&votes).unwrap_or_else(|| "real".to_string());
-    log(&format!("тип контента (Gemma): {decided} ({} валидных голосов из {N})", votes.len()));
+    log(&Note::ContentType { decided: &decided, votes: votes.len(), frames: N });
     decided
 }
 

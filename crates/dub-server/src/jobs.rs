@@ -164,7 +164,7 @@ pub enum CancelError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum JobStatus {
+pub(crate) enum JobStatus {
     Queued,
     Running,
     Done,
@@ -360,8 +360,8 @@ pub fn check_cancelled() -> Result<(), String> {
 
 /// Обновить job.json джобы этого потока (пока запись принадлежит ей).
 pub fn update_record(f: impl FnOnce(&mut job_store::JobRecord)) -> Result<(), String> {
-    let ctl = current().ok_or("поток не привязан к джобе")?;
-    let (dir, id) = ctl.store.as_ref().ok_or("у джобы нет job.json")?;
+    let ctl = current().ok_or("the thread is not bound to a job")?;
+    let (dir, id) = ctl.store.as_ref().ok_or("the job has no job.json")?;
     job_store::update_owned(dir, id, f)
 }
 
@@ -575,6 +575,7 @@ impl JobQueue {
                     };
                     j.status = status;
                     ctl.finish(status, err.as_deref(), ev);
+                    crate::hub::job_ended(kind, status);
                     if let Some(sender) = j.result_sender.take() {
                         let delivered = if cancelled {
                             sender.send(Err(CANCELLED.to_string()))

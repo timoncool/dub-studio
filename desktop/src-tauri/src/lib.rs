@@ -156,7 +156,7 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             if open {
                 // Браузер, запущенный изнутри job студии, закрылся бы вместе с ней.
                 let opened = dub_server::process_group::detach_from_group(
-                    &mut std::process::Command::new("explorer"),
+                    &mut std::process::Command::new(if cfg!(windows) { "explorer" } else { "xdg-open" }),
                 )
                 .arg(RELEASES_URL)
                 .spawn();
@@ -240,6 +240,7 @@ pub fn run() {
         Err(e) => layout::fatal(&e),
     };
     let repo_root = placed.server_root;
+    dub_server::ensure_library_path(&repo_root);
     setup_server_env(&repo_root);
     // Маршрут прокси до проверки обновлений: сервер ставит его в своём потоке, без гарантии, что раньше.
     dub_server::init_proxy_route(&repo_root);

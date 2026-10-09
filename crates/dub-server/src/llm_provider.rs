@@ -10,6 +10,7 @@ use std::path::Path;
 use dub_llm::openrouter::Capability;
 use dub_llm::{ChatClient, LlamaServer, ServerOpts};
 
+use crate::localize::Localize;
 use crate::models::LlmBackend;
 
 /// Режим вызова: плоский текст (перевод/ремикс) или мультимодальный (vision-анализ кадров).
@@ -70,13 +71,13 @@ pub struct LlmOpen<'a> {
 /// Свой llama-server с Gemma; `with_mmproj` — с проектором для кадров (он обязан быть на диске).
 fn start_gemma(o: &LlmOpen, with_mmproj: bool) -> Result<LlmProvider, String> {
     if !o.llama_bin.is_file() {
-        return Err(format!("llama-server не найден ({})", o.llama_bin.display()));
+        return Err(t!("llm-llama-server-missing", path = o.llama_bin.display().to_string()));
     }
     if !o.mt_model.is_file() {
-        return Err(format!("GGUF Gemma не найден ({})", o.mt_model.display()));
+        return Err(t!("llm-gemma-missing", path = o.mt_model.display().to_string()));
     }
     if with_mmproj && !o.mmproj.is_file() {
-        return Err(format!("vision-проектор Gemma (mmproj) не найден ({})", o.mmproj.display()));
+        return Err(t!("llm-mmproj-missing", path = o.mmproj.display().to_string()));
     }
     let mut opts = ServerOpts::new(o.llama_bin, o.mt_model)
         .with_ubatch(crate::models::sel_num(o.models_root, "llama_ubatch").map(|f| f as u32))
@@ -84,8 +85,8 @@ fn start_gemma(o: &LlmOpen, with_mmproj: bool) -> Result<LlmProvider, String> {
     if with_mmproj {
         opts = opts.with_mmproj(o.mmproj);
     }
-    let server = LlamaServer::start(&opts).map_err(|e| format!("llama-server: {e}"))?;
-    let client = ChatClient::new(server.base_url()).map_err(|e| format!("клиент чата: {e}"))?;
+    let server = LlamaServer::start(&opts).map_err(|e| e.localize())?;
+    let client = ChatClient::new(server.base_url()).map_err(|e| t!("llm-chat-client", error = e.localize()))?;
     Ok(LlmProvider::Local { _server: server, client })
 }
 
@@ -96,23 +97,23 @@ fn open_server(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
     let model = crate::models::server_model(o.models_root, mode.stage());
     if model.trim().is_empty() {
         return Err(match mode {
-            LlmMode::Text => format!("локальный сервер ({url}) выбран для перевода, но модель не выбрана"),
-            LlmMode::Vision => format!("локальный сервер ({url}) выбран для vision, но модель не выбрана"),
+            LlmMode::Text => t!("llm-local-no-text-model", url = url.clone()),
+            LlmMode::Vision => t!("llm-local-no-vision-model", url = url.clone()),
         });
     }
     let client = ChatClient::openai_compatible(&url, model.clone(), crate::credentials::local_server_key_for(&url))
-        .map_err(|e| format!("клиент локального сервера: {e}"))?;
-    Ok(LlmProvider::Remote { client, label: format!("локальный сервер {url} · {model}") })
+        .map_err(|e| t!("llm-local-client", error = e.localize()))?;
+    Ok(LlmProvider::Remote { client, label: t!("llm-local-label", url = url.clone(), model = model.clone()) })
 }
 
 /// OpenRouter: ключ, модель стадии из настроек, запись каталога (что модель принимает и как думает).
 fn open_openrouter(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
-    let key = crate::models::openrouter_key().ok_or("OpenRouter выбран, но ключ не задан")?;
+    let key = crate::models::openrouter_key().ok_or_else(|| t!("llm-openrouter-no-key"))?;
     let model = crate::models::openrouter_model(o.models_root, mode.stage());
     if model.trim().is_empty() {
         return Err(match mode {
-            LlmMode::Text => "OpenRouter выбран для перевода, но модель не выбрана".to_string(),
-            LlmMode::Vision => "OpenRouter выбран для vision, но модель не выбрана".to_string(),
+            LlmMode::Text => t!("llm-openrouter-no-text-model"),
+            LlmMode::Vision => t!("llm-openrouter-no-vision-model"),
         });
     }
     let capability = if mode == LlmMode::Vision { Capability::Vision } else { Capability::Text };
@@ -120,13 +121,13 @@ fn open_openrouter(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
     if let Some(entry) = &entry {
         if !entry.supports(capability) {
             return Err(match mode {
-                LlmMode::Text => format!("модель OpenRouter {model} не отвечает текстом — выберите другую для перевода"),
-                LlmMode::Vision => format!("модель OpenRouter {model} не принимает картинки — выберите vision-модель"),
+                LlmMode::Text => t!("llm-openrouter-not-text", model = model.clone()),
+                LlmMode::Vision => t!("llm-openrouter-not-vision", model = model.clone()),
             });
         }
     }
     let client = ChatClient::openrouter(key, model.clone())
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.localize())?
         .with_profile(entry.as_ref().map(|entry| entry.profile()));
     Ok(LlmProvider::Remote { client, label: format!("OpenRouter · {model}") })
 }
@@ -173,9 +174,9 @@ impl LlmPair {
         let vision = match &self.vision {
             VisionSlot::Shared => self.text.describe(),
             VisionSlot::Own(provider) => provider.describe(),
-            VisionSlot::Missing(reason) => format!("нет ({reason})"),
+            VisionSlot::Missing(reason) => t!("llm-vision-missing", reason = reason.clone()),
         };
-        format!("перевод: {}; vision: {vision}", self.text.describe())
+        t!("llm-pair", text = self.text.describe(), vision = vision)
     }
 }
 
@@ -190,7 +191,7 @@ pub fn open_pair(o: &LlmOpen) -> Result<LlmPair, String> {
         let vision = if with_mmproj {
             VisionSlot::Shared
         } else {
-            VisionSlot::Missing(format!("vision-проектор Gemma (mmproj) не найден ({})", o.mmproj.display()))
+            VisionSlot::Missing(t!("llm-mmproj-missing", path = o.mmproj.display().to_string()))
         };
         return Ok(LlmPair { text, vision });
     }
@@ -248,6 +249,7 @@ mod tests {
 
     #[test]
     fn a_chosen_provider_without_its_model_says_so() {
+        let _language = crate::i18n::test_language("ru");
         let root = scratch("unset");
         crate::models::set_selection(&root, "llm_provider", "server").unwrap();
         assert!(error(open_in(&root, LlmMode::Text)).contains("модель не выбрана"));
@@ -258,6 +260,7 @@ mod tests {
 
     #[test]
     fn translation_goes_on_when_vision_has_no_model() {
+        let _language = crate::i18n::test_language("ru");
         let root = scratch("pair");
         crate::models::set_selection(&root, "llm_provider", "server").unwrap();
         crate::models::set_selection(&root, "srv_llm", "qwen3:8b").unwrap();
@@ -276,6 +279,7 @@ mod tests {
 
     #[test]
     fn the_own_gemma_is_required_only_when_chosen() {
+        let _language = crate::i18n::test_language("ru");
         let root = scratch("local");
         assert!(error(pair_in(&root)).contains("llama-server не найден"));
         assert!(error(open_in(&root, LlmMode::Text)).contains("llama-server не найден"));

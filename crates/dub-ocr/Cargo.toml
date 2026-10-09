@@ -6,6 +6,7 @@ license.workspace = true
 description = "Экранный OCR (PP-OCR ONNX: DBNet det + CRNN rec) для блюр-боксов вшитого текста. Порт text_detect.py + compose.py"
 
 [dependencies]
+dub-core = { path = "../dub-core" }
 # ort строго той же версии и с теми же фичами, что dub-asr (=2.0.0-rc.13, load-dynamic + api-28): ДВЕ
 # разные версии ort в одном бинаре = рассинхрон OrtApi -> дедлок (тот же трап, что чужая system32 DLL).
 # ensure_ort_dylib() тут повторяет паттерн dub-asr: ORT_DYLIB_PATH -> onnxruntime 1.28.2.

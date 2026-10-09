@@ -7,6 +7,7 @@
 //! координатах исходного кадра. Именно edge-normal unclip (а не радиальный от центроида) равномерно
 //! растит тонкие широкие боксы сабов по высоте — без него кроп резал глифы и rec шумел.
 
+use crate::OcrError;
 use crate::geometry::{box_score_fast, connected_components, min_area_rect, unclip, Point};
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
@@ -87,7 +88,7 @@ fn dilate3(bitmap: &[u8], w: usize, h: usize) -> Vec<u8> {
 
 /// Прогнать детектор на RGB-кадре -> список боксов (x,y,w,h) в координатах исходного кадра.
 /// Порт det-части _lines (PP-OCR det + DBPostProcess).
-pub fn detect(model: &mut OnnxModel, img: &RgbImage, p: &DetParams) -> Result<Vec<DetBox>, String> {
+pub fn detect(model: &mut OnnxModel, img: &RgbImage, p: &DetParams) -> Result<Vec<DetBox>, OcrError> {
     let (src_w, src_h) = (img.width(), img.height());
     let (rw, rh) = resize_shape(src_w, src_h, p.limit_side_len);
     // препроцесс: билинейный ресайз в (rw, rh), нормализация (x/255 - mean)/std, mean=std=0.5.

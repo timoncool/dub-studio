@@ -18,18 +18,19 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
     if !bound {
-        tracing::error!("процесс не встал в свой job object: сайдкары гасятся только своими деструкторами");
+        tracing::error!("the process did not join its job object: sidecars are stopped only by their own destructors");
     }
 
     let repo_root = std::env::var("DUB_STUDIO_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().expect("cwd"));
+    dub_server::ensure_library_path(&repo_root);
 
     let port = service::listen_port().map_err(anyhow::Error::msg)?;
     let listener = match tokio::task::spawn_blocking(move || service::claim_port(port, Duration::from_secs(20))).await? {
         Ok(Claim::Bound(l)) => l,
         Ok(Claim::AlreadyRunning(r)) => anyhow::bail!(
-            "на 127.0.0.1:{port} уже работает Dub Studio {} ({}, repo_root={}); второй сервис не поднимаю",
+            "Dub Studio {} is already running on 127.0.0.1:{port} ({}, repo_root={}); not starting a second service",
             r.version,
             r.service_executable,
             r.repo_root
@@ -53,6 +54,6 @@ async fn main() -> anyhow::Result<()> {
         state.web_root
     );
 
-    tracing::info!("слушаю http://{}", listener.local_addr()?);
+    tracing::info!("listening on http://{}", listener.local_addr()?);
     serve(state, listener).await
 }
