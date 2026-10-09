@@ -6,6 +6,7 @@
 //! Декод: distance2bbox/kps (дельты * stride от центра анкера), затем /det_scale в исходные координаты.
 //! Порог score ~0.5, NMS ~0.4. 5 точек: [0]левый глаз [1]правый глаз [2]нос [3]левый угол рта [4]правый.
 
+use crate::FacesError;
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
 use ndarray::Array4;
@@ -44,8 +45,8 @@ fn warn_incompatible_scrfd() {
     static WARN: Once = Once::new();
     WARN.call_once(|| {
         eprintln!(
-            "dub-faces: несовместимый билд SCRFD (длины bbox/kps не совпали с числом анкеров) — \
-             страйд(ы) пропущены; ожидается InsightFace det_10g.onnx (bbox=n*4, kps=n*10)"
+            "dub-faces: incompatible SCRFD build (bbox/kps lengths do not match the anchor count), \
+             stride(s) skipped; InsightFace det_10g.onnx is expected (bbox=n*4, kps=n*10)"
         );
     });
 }
@@ -58,7 +59,7 @@ pub struct Scrfd {
 }
 
 impl Scrfd {
-    pub fn load(onnx: &std::path::Path) -> Result<Self, String> {
+    pub fn load(onnx: &std::path::Path) -> Result<Self, FacesError> {
         Ok(Self {
             model: OnnxModel::load(onnx)?,
             score_thresh: 0.5,
@@ -67,7 +68,7 @@ impl Scrfd {
     }
 
     /// Детект лиц на кадре. Возвращает лица с bbox+kps в координатах исходного изображения.
-    pub fn detect(&mut self, img: &RgbImage) -> Result<Vec<Face>, String> {
+    pub fn detect(&mut self, img: &RgbImage) -> Result<Vec<Face>, FacesError> {
         let (ow, oh) = (img.width() as f32, img.height() as f32);
         if ow <= 0.0 || oh <= 0.0 {
             return Ok(Vec::new());
@@ -96,7 +97,7 @@ impl Scrfd {
 
         let outs = self.model.run(blob)?;
         if outs.len() < 9 {
-            return Err(format!("SCRFD: ждём 9 выходов, получили {}", outs.len()));
+            return Err(FacesError::OutputCount { model: "SCRFD", expected: 9, got: outs.len() });
         }
 
         // Сгруппировать выходы по последней размерности (1=score, 4=bbox, 10=kps) — устойчиво к

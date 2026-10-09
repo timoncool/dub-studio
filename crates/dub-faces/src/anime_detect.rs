@@ -7,6 +7,7 @@
 //! Ландмарок НЕТ (для аниме нет ONNX-модели точек) — kps в Face зануляем; выравнивание для CCIP не нужно
 //! (CCIP эмбедит кроп всего персонажа целиком). Возвращает те же Face, что SCRFD, для единого пайплайна.
 
+use crate::FacesError;
 use crate::detect::{nms, Face};
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
@@ -32,12 +33,12 @@ pub struct AnimeFaceDetector {
 }
 
 impl AnimeFaceDetector {
-    pub fn load(onnx: &std::path::Path) -> Result<Self, String> {
+    pub fn load(onnx: &std::path::Path) -> Result<Self, FacesError> {
         Ok(Self { model: OnnxModel::load(onnx)?, conf: conf_threshold(), iou: iou_threshold() })
     }
 
     /// Детект нарисованных лиц. bbox в координатах исходного кадра; kps занулены (у аниме их нет).
-    pub fn detect(&mut self, img: &RgbImage) -> Result<Vec<Face>, String> {
+    pub fn detect(&mut self, img: &RgbImage) -> Result<Vec<Face>, FacesError> {
         let (ow, oh) = (img.width() as f32, img.height() as f32);
         if ow <= 0.0 || oh <= 0.0 {
             return Ok(Vec::new());
@@ -61,7 +62,7 @@ impl AnimeFaceDetector {
         let (shape, data) = self.model.run_single(blob)?;
         // shape = [1, d1, d2]. Ось «5» = каналы (cx,cy,w,h,score), другая = N анкеров.
         if shape.len() != 3 {
-            return Err(format!("аниме-детектор: ждём 3-D выход, получили {shape:?}"));
+            return Err(FacesError::OutputShape { model: "anime face detector", shape });
         }
         let (d1, d2) = (shape[1], shape[2]);
         let (n, channels_first) = if d1 == 5 {
@@ -69,7 +70,7 @@ impl AnimeFaceDetector {
         } else if d2 == 5 {
             (d1, false) // [1,N,5]
         } else {
-            return Err(format!("аниме-детектор: ни одна ось не ==5 (bbox4+score): {shape:?}"));
+            return Err(FacesError::OutputShape { model: "anime face detector", shape });
         };
         // Доступ к каналу c анкера i с учётом раскладки.
         let at = |c: usize, i: usize| -> f32 {

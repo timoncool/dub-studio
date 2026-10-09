@@ -7,6 +7,7 @@
 //! маска = кожа лица (её КЕЕПят при блендинге), поэтому «видимость» = mean центральной маски (1 = чисто).
 //! Env DUB_FACES_OCCLUDER_INVERT=1 инвертирует, если конкретный экспорт xseg отдаёт обратную полярность.
 
+use crate::FacesError;
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
 use ndarray::Array4;
@@ -29,14 +30,14 @@ pub struct FaceOccluder {
 }
 
 impl FaceOccluder {
-    pub fn load(onnx: &Path) -> Result<Self, String> {
+    pub fn load(onnx: &Path) -> Result<Self, FacesError> {
         let invert = std::env::var("DUB_FACES_OCCLUDER_INVERT").ok().as_deref() == Some("1");
         Ok(Self { model: OnnxModel::load(onnx)?, invert })
     }
 
     /// Видимость лица в кропе [0..1]: доля «кожи лица» (xseg) в ЦЕНТРАЛЬНОЙ зоне (лицо в центре кропа).
     /// 1.0 = открыто/чисто, ~0 = сильно закрыто. `face_crop` — вырезанное квадратное лицо (с полями).
-    pub fn visibility(&mut self, face_crop: &RgbImage) -> Result<f32, String> {
+    pub fn visibility(&mut self, face_crop: &RgbImage) -> Result<f32, FacesError> {
         let resized = image::imageops::resize(face_crop, SIZE, SIZE, image::imageops::FilterType::Triangle);
         let mut blob = Array4::<f32>::zeros((1, 3, SIZE as usize, SIZE as usize));
         for y in 0..SIZE {

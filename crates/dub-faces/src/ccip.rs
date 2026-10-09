@@ -9,6 +9,7 @@
 //! mean/std. Выход `output` [1,768] — метрика ЕВКЛИД (L2) на СЫРЫХ векторах (НЕ L2-нормировать!),
 //! «тот же персонаж» при dist < ~0.178. Косинус НЕ использовать: пороги CCIP калиброваны под L2.
 
+use crate::FacesError;
 use crate::detect::Face;
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
@@ -51,12 +52,12 @@ pub struct CcipEmbedder {
 }
 
 impl CcipEmbedder {
-    pub fn load(onnx: &std::path::Path) -> Result<Self, String> {
+    pub fn load(onnx: &std::path::Path) -> Result<Self, FacesError> {
         Ok(Self { model: OnnxModel::load(onnx)? })
     }
 
     /// Эмбеддинг персонажа по КРОПУ (уже вырезанному character-crop). 768-d СЫРОЙ вектор (без L2).
-    pub fn embed(&mut self, crop: &RgbImage) -> Result<Vec<f32>, String> {
+    pub fn embed(&mut self, crop: &RgbImage) -> Result<Vec<f32>, FacesError> {
         let resized = image::imageops::resize(
             crop,
             SIZE as u32,
@@ -75,13 +76,13 @@ impl CcipEmbedder {
         let (shape, data) = self.model.run_single(blob)?;
         let n: usize = shape.iter().product();
         if n != CCIP_DIM {
-            return Err(format!("CCIP: ждём {CCIP_DIM}-d, получили {shape:?}"));
+            return Err(FacesError::OutputShape { model: "CCIP", shape });
         }
         Ok(data) // СЫРОЙ вектор — НЕ нормируем (L2-метрика на сырых)
     }
 
     /// Удобно: вырезать character-crop из кадра по лицу и сразу эмбеддить.
-    pub fn embed_character(&mut self, frame: &RgbImage, face: &Face) -> Result<Vec<f32>, String> {
+    pub fn embed_character(&mut self, frame: &RgbImage, face: &Face) -> Result<Vec<f32>, FacesError> {
         let (iw, ih) = (frame.width() as f32, frame.height() as f32);
         let (x, y, w, h) = character_crop_bbox(face, iw, ih);
         let crop = image::imageops::crop_imm(frame, x, y, w, h).to_image();

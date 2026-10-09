@@ -2,6 +2,7 @@
 //! dub-server сюда не тянем — крейт не должен зависеть от сервера). Кадры кладутся в out_dir как
 //! frame_%06d.png; время i-го кадра = i / fps.
 
+use crate::FacesError;
 use image::RgbImage;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -32,8 +33,8 @@ pub enum FrameDisposition {
 
 /// Запустить ffmpeg-экстракцию кадров (PNG frame_%06d.png @ fps) в out_dir. Возвращает fps сетки.
 /// Отдельно от чтения, чтобы потоковый обход мог декодировать кадры по одному.
-fn extract_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<f64, String> {
-    std::fs::create_dir_all(out_dir).map_err(|e| format!("mkdir кадров: {e}"))?;
+fn extract_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<f64, FacesError> {
+    std::fs::create_dir_all(out_dir).map_err(|e| FacesError::Io(format!("frames dir {}: {e}", out_dir.display())))?;
     let fps = if fps > 0.0 { fps } else { DEFAULT_FPS };
     let pattern = out_dir.join("frame_%06d.png");
     let out = Command::new(FFMPEG)
@@ -43,11 +44,11 @@ fn extract_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<f64, String>
         .args(["-vf", &format!("fps={fps}"), "-vsync", "0"])
         .arg(&pattern)
         .output()
-        .map_err(|e| format!("ffmpeg запуск не удался: {e}"))?;
+        .map_err(|e| FacesError::Ffmpeg(e.to_string()))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let tail: String = err.chars().rev().take(1200).collect::<String>().chars().rev().collect();
-        return Err(format!("ffmpeg код {:?}:\n{tail}", out.status.code()));
+        return Err(FacesError::FfmpegExit { code: out.status.code(), tail });
     }
     Ok(fps)
 }
@@ -57,9 +58,9 @@ fn extract_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<f64, String>
 /// удаляется сразу после обработки, КРОМЕ тех, для которых `on_frame` вернул Keep (кандидаты в аватарки —
 /// перечитываются позже по пути). `on_frame` возвращает Ok(Keep/Delete) или Err (фатально — прерываем).
 /// Возвращает число обработанных кадров.
-pub fn stream_frames<F>(video: &Path, out_dir: &Path, fps: f64, mut on_frame: F) -> Result<usize, String>
+pub fn stream_frames<F>(video: &Path, out_dir: &Path, fps: f64, mut on_frame: F) -> Result<usize, FacesError>
 where
-    F: FnMut(&SampledFrame) -> Result<FrameDisposition, String>,
+    F: FnMut(&SampledFrame) -> Result<FrameDisposition, FacesError>,
 {
     let fps = extract_frames(video, out_dir, fps)?;
     let mut idx = 1usize;
@@ -90,7 +91,7 @@ where
 /// Извлечь кадры видео с частотой fps в out_dir (PNG), вернуть список (время, изображение, путь).
 /// Детерминированно: fps фиксирует сетку, время i-го кадра = i/fps. Пустой результат = нет видео/кадров.
 /// ВНИМАНИЕ: держит ВСЕ кадры в RAM — для длинного видео используйте stream_frames (потоковый обход).
-pub fn sample_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<Vec<SampledFrame>, String> {
+pub fn sample_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<Vec<SampledFrame>, FacesError> {
     let fps = extract_frames(video, out_dir, fps)?;
     // Собрать по порядку frame_000001.png … время = (i-1)/fps.
     let mut frames: Vec<SampledFrame> = Vec::new();
@@ -162,8 +163,8 @@ pub fn crop_sharpness(img: &RgbImage, bbox: (f32, f32, f32, f32)) -> f32 {
 /// (0.35 = +35% с каждой стороны: захватить лоб/волосы/подбородок). Кроп КВАДРАТНЫЙ (сторона = бОльшая
 /// сторона лица × (1+2·pad)), центрирован на лице, клэмпится к границам кадра — карточка-аватарка ровная.
 /// Без кропа аватар был бы целым кадром (руки/фон), а не лицом (#115-баг).
-pub fn save_face_crop(frame_path: &Path, bbox: (f32, f32, f32, f32), pad_frac: f32, out: &Path) -> Result<(), String> {
-    let img = image::open(frame_path).map_err(|e| format!("открыть кадр {}: {e}", frame_path.display()))?.to_rgb8();
+pub fn save_face_crop(frame_path: &Path, bbox: (f32, f32, f32, f32), pad_frac: f32, out: &Path) -> Result<(), FacesError> {
+    let img = image::open(frame_path).map_err(|e| FacesError::Io(format!("open frame {}: {e}", frame_path.display())))?.to_rgb8();
     let (iw, ih) = (img.width() as f32, img.height() as f32);
     let (x1, y1, x2, y2) = bbox;
     let (bw, bh) = ((x2 - x1).max(1.0), (y2 - y1).max(1.0));
@@ -176,7 +177,7 @@ pub fn save_face_crop(frame_path: &Path, bbox: (f32, f32, f32, f32), pad_frac: f
     let sw = (side as u32).max(1).min(img.width() - sx);
     let sh = (side as u32).max(1).min(img.height() - sy);
     let crop = image::imageops::crop_imm(&img, sx, sy, sw, sh).to_image();
-    crop.save(out).map_err(|e| format!("сохранить аватарку {}: {e}", out.display()))
+    crop.save(out).map_err(|e| FacesError::Io(format!("save avatar {}: {e}", out.display())))
 }
 
 #[cfg(test)]

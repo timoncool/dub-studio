@@ -1411,7 +1411,7 @@ async fn casting_save(
 
     // Сохранить casting.json + project.json.
     if let Err(e) = dub_faces::save_casting(&path, &casting) {
-        return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();
+        return (StatusCode::INTERNAL_SERVER_ERROR, e.localize()).into_response();
     }
     if let Err(e) = write_project(&dir, &proj) {
         return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response();

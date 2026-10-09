@@ -4,6 +4,7 @@
 
 use dub_asr::{AsrError, SpeakerMatchError};
 use dub_core::glossary::GlossaryError;
+use dub_faces::FacesError;
 use dub_llm::LlmError;
 use dub_sep::SepError;
 use dub_translate::{AnswerProblem, LineFailure, Note, Reject, TranslateError};
@@ -94,6 +95,27 @@ impl Localize for SepError {
             SepError::EngineFailed { code: None, tail } => t!("sep-engine-killed", tail = tail.clone()),
             SepError::NoOutput(path) => t!("sep-no-output", path = shown(path)),
             SepError::Wav(error) => t!("sep-audio-io", error = error.clone()),
+        }
+    }
+}
+
+impl Localize for FacesError {
+    fn localize(&self) -> String {
+        match self {
+            FacesError::ModelMissing(path) => t!("faces-model-missing", path = path.clone()),
+            FacesError::Ffmpeg(error) => t!("common-ffmpeg-start", error = error.clone()),
+            FacesError::FfmpegExit { code: Some(code), tail } => t!("faces-ffmpeg-exit", code = *code, tail = tail.clone()),
+            FacesError::FfmpegExit { code: None, tail } => t!("faces-ffmpeg-killed", tail = tail.clone()),
+            FacesError::Ort(error) => t!("faces-ort", error = error.clone()),
+            FacesError::Io(error) => t!("faces-io", error = error.clone()),
+            FacesError::NoOutputs => t!("faces-no-outputs"),
+            FacesError::OutputShape { model, shape } => t!("faces-output-shape", model = *model, shape = format!("{shape:?}")),
+            FacesError::OutputCount { model, expected, got } => {
+                t!("faces-output-count", model = *model, expected = *expected, got = *got)
+            }
+            FacesError::CropSize { width, height } => t!("faces-crop-size", width = *width, height = *height),
+            FacesError::SampleRate { expected, got } => t!("faces-sample-rate", expected = *expected, got = *got),
+            FacesError::ClipTooShort => t!("faces-clip-too-short"),
         }
     }
 }
