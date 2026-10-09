@@ -824,3 +824,87 @@ speakers-bad-embedding = модель вернула пустые или нек�
 speakers-dimension-changed = размерность голосовых признаков изменилась
 speakers-more-voices = число локальных голосов превышает заданное число спикеров
 speakers-unmatched = не удалось надёжно сопоставить голоса фрагмента с заданным числом участников
+translate-format-json = перевод: ответ по JSON-схеме ({ $model })
+translate-format-json-probe = перевод: пробую ответ по JSON-схеме ({ $model }); откажет — нумерованные строки
+translate-format-numbered = перевод: нумерованные строки — модель { $model } не заявляет structured_outputs в каталоге OpenRouter
+translate-schema-ignored = перевод: { $model } принял JSON-схему, но ответил нумерованными строками — дальше нумерованные строки
+translate-schema-ignored-server = перевод: сервер принял JSON-схему, но ответил нумерованными строками — дальше нумерованные строки
+translate-schema-refused = перевод: { $model } отверг ответ по JSON-схеме ({ $status }: { $body }) — дальше нумерованные строки
+translate-schema-refused-server = перевод: сервер отверг ответ по JSON-схеме ({ $status }: { $body }) — дальше нумерованные строки
+translate-line-flawed = перевод: строка { $line } — оставлен перевод с замечанием: { $reason }
+translate-line-failed = перевод: строка { $line } не переведена: { $reason }
+translate-line-reason = { $line }: { $reason }
+translate-lines-rejected = перевод: { $bad } из { $total } { $total ->
+    [one] строки
+    [few] строк
+   *[many] строк
+} не прошли проверку ({ $reasons })
+translate-batch-stopped = перевод: пакет строк { $first }..{ $last } не удался ({ $error }) — перевод остановлен
+translate-batch-failed = перевод: пакет строк { $first }..{ $last } не удался ({ $error })
+translate-layout-no-vision = раскладка кадра: пропущена (vision-модель не выбрана или недоступна)
+translate-layout-not-needed = раскладка кадра: пропущена (субтитры не вжигаются — раскладка не нужна)
+translate-layout = раскладка кадра: sub_style={ $sub_style } titles={ $titles } brands={ $brands }
+translate-layout-failed = раскладка кадра: пропущена ({ $error })
+translate-scene-failed = контекст сцены: пропущен ({ $error })
+translate-scene-no-vision = контекст сцены: пропущен (vision-модель не выбрана или недоступна)
+translate-audio-failed = аудио-контекст: пропущен ({ $error })
+translate-context-trimmed = перевод: блок контекста в { $chars } { $chars ->
+    [one] символ
+    [few] символа
+   *[many] символов
+} обрезан до { $budget } (защита n_ctx)
+translate-names-skipped = перевод: авто-глоссарий имён пропущен ({ $error })
+translate-chunks = перевод: { $lines } { $lines ->
+    [one] строка
+    [few] строки
+   *[many] строк
+} -> { $chunks } { $chunks ->
+    [one] пакет
+    [few] пакета
+   *[many] пакетов
+} (глоссарий: { $terms } { $terms ->
+    [one] термин
+    [few] термина
+   *[many] терминов
+}, { $names } { $names ->
+    [one] имя
+    [few] имени
+   *[many] имён
+})
+translate-pass-done = перевод: готово — переведено { $translated } (с замечанием { $flawed }), на исходнике { $untranslated }
+glossary-pass = глоссарий: проход модели { $pass }/{ $passes }
+glossary-schema-refused = глоссарий: сервер отверг ответ по JSON-схеме ({ $status }) — прошу JSON текстом
+content-type-decided = тип контента: { $decided ->
+    [anime] анимация
+   *[other] живая съёмка
+} ({ $votes } { $votes ->
+    [one] внятный ответ
+    [few] внятных ответа
+   *[many] внятных ответов
+} из { $frames } кадров)
+line-missing = нет в ответе
+line-cut = ответ оборван лимитом токенов
+line-untranslated = не на целевом языке
+line-echo = повторяет исходник
+line-too-short = слишком коротко ({ $got } < { $min })
+line-too-long = слишком длинно ({ $got } > { $max })
+line-loop = зацикливание «{ $gram }»
+line-term-missing = нет термина глоссария «{ $term }»
+translate-frame = извлечение кадра: { $error }
+translate-audio = аудио-контекст: { $error }
+translate-empty = модель не перевела ни одной из { $lines } { $lines ->
+    [one] строки
+    [few] строк
+   *[many] строк
+}; последняя причина: { $reason }
+translate-empty-no-reason = модель не перевела ни одной из { $lines } { $lines ->
+    [one] строки
+    [few] строк
+   *[many] строк
+}
+translate-contract = ответ модели: { $problem }
+translate-contract-answer = ответ модели: { $problem }; ответ: { $answer }
+answer-no-json-object = в нём нет JSON-объекта
+answer-not-json = он не разобран как JSON ({ $error })
+answer-no-terms = в нём нет списка terms
+remix-failed = ремикс: { $error }

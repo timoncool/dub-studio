@@ -232,8 +232,8 @@ pub async fn extract(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
         )
         .map_err(|e| t!("glossary-no-llm", error = e))?;
         let src_lang = p.meta.extra.get("src_lang").and_then(Value::as_str).unwrap_or("auto").to_string();
-        let found = dub_translate::extract_glossary(prov.client(), &texts, &src_lang, &p.tgt_lang, &p.glossary, &mut |m: &str| say(m))
-            .map_err(|e| t!("glossary-failed", error = e.to_string()))?;
+        let found = dub_translate::extract_glossary(prov.client(), &texts, &src_lang, &p.tgt_lang, &p.glossary, &mut |m: &dub_translate::Note| say(&m.localize()))
+            .map_err(|e| t!("glossary-failed", error = e.localize()))?;
         drop(prov);
         say(&t!("glossary-proposed", count = found.len()));
         Ok(json!({ "entries": found }))

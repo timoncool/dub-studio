@@ -807,3 +807,78 @@ speakers-bad-embedding = el modelo de voz devolvió rasgos de voz vacíos o no v
 speakers-dimension-changed = cambió el tamaño de los rasgos de voz
 speakers-more-voices = el fragmento tiene más voces que el número de hablantes indicado
 speakers-unmatched = no se pudieron emparejar con fiabilidad las voces del fragmento con el número de hablantes indicado
+translate-format-json = traducción: el modelo responde con un objeto JSON según el esquema ({ $model })
+translate-format-json-probe = traducción: probando respuestas con esquema JSON ({ $model }); si lo rechaza, líneas numeradas
+translate-format-numbered = traducción: líneas numeradas; el modelo { $model } no declara structured_outputs en el catálogo de OpenRouter
+translate-schema-ignored = traducción: { $model } aceptó el esquema JSON pero respondió con líneas numeradas; a partir de ahora, líneas numeradas
+translate-schema-ignored-server = traducción: el servidor aceptó el esquema JSON pero respondió con líneas numeradas; a partir de ahora, líneas numeradas
+translate-schema-refused = traducción: { $model } rechazó las respuestas con esquema JSON ({ $status }: { $body }); a partir de ahora, líneas numeradas
+translate-schema-refused-server = traducción: el servidor rechazó las respuestas con esquema JSON ({ $status }: { $body }); a partir de ahora, líneas numeradas
+translate-line-flawed = traducción: la línea { $line } conserva una traducción con una observación: { $reason }
+translate-line-failed = traducción: la línea { $line } no se tradujo: { $reason }
+translate-line-reason = { $line }: { $reason }
+translate-lines-rejected = traducción: { $bad } de { $total } { $total ->
+    [one] línea
+   *[other] líneas
+} no pasaron la verificación ({ $reasons })
+translate-batch-stopped = traducción: falló el bloque de líneas { $first }..{ $last } ({ $error }); la traducción se detuvo
+translate-batch-failed = traducción: falló el bloque de líneas { $first }..{ $last } ({ $error })
+translate-layout-no-vision = composición del fotograma: omitida (no hay un modelo de visión elegido o disponible)
+translate-layout-not-needed = composición del fotograma: omitida (los subtítulos no se incrustan, no hace falta)
+translate-layout = composición del fotograma: sub_style={ $sub_style } titles={ $titles } brands={ $brands }
+translate-layout-failed = composición del fotograma: omitida ({ $error })
+translate-scene-failed = contexto de la escena: omitido ({ $error })
+translate-scene-no-vision = contexto de la escena: omitido (no hay un modelo de visión elegido o disponible)
+translate-audio-failed = contexto de audio: omitido ({ $error })
+translate-context-trimmed = traducción: el bloque de contexto de { $chars } { $chars ->
+    [one] carácter
+   *[other] caracteres
+} se recorta a { $budget } (protección de n_ctx)
+translate-names-skipped = traducción: se omite el glosario automático de nombres ({ $error })
+translate-chunks = traducción: { $lines } { $lines ->
+    [one] línea
+   *[other] líneas
+} -> { $chunks } { $chunks ->
+    [one] bloque
+   *[other] bloques
+} (glosario: { $terms } { $terms ->
+    [one] término
+   *[other] términos
+}, { $names } { $names ->
+    [one] nombre
+   *[other] nombres
+})
+translate-pass-done = traducción: listo, { $translated } traducidas ({ $flawed } con observación), { $untranslated } en el idioma original
+glossary-pass = glosario: pasada del modelo { $pass }/{ $passes }
+glossary-schema-refused = glosario: el servidor rechazó las respuestas con esquema JSON ({ $status }); se pide JSON como texto
+content-type-decided = tipo de contenido: { $decided ->
+    [anime] animación
+   *[other] imagen real
+} ({ $votes } { $votes ->
+    [one] respuesta clara
+   *[other] respuestas claras
+} de { $frames } fotogramas)
+line-missing = falta en la respuesta
+line-cut = la respuesta se cortó por el límite de tokens
+line-untranslated = no está en el idioma de destino
+line-echo = repite el original
+line-too-short = demasiado corta ({ $got } < { $min })
+line-too-long = demasiado larga ({ $got } > { $max })
+line-loop = se repite en bucle «{ $gram }»
+line-term-missing = falta el término del glosario «{ $term }»
+translate-frame = extracción de un fotograma: { $error }
+translate-audio = contexto de audio: { $error }
+translate-empty = el modelo no tradujo ninguna de { $lines } { $lines ->
+    [one] línea
+   *[other] líneas
+}; la última causa: { $reason }
+translate-empty-no-reason = el modelo no tradujo ninguna de { $lines } { $lines ->
+    [one] línea
+   *[other] líneas
+}
+translate-contract = la respuesta del modelo: { $problem }
+translate-contract-answer = la respuesta del modelo: { $problem }; la respuesta: { $answer }
+answer-no-json-object = no contiene un objeto JSON
+answer-not-json = no es un JSON válido ({ $error })
+answer-no-terms = no contiene la lista terms
+remix-failed = remix: { $error }

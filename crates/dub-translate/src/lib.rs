@@ -9,12 +9,14 @@ mod contract;
 mod ctx;
 mod extract;
 mod gloss;
+mod note;
 mod seg;
 mod text_fix;
 mod translate;
 mod vision;
 
-pub use contract::{looks_untranslated, tgt_expects_non_latin, Contract};
+pub use contract::{looks_untranslated, tgt_expects_non_latin, Contract, Reject};
+pub use note::Note;
 pub use ctx::{run as ctx_run, CtxConfig, CtxResult};
 pub use extract::extract_glossary;
 pub use seg::Seg;
@@ -50,7 +52,7 @@ pub const WHISPER_LANGS: &[(&str, &str)] = &[
     ("ha", "Hausa"), ("ba", "Bashkir"), ("jw", "Javanese"), ("su", "Sundanese"), ("yue", "Cantonese"),
 ];
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum TranslateError {
     #[error("llm: {0}")]
     Llm(#[from] dub_llm::LlmError),
@@ -58,9 +60,54 @@ pub enum TranslateError {
     Frame(String),
     #[error("audio ctx: {0}")]
     Audio(String),
-    /// Ни одна строка не переведена; второе поле — причина последнего отказа.
-    #[error("MT returned empty for all {0} segments: {1}")]
-    Empty(usize, String),
-    #[error("ответ модели: {0}")]
-    Contract(String),
+    /// Ни одна строка не переведена; `last` — причина последнего отказа, если она записана.
+    #[error("MT returned empty for all {lines} segments: {}", last.as_ref().map_or("no reason recorded".to_string(), ToString::to_string))]
+    Empty { lines: usize, last: Option<LineFailure> },
+    /// Ответ модели не по контракту; `answer` — его начало.
+    #[error("model answer: {problem}{}", answer.as_ref().map_or(String::new(), |a| format!("; answer: {a}")))]
+    Contract { problem: AnswerProblem, answer: Option<String> },
+}
+
+impl TranslateError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            TranslateError::Llm(e) => e.code(),
+            TranslateError::Frame(_) => "translate_frame",
+            TranslateError::Audio(_) => "translate_audio",
+            TranslateError::Empty { .. } => "translate_empty",
+            TranslateError::Contract { .. } => "translate_contract",
+        }
+    }
+}
+
+/// Что не так с ответом модели.
+#[derive(Debug, Clone, PartialEq, Error)]
+pub enum AnswerProblem {
+    #[error("the answer has no JSON object")]
+    NoJsonObject,
+    /// Объект не разобран; поле — ошибка разбора.
+    #[error("the answer is not valid JSON: {0}")]
+    NotJson(String),
+    #[error("the answer has no terms list")]
+    NoTerms,
+}
+
+impl AnswerProblem {
+    pub fn code(&self) -> &'static str {
+        match self {
+            AnswerProblem::NoJsonObject => "answer_no_json_object",
+            AnswerProblem::NotJson(_) => "answer_not_json",
+            AnswerProblem::NoTerms => "answer_no_terms",
+        }
+    }
+}
+
+/// Почему строка осталась без перевода: ответ не прошёл проверку или запрос пакета не удался.
+#[derive(Debug, Clone, Error)]
+pub enum LineFailure {
+    #[error("{0}")]
+    Rejected(Reject),
+    #[error("{0}")]
+    Error(Box<TranslateError>),
 }

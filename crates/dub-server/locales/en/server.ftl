@@ -810,3 +810,78 @@ speakers-bad-embedding = the voice model returned empty or invalid voice feature
 speakers-dimension-changed = the size of the voice features changed
 speakers-more-voices = the piece has more voices than the given number of speakers
 speakers-unmatched = the voices of the piece could not be matched reliably with the given number of speakers
+translate-format-json = translation: the model answers with a JSON object by schema ({ $model })
+translate-format-json-probe = translation: trying answers by JSON schema ({ $model }); if refused, numbered lines
+translate-format-numbered = translation: numbered lines; the model { $model } does not declare structured_outputs in the OpenRouter catalogue
+translate-schema-ignored = translation: { $model } accepted the JSON schema but answered with numbered lines; numbered lines from now on
+translate-schema-ignored-server = translation: the server accepted the JSON schema but answered with numbered lines; numbered lines from now on
+translate-schema-refused = translation: { $model } refused answers by JSON schema ({ $status }: { $body }); numbered lines from now on
+translate-schema-refused-server = translation: the server refused answers by JSON schema ({ $status }: { $body }); numbered lines from now on
+translate-line-flawed = translation: line { $line } keeps a translation with a remark: { $reason }
+translate-line-failed = translation: line { $line } is not translated: { $reason }
+translate-line-reason = { $line }: { $reason }
+translate-lines-rejected = translation: { $bad } of { $total } { $total ->
+    [one] line
+   *[other] lines
+} failed the check ({ $reasons })
+translate-batch-stopped = translation: the batch of lines { $first }..{ $last } failed ({ $error }); the translation stopped
+translate-batch-failed = translation: the batch of lines { $first }..{ $last } failed ({ $error })
+translate-layout-no-vision = frame layout: skipped (no vision model is chosen or available)
+translate-layout-not-needed = frame layout: skipped (subtitles are not burned in, no layout is needed)
+translate-layout = frame layout: sub_style={ $sub_style } titles={ $titles } brands={ $brands }
+translate-layout-failed = frame layout: skipped ({ $error })
+translate-scene-failed = scene context: skipped ({ $error })
+translate-scene-no-vision = scene context: skipped (no vision model is chosen or available)
+translate-audio-failed = audio context: skipped ({ $error })
+translate-context-trimmed = translation: the context block of { $chars } { $chars ->
+    [one] character
+   *[other] characters
+} is cut to { $budget } (n_ctx guard)
+translate-names-skipped = translation: the automatic name glossary is skipped ({ $error })
+translate-chunks = translation: { $lines } { $lines ->
+    [one] line
+   *[other] lines
+} -> { $chunks } { $chunks ->
+    [one] chunk
+   *[other] chunks
+} (glossary: { $terms } { $terms ->
+    [one] term
+   *[other] terms
+}, { $names } { $names ->
+    [one] name
+   *[other] names
+})
+translate-pass-done = translation: done, { $translated } translated ({ $flawed } with a remark), { $untranslated } left in the source language
+glossary-pass = glossary: model pass { $pass }/{ $passes }
+glossary-schema-refused = glossary: the server refused answers by JSON schema ({ $status }); asking for JSON as text
+content-type-decided = content type: { $decided ->
+    [anime] animation
+   *[other] live action
+} ({ $votes } { $votes ->
+    [one] clear answer
+   *[other] clear answers
+} of { $frames } frames)
+line-missing = missing from the answer
+line-cut = the answer was cut by the token limit
+line-untranslated = not in the target language
+line-echo = repeats the source
+line-too-short = too short ({ $got } < { $min })
+line-too-long = too long ({ $got } > { $max })
+line-loop = loops on “{ $gram }”
+line-term-missing = the glossary term “{ $term }” is missing
+translate-frame = extracting a video frame: { $error }
+translate-audio = audio context: { $error }
+translate-empty = the model translated none of { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}; the last cause: { $reason }
+translate-empty-no-reason = the model translated none of { $lines } { $lines ->
+    [one] line
+   *[other] lines
+}
+translate-contract = the model's answer: { $problem }
+translate-contract-answer = the model's answer: { $problem }; the answer: { $answer }
+answer-no-json-object = it has no JSON object
+answer-not-json = it is not valid JSON ({ $error })
+answer-no-terms = it has no terms list
+remix-failed = remix: { $error }

@@ -12,7 +12,7 @@ use regex::Regex;
 
 use crate::contract::{label, rule as contract_rule, Answer, Contract, Format, LineCheck};
 use crate::seg::Seg;
-use crate::TranslateError;
+use crate::{LineFailure, Note, TranslateError};
 
 const CHUNK: usize = 40;
 
@@ -187,7 +187,7 @@ impl Flat<'_> {
         idxs: &[usize],
         system: &dyn Fn(Format) -> String,
         sampling: &dyn Fn(usize) -> Sampling,
-        log: &mut dyn FnMut(&str),
+        log: &mut dyn FnMut(&Note),
     ) -> Result<crate::batch::Outcome, TranslateError> {
         self.contract.announce(self.llm, log);
         let log_cell = std::cell::RefCell::new(log);
@@ -201,7 +201,7 @@ impl Flat<'_> {
                     Message::user_text(format!("{gloss_block}{numbered}\n\n{}", contract_rule(fmt, &self.tgt_name))),
                 ]
             };
-            let mut answer = self.contract.ask(self.llm, &messages, &sampling(idx.len()), idx.len(), &mut |m: &str| (log_cell.borrow_mut())(m))?;
+            let mut answer = self.contract.ask(self.llm, &messages, &sampling(idx.len()), idx.len(), &mut |m: &Note| (log_cell.borrow_mut())(m))?;
             if !self.rewrite {
                 for line in answer.lines.iter_mut().flatten() {
                     *line = crate::gloss::term_lock(line, &self.glossary, &self.names);
@@ -214,7 +214,7 @@ impl Flat<'_> {
                 .check(line, cut)
         };
         let chunks: Vec<Vec<usize>> = idxs.chunks(CHUNK).map(<[usize]>::to_vec).collect();
-        crate::batch::drive(chunks, &mut ask, &check, &|i| i + 1, &mut |m: &str| (log_cell.borrow_mut())(m))
+        crate::batch::drive(chunks, &mut ask, &check, &|i| i + 1, &mut |m: &Note| (log_cell.borrow_mut())(m))
     }
 }
 
@@ -229,17 +229,17 @@ pub fn run(
     style: &str,
 ) -> Result<(), TranslateError> {
     let contract = Contract::for_client(llm);
-    run_with(llm, segs, &FlatOpts { src, tgt, spoken, style, glossary: &[], contract: &contract }, &mut |m: &str| eprintln!("[translate] {}", m.trim()))
+    run_with(llm, segs, &FlatOpts { src, tgt, spoken, style, glossary: &[], contract: &contract }, &mut |m: &Note| eprintln!("[translate] {m}"))
 }
 
 /// run с глоссарием и журналом. style (#112) — доп-инструкция стиля, вставляется в инструкционную часть.
-pub fn run_with(llm: &ChatClient, segs: &mut [Seg], o: &FlatOpts, log: &mut dyn FnMut(&str)) -> Result<(), TranslateError> {
+pub fn run_with(llm: &ChatClient, segs: &mut [Seg], o: &FlatOpts, log: &mut dyn FnMut(&Note)) -> Result<(), TranslateError> {
     let tgt_name = lang_name(o.tgt, o.tgt);
     let glossary = for_translation(o.glossary, o.tgt);
     let names = match glossary_pairs(llm, segs.iter().map(|s| s.text.as_str()), &name_src(o.src), &tgt_name, Some(6), &glossary) {
         Ok(pairs) => pairs,
         Err(e) => {
-            log(&format!("  перевод: авто-глоссарий имён пропущен ({e})"));
+            log(&Note::NamesSkipped { error: &e });
             Vec::new()
         }
     };
@@ -290,7 +290,7 @@ pub fn run_with(llm: &ChatClient, segs: &mut [Seg], o: &FlatOpts, log: &mut dyn 
         rewrite: false,
     };
     let out = flat.run(&idxs, &system, &sampling, log)?;
-    let last_failure = out.failed.last().map(|f| f.1.clone());
+    let last_failure: Option<LineFailure> = out.failed.last().and_then(|f| f.1.clone());
     for (i, t) in out.accepted {
         segs[i].tgt = crate::fix_translation(&t, o.tgt);
     }
@@ -300,7 +300,7 @@ pub fn run_with(llm: &ChatClient, segs: &mut [Seg], o: &FlatOpts, log: &mut dyn 
         segs[gi].tgt = segs[gi].text.trim().to_string();
     }
     if !idxs.is_empty() && empty.len() == idxs.len() {
-        return Err(TranslateError::Empty(idxs.len(), last_failure.unwrap_or_else(|| "причина не записана".into())));
+        return Err(TranslateError::Empty { lines: idxs.len(), last: last_failure });
     }
     Ok(())
 }
@@ -358,7 +358,7 @@ pub fn rewrite(
         names: Vec::new(),
         rewrite: true,
     };
-    let out = flat.run(&idxs, &system, &sampling, &mut |m: &str| eprintln!("[remix] {}", m.trim()))?;
+    let out = flat.run(&idxs, &system, &sampling, &mut |m: &Note| eprintln!("[remix] {m}"))?;
     for &gi in &idxs {
         // строка, которую так и не удалось переписать, остаётся исходной (не пустая озвучка).
         segs[gi].tgt = match out.accepted.get(&gi) {
@@ -448,7 +448,7 @@ mod tests {
         let mut s = segs(&["Welcome to Hogwarts", "I am fine"]);
         let glossary = vec![GlossaryEntry { term: "Hogwarts".into(), translation: "Хогвартс".into(), lang: "ru".into(), ..GlossaryEntry::default() }];
         let mut log = Vec::new();
-        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: true, style: "", glossary: &glossary, contract: &Contract::for_client(&llm) }, &mut |m: &str| log.push(m.to_string())).unwrap();
+        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: true, style: "", glossary: &glossary, contract: &Contract::for_client(&llm) }, &mut |m: &Note| log.push(m.to_string())).unwrap();
         assert_eq!(s[0].tgt, "Добро пожаловать в Хогвартс");
         assert_eq!(s[1].tgt, "У меня всё хорошо");
         let first = body_json(&server.request(0));
@@ -458,7 +458,7 @@ mod tests {
         assert!(!second["messages"][1]["content"].as_str().unwrap().contains("GLOSSARY"), "only the terms of the batch");
         assert_eq!(second["response_format"]["json_schema"]["schema"]["required"], serde_json::json!(["1"]));
         assert!(log.iter().any(|l| l.contains("JSON")), "{log:?}");
-        assert!(log.iter().any(|l| l.contains("не прошли проверку")), "{log:?}");
+        assert!(log.iter().any(|l| l.contains("failed the check")), "{log:?}");
     }
 
     #[test]
@@ -466,7 +466,7 @@ mod tests {
         let server = serve(vec![reply(r#"{"1":"Привет","2":"Bye"}"#), reply(r#"{"1":"Bye"}"#)]);
         let llm = ChatClient::new(server.base()).unwrap();
         let mut s = segs(&["Hello", "Bye"]);
-        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &str| {}).unwrap();
+        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &Note| {}).unwrap();
         assert_eq!(s[0].tgt, "Привет");
         assert_eq!(s[1].tgt, "Bye");
         assert_eq!(server.count(), 2);
@@ -485,9 +485,9 @@ mod tests {
         }));
         let mut s = segs(&["I saw Harry", "Then Harry left", "Harry is back"]);
         let mut log = Vec::new();
-        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |m: &str| log.push(m.to_string())).unwrap();
+        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |m: &Note| log.push(m.to_string())).unwrap();
         assert_eq!(s[2].tgt, "Гарри вернулся");
-        assert!(log.iter().any(|l| l.contains("авто-глоссарий имён пропущен")), "{log:?}");
+        assert!(log.iter().any(|l| l.contains("automatic name glossary is skipped")), "{log:?}");
     }
 
     #[test]
@@ -512,7 +512,7 @@ mod tests {
         ]);
         let llm = ChatClient::new(server.base()).unwrap();
         let mut s = segs(&["You know Harry", "You saw Harry", "You and Harry again"]);
-        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &str| {}).unwrap();
+        run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &Note| {}).unwrap();
         assert_eq!(server.count(), 2, "one name asked, one batch, no retries");
         assert_eq!(body_json(&server.request(0))["messages"][1]["content"], "Harry");
         let batch = body_json(&server.request(1));
@@ -526,13 +526,13 @@ mod tests {
         let server = serve(vec![Reply::json(401, r#"{"error":"invalid key"}"#)]);
         let llm = ChatClient::new(server.base()).unwrap();
         let mut s = segs(&["one line", "two lines", "three lines"]);
-        let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &str| {}).unwrap_err();
+        let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &Note| {}).unwrap_err();
         assert!(err.to_string().contains("401") && err.to_string().contains("invalid key"), "{err}");
         assert_eq!(server.count(), 1);
 
         let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let llm = ChatClient::new(format!("http://127.0.0.1:{port}")).unwrap().with_retries(0);
-        let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &str| {}).unwrap_err();
+        let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &Note| {}).unwrap_err();
         assert!(err.to_string().contains("chat failed"), "{err}");
     }
 
@@ -541,7 +541,7 @@ mod tests {
         let server = serve(vec![reply(r#"{"1":"one line"}"#), reply(r#"{"1":"one line"}"#)]);
         let llm = ChatClient::new(server.base()).unwrap();
         let mut s = segs(&["one line"]);
-        let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &str| {}).unwrap_err();
-        assert!(matches!(&err, TranslateError::Empty(1, why) if why.contains("исходник")), "{err}");
+        let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm) }, &mut |_: &Note| {}).unwrap_err();
+        assert!(matches!(&err, TranslateError::Empty { lines: 1, last: Some(LineFailure::Rejected(crate::Reject::Echo)) }), "{err}");
     }
 }

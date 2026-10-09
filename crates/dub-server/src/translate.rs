@@ -7,10 +7,11 @@
 
 use dub_core::{Brand, GlossaryEntry, Project, SubStyle};
 use dub_llm::ChatClient;
-use dub_translate::{classify_content_type, ctx_run, looks_untranslated, CtxConfig, FlatOpts, Seg};
+use dub_translate::{classify_content_type, ctx_run, looks_untranslated, CtxConfig, FlatOpts, Note, Seg};
 use serde_json::Value;
 
 use crate::analyze::{AnalyzeArgs, AnalyzePaths, Progress};
+use crate::localize::Localize;
 
 fn emit(progress: &Progress, stage: &str, msg: &str) {
     progress(serde_json::json!({ "stage": stage, "msg": msg }));
@@ -57,7 +58,7 @@ pub fn classify_content_type_standalone(
         }
     };
     let tmp = paths.work_dir.join("ctype_frame.png");
-    let ct = classify_content_type(provider.client(), &paths.input, &tmp, total, |m| emit(progress, "vision", m));
+    let ct = classify_content_type(provider.client(), &paths.input, &tmp, total, |m: &Note| emit(progress, "vision", &m.localize()));
     let _ = std::fs::remove_file(&tmp);
     Some(ct)
 }
@@ -130,8 +131,8 @@ pub fn stage(
     // детект/дефолт. Результат в проект; casting-стадия прочитает.
     if let (true, Some(vision)) = (args.casting && args.content_type == "auto", pair.vision()) {
         let tmp = paths.work_dir.join("ctype_frame.png");
-        let ct = classify_content_type(vision, &paths.input, &tmp, total, |m| {
-            emit(progress, "vision", m);
+        let ct = classify_content_type(vision, &paths.input, &tmp, total, |m: &Note| {
+            emit(progress, "vision", &m.localize());
         });
         let _ = std::fs::remove_file(&tmp);
         proj.audio.content_type = ct;
@@ -173,8 +174,8 @@ pub fn stage(
 
     emit(progress, "vision", &t!("translate-ctx-pass"));
     let contract = dub_translate::Contract::for_client(client);
-    let res = ctx_run(client, pair.vision(), &cfg, &contract, &mut segs, rewrite, |m| {
-        emit(progress, "vision", m);
+    let res = ctx_run(client, pair.vision(), &cfg, &contract, &mut segs, rewrite, |m: &Note| {
+        emit(progress, "vision", &m.localize());
     });
 
     // Сервер больше не нужен -> глушим (освобождаем VRAM, как del llm в питоне перед TTS/берном).
@@ -188,7 +189,7 @@ pub fn stage(
 
     let extra = match res {
         Ok(r) => r.extra,
-        Err(e) => return Err(t!("translate-failed", error = e.to_string())),
+        Err(e) => return Err(t!("translate-failed", error = e.localize())),
     };
 
     // Перенести tgt в сегменты Project. segs строился 1:1 из proj.segments и дальше не используется —
@@ -308,8 +309,8 @@ fn ensure_translation_coverage(
             })
             .collect();
         let opts = FlatOpts { src, tgt: tgt_lang, spoken: true, style: "", glossary, contract };
-        if let Err(e) = dub_translate::flat_run_with(client, &mut sub, &opts, &mut |m: &str| emit(progress, "translate", m)) {
-            emit(progress, "translate", &t!("translate-coverage-failed", error = e.to_string()));
+        if let Err(e) = dub_translate::flat_run_with(client, &mut sub, &opts, &mut |m: &Note| emit(progress, "translate", &m.localize())) {
+            emit(progress, "translate", &t!("translate-coverage-failed", error = e.localize()));
             break;
         }
         for (k, &i) in bad.iter().enumerate() {

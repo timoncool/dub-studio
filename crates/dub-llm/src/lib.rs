@@ -20,7 +20,7 @@ pub use server::{resolve_llama_bin, LlamaServer, ServerOpts};
 
 use thiserror::Error;
 
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum LlmError {
     #[error("llama-server spawn: {0}")]
     Spawn(String),

@@ -807,3 +807,78 @@ speakers-bad-embedding = o modelo de voz devolveu características de voz vazias
 speakers-dimension-changed = o tamanho das características de voz mudou
 speakers-more-voices = o trecho tem mais vozes que o número de locutores indicado
 speakers-unmatched = não foi possível associar com segurança as vozes do trecho ao número de locutores indicado
+translate-format-json = tradução: o modelo responde com um objeto JSON pelo esquema ({ $model })
+translate-format-json-probe = tradução: tentando respostas por esquema JSON ({ $model }); se recusar, linhas numeradas
+translate-format-numbered = tradução: linhas numeradas; o modelo { $model } não declara structured_outputs no catálogo do OpenRouter
+translate-schema-ignored = tradução: { $model } aceitou o esquema JSON, mas respondeu com linhas numeradas; daqui em diante, linhas numeradas
+translate-schema-ignored-server = tradução: o servidor aceitou o esquema JSON, mas respondeu com linhas numeradas; daqui em diante, linhas numeradas
+translate-schema-refused = tradução: { $model } recusou respostas por esquema JSON ({ $status }: { $body }); daqui em diante, linhas numeradas
+translate-schema-refused-server = tradução: o servidor recusou respostas por esquema JSON ({ $status }: { $body }); daqui em diante, linhas numeradas
+translate-line-flawed = tradução: a linha { $line } mantém uma tradução com uma observação: { $reason }
+translate-line-failed = tradução: a linha { $line } não foi traduzida: { $reason }
+translate-line-reason = { $line }: { $reason }
+translate-lines-rejected = tradução: { $bad } de { $total } { $total ->
+    [one] linha
+   *[other] linhas
+} não passaram na verificação ({ $reasons })
+translate-batch-stopped = tradução: o bloco de linhas { $first }..{ $last } falhou ({ $error }); a tradução parou
+translate-batch-failed = tradução: o bloco de linhas { $first }..{ $last } falhou ({ $error })
+translate-layout-no-vision = layout do quadro: ignorado (nenhum modelo de visão escolhido ou disponível)
+translate-layout-not-needed = layout do quadro: ignorado (as legendas não são gravadas no vídeo, não é necessário)
+translate-layout = layout do quadro: sub_style={ $sub_style } titles={ $titles } brands={ $brands }
+translate-layout-failed = layout do quadro: ignorado ({ $error })
+translate-scene-failed = contexto da cena: ignorado ({ $error })
+translate-scene-no-vision = contexto da cena: ignorado (nenhum modelo de visão escolhido ou disponível)
+translate-audio-failed = contexto de áudio: ignorado ({ $error })
+translate-context-trimmed = tradução: o bloco de contexto de { $chars } { $chars ->
+    [one] caractere
+   *[other] caracteres
+} foi cortado para { $budget } (proteção de n_ctx)
+translate-names-skipped = tradução: o glossário automático de nomes foi ignorado ({ $error })
+translate-chunks = tradução: { $lines } { $lines ->
+    [one] linha
+   *[other] linhas
+} -> { $chunks } { $chunks ->
+    [one] bloco
+   *[other] blocos
+} (glossário: { $terms } { $terms ->
+    [one] termo
+   *[other] termos
+}, { $names } { $names ->
+    [one] nome
+   *[other] nomes
+})
+translate-pass-done = tradução: pronto, { $translated } traduzidas ({ $flawed } com observação), { $untranslated } no idioma original
+glossary-pass = glossário: passagem do modelo { $pass }/{ $passes }
+glossary-schema-refused = glossário: o servidor recusou respostas por esquema JSON ({ $status }); pedindo JSON como texto
+content-type-decided = tipo de conteúdo: { $decided ->
+    [anime] animação
+   *[other] imagem real
+} ({ $votes } { $votes ->
+    [one] resposta clara
+   *[other] respostas claras
+} de { $frames } quadros)
+line-missing = ausente da resposta
+line-cut = a resposta foi cortada pelo limite de tokens
+line-untranslated = não está no idioma de destino
+line-echo = repete o original
+line-too-short = curta demais ({ $got } < { $min })
+line-too-long = longa demais ({ $got } > { $max })
+line-loop = repete em loop «{ $gram }»
+line-term-missing = falta o termo do glossário «{ $term }»
+translate-frame = extração de um quadro: { $error }
+translate-audio = contexto de áudio: { $error }
+translate-empty = o modelo não traduziu nenhuma de { $lines } { $lines ->
+    [one] linha
+   *[other] linhas
+}; a última causa: { $reason }
+translate-empty-no-reason = o modelo não traduziu nenhuma de { $lines } { $lines ->
+    [one] linha
+   *[other] linhas
+}
+translate-contract = a resposta do modelo: { $problem }
+translate-contract-answer = a resposta do modelo: { $problem }; a resposta: { $answer }
+answer-no-json-object = não contém um objeto JSON
+answer-not-json = não é um JSON válido ({ $error })
+answer-no-terms = não contém a lista terms
+remix-failed = remix: { $error }

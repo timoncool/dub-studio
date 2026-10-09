@@ -440,7 +440,7 @@ pub(crate) async fn remix_enqueue(st: &AppState, pid: &str, args: &Value) -> Res
             .collect();
         let r = flat_rewrite(client, &mut segs, &instr, "auto", &p.tgt_lang, false, &p.audio.translate_style);
         drop(prov);
-        r.map_err(|e| format!("remix: {e}"))?;
+        r.map_err(|e| t!("remix-failed", error = crate::localize::Localize::localize(&e)))?;
 
         // Ремикс шёл минутами: правки, сделанные за это время, остаются, а новый текст ложится, только пока
         // реплики те же, что переписывались.
