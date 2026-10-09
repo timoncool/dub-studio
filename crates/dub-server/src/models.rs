@@ -580,6 +580,17 @@ fn whisper_model_installed(mroot: &Path, size: &str) -> bool {
     mroot.join("whisper").join(format!("faster-whisper-{size}")).join("model.bin").is_file()
 }
 
+/// Languages Parakeet-TDT 0.6B v3 (and its Ultra fine-tune) transcribes: the 25 European ones of the
+/// NVIDIA model card. Any other language comes out as a few stray words, not as an error.
+pub const PARAKEET_LANGS: [&str; 25] = [
+    "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it", "lv", "lt", "mt", "pl", "pt", "ro",
+    "sk", "sl", "es", "sv", "ru", "uk",
+];
+
+pub fn parakeet_knows(lang: &str) -> bool {
+    PARAKEET_LANGS.contains(&lang)
+}
+
 /// Резолв активного ASR: если выбран движок whisper И бинарь+модель на диске — Whisper (модель = выбор,
 /// иначе первый установленный по убыванию качества); иначе — Parakeet (существующий резолв каталога TDT).
 /// Так «выбрал Whisper + скачал модель» применяется без рестарта, а недо-настроенный Whisper тихо

@@ -355,6 +355,8 @@ analyze-cloud-done = cloud : { $lines } { $lines ->
    *[other] locuteurs
 }
 analyze-hallucination-filter = filtre d’hallucinations de l’ASR : { $error }
+analyze-asr-language = Parakeet ne transcrit pas « { $lang } » : il connaît 25 langues européennes. Choisissez Whisper dans Réglages → Modèles (99 langues) ; choisir la langue source dans la fenêtre le bascule pour vous.
+analyze-asr-no-words = La vidéo contient { $speech } s de parole et Parakeet n’y a entendu que { $words } mots : il ne connaît que 25 langues européennes. Choisissez la langue source dans la fenêtre au lieu d’Auto — pour une langue hors d’Europe, le studio bascule la reconnaissance sur Whisper.
 analyze-hidden-hallucinations = répliques hallucinées de l’ASR masquées (pas de voix) : { $count } : { $lines }
 analyze-hidden-by-text = titres et sons de l’ASR masqués d’après leur texte (il y a du son sur l’intervalle, la voix n’est pas séparée de la musique) : { $count } : { $lines }
 analyze-voiced-suspects = ressemblent à des hallucinations, mais il y a une voix ; gardées avec une marque : { $count } : { $lines }

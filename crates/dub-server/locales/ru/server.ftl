@@ -380,6 +380,8 @@ analyze-cloud-done = облако: { $lines } { $lines ->
    *[many] спикеров
 }
 analyze-hallucination-filter = фильтр галлюцинаций ASR: { $error }
+analyze-asr-language = Parakeet не распознаёт язык «{ $lang }»: он знает 25 европейских языков. Выберите Whisper в «Настройки → Модели» (99 языков); если указать язык источника в окне, студия переключит сама.
+analyze-asr-no-words = В ролике { $speech } с речи, а Parakeet услышал в ней { $words } слов: он знает только 25 европейских языков. Укажите язык источника в окне вместо «Авто» — для языка вне Европы студия переключит распознавание на Whisper.
 analyze-hidden-hallucinations = скрыто фраз-галлюцинаций ASR (голоса нет): { $count } — { $lines }
 analyze-hidden-by-text = скрыто титров и звуков ASR по тексту (на интервале звук, голос от музыки не отделён): { $count } — { $lines }
 analyze-voiced-suspects = похожи на галлюцинацию, но голос есть — оставлены с пометкой: { $count } — { $lines }

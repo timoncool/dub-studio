@@ -57,6 +57,15 @@ impl VoiceEvidence {
         }
     }
 
+    /// Seconds of voice, when the evidence is voice: separated vocals or diarization. The raw mix cannot
+    /// tell a voice from music, so it gives none.
+    pub fn speech_seconds(&self) -> Option<f64> {
+        match self {
+            VoiceEvidence::Vocals(s) | VoiceEvidence::Turns(s) => Some(s.iter().map(|&(a, b)| (b - a).max(0.0)).sum()),
+            VoiceEvidence::Mix(_) => None,
+        }
+    }
+
     /// Звучит ли что-то на [start, end] (для Mix — голос или музыка).
     fn voiced(&self, start: f64, end: f64) -> bool {
         let dur = (end - start).max(1e-3);

@@ -449,6 +449,15 @@ fn has_speech_text(text: &str) -> bool {
 
 const DIAR_VER: &str = "nemotron3-diar-v3 · offline · merge_gap=0.8 · min_spk=10%[1.5..2.5] · out-v2";
 const ASR_VER: &str = "asr-v4-abbrev-speaker-split";
+
+/// Speech of this length is enough to tell a language Parakeet does not know: speech runs at 2-3 words
+/// a second, and Parakeet given another language returns a stray word or two for minutes of it.
+const LANGUAGE_CHECK_SPEECH: f64 = 15.0;
+const LANGUAGE_CHECK_WORDS_PER_SECOND: f64 = 0.3;
+
+fn unrecognised_language(speech_seconds: f64, words: usize) -> bool {
+    speech_seconds >= LANGUAGE_CHECK_SPEECH && (words as f64) < speech_seconds * LANGUAGE_CHECK_WORDS_PER_SECOND
+}
 const TRANSLATE_VER: &str = "gemma-ctx-v4-json-glossary";
 const OCR_VER: &str = "ppocr-onnx-v2";
 const CAST_VER: &str = "casting-v1";
@@ -1140,6 +1149,10 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     } else {
         // Движок выбран настройкой (Parakeet/Whisper) — analyze не знает деталей (build_engine).
         bench.stage("asr");
+        let parakeet = matches!(paths.asr, crate::models::AsrChoice::Parakeet(_));
+        if parakeet && args.src_lang != "auto" && !crate::models::parakeet_knows(&args.src_lang) {
+            return Err(t!("analyze-asr-language", lang = args.src_lang.clone()));
+        }
         // Backend локального ASR (Parakeet onnx CUDA-EP/CPU, Whisper cuda/cpu) — до создания движка/сессии.
         std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
         let mut asr = crate::models::build_engine(&paths.asr);
@@ -1179,6 +1192,20 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 }
             })
             .collect();
+        if parakeet && args.src_lang == "auto" {
+            let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
+            let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &vocals16)
+                .map_err(|e| t!("analyze-hallucination-filter", error = e.to_string()))?;
+            let words: usize = segs
+                .iter()
+                .map(|s| s.extra.get("words").and_then(Value::as_array).map_or(0, Vec::len))
+                .sum();
+            if let Some(speech) = evidence.speech_seconds() {
+                if unrecognised_language(speech, words) {
+                    return Err(t!("analyze-asr-no-words", speech = speech.round() as i64, words = words as i64));
+                }
+            }
+        }
         (segs, nsp)
     };
 
@@ -1837,5 +1864,22 @@ mod segment_rules_tests {
         assert_eq!(resolve_modes(&args("dub", "transcribe")).1, "transcribe");
         assert_eq!(resolve_modes(&args("transcribe", "bilingual")).1, "transcribe");
         assert_eq!(resolve_modes(&args("auto", "auto")).1, "translate");
+    }
+}
+
+#[cfg(test)]
+mod language_check_tests {
+    use super::unrecognised_language;
+
+    #[test]
+    fn minutes_of_speech_with_a_stray_word_is_a_language_parakeet_does_not_know() {
+        assert!(unrecognised_language(92.0, 1));
+    }
+
+    #[test]
+    fn ordinary_speech_and_short_clips_pass() {
+        assert!(!unrecognised_language(92.0, 210));
+        assert!(!unrecognised_language(10.0, 0));
+        assert!(!unrecognised_language(30.0, 9));
     }
 }
