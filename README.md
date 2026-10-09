@@ -92,6 +92,10 @@ Load a clip once and send it into any mode — right inside the editor.
 - **One-button setup + resumable downloads + in-app auto-update** — models, engines, CUDA/VC++ runtime and ffmpeg download on first run; large models (10 GB+) **resume from where they stopped** after a dropped connection instead of restarting; the app updates itself.
 - **Run each stage where you want** — separation, diarization and recognition each switch independently between **GPU and CPU**, and recognition, translation, vision and voice can be offloaded to **OpenRouter**. The *What runs where* table below lists what each stage can actually use.
 - **Tune for your hardware** — every engine ships multiple quants (TTS Q8/Q6/Q4, translation Q4…Q8, ASR int8/fp32 or Whisper tiny…large-v3-turbo, separation Q8/Q5/Q4) — switch in settings; cap the **prefill batch** and **voice-reference length** to fit 8–12 GB GPUs and 32 GB RAM.
+- **The whole app in your language** — progress, errors, setup, casting and the reports an agent reads come in the six languages of the window.
+- **Google Gemini voices** — Gemini TTS beside the local engine and OpenRouter, with its own key and a live model list; **Batch** runs at half the price, and a stopped render picks up the same paid batch.
+- **Number of speakers** — leave it automatic or set 1 to 8 people; voices are matched across a long recording, which is transcribed in windows of about 90 seconds.
+- **Even out loudness** — a switch, on by default: phrases at one level and the dub at -14 LUFS with a -1 dBTP ceiling; off, the mix stays as it came.
 - **Fully portable** — nothing is written to your user profile; delete the folder and no trace remains.
 
 ## Screenshots

@@ -92,6 +92,10 @@ Carga un clip una vez y envíalo a cualquier modo dentro del editor.
 - **Descargas reanudables** —— los modelos grandes (10 GB+) se reanudan desde donde se cortaron tras una caída de conexión, en vez de reiniciar.
 - **Ejecuta cada etapa donde quieras** —— la separación, la diarización y el reconocimiento cambian de forma independiente entre **GPU y CPU**, y el reconocimiento, la traducción, la visión y la voz pueden delegarse a **OpenRouter**. La tabla *Qué corre dónde* de más abajo indica qué puede usar realmente cada etapa.
 - **Ajusta a tu hardware** —— cada motor trae varias cuantizaciones (TTS Q8/Q6/Q4, traducción Q4…Q8, ASR int8/fp32 o Whisper tiny…large-v3-turbo, separación Q8/Q5/Q4) — cámbialas en ajustes; limita el lote de prefill y la duración de la referencia para GPU de 8–12 GB y 32 GB de RAM.
+- **Toda la app en tu idioma** — el progreso, los errores, la instalación, el casting y los informes que lee un agente llegan en los seis idiomas de la ventana.
+- **Voces de Google Gemini** — Gemini TTS junto al motor local y OpenRouter, con su propia clave y una lista de modelos en vivo; **Batch** cuesta la mitad y un render detenido retoma el mismo lote ya pagado.
+- **Número de hablantes** — automático o de 1 a 8 personas; las voces se emparejan en toda una grabación larga, que se transcribe en ventanas de unos 90 segundos.
+- **Igualar el volumen** — un interruptor activado por defecto: frases al mismo nivel y el doblaje a -14 LUFS con techo de -1 dBTP; apagado, la mezcla queda como llegó.
 - **Totalmente portátil** —— nada se escribe en tu perfil de usuario; borra la carpeta y no queda rastro.
 
 ## Capturas
