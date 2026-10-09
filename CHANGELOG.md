@@ -15,6 +15,8 @@ release notes on GitHub are taken from the release's section.
 ### Fixed
 
 - **Per-line Gemini voice direction.** The renderer forwards `tts_style` as speech metadata and includes it, the provider and request mode in take cache keys. Style instructions are never prepended to spoken dialogue.
+- **A video in a language Parakeet does not know** no longer comes out undubbed. Parakeet transcribes 25 European languages; on Chinese it heard one word in minutes of speech. With Auto as the source, a run where the voice is heard but almost no words stops and says to pick the source language (picking one outside Europe switches recognition to Whisper); with such a language set while Parakeet is selected, for example from an agent, the analysis says to choose Whisper.
+- **Recognition on parakeet-rs 0.4.0:** repeated words keep their timestamps, and diarization no longer fails on some recording lengths.
 - **Long recordings are transcribed in windows** of about 90 seconds cut at pauses; one pass over more than about ten minutes failed with a broadcast error or ran out of memory (#4, #9, #11).
 - **Speaker labels of a long recording.** With a number of voices given, continuous diarization can be turned on with `DUB_STUDIO_DIAR_CONTINUOUS=1`: the model keeps its state across the whole track, and the results of this mode have a cache of their own. It needs memory for the whole recording. From pull request #13 by lostintired.
 
