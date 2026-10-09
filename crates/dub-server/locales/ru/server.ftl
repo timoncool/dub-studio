@@ -781,3 +781,27 @@ glossary-tsv-keep = строка { $line }: в колонке keep «{ $value }�
 glossary-tsv-empty-term = строка { $line }: пустой термин
 glossary-one-of = нужно что-то одно: записи или TSV
 glossary-nothing = нечего сохранять: нет ни записей, ни TSV
+llm-spawn-failed = llama-server не запустился: { $error }
+llm-gguf-missing = GGUF-модель не найдена ({ $path })
+llm-log-file = лог llama-server { $path }: { $error }
+llm-exited-early = llama-server завершился до готовности ({ $status }); stderr: { $stderr }
+llm-not-ready = llama-server не поднялся за { $secs } с (порт { $port }); stderr: { $stderr }
+llm-http = запрос к модели не прошёл: { $error }
+llm-api = API модели: { $error }
+llm-rejected = API модели отверг запрос ({ $status }): { $body }
+llm-empty-answer = модель { $model } вернула пустой ответ (без причины)
+llm-empty-answer-reason = модель { $model } вернула пустой ответ (finish_reason={ $reason })
+llm-cut-short = модель { $model } упёрлась в лимит { $max_tokens } { $max_tokens ->
+    [one] токен
+    [few] токена
+   *[many] токенов
+} (finish_reason=length) — ответ неполный; вероятно, она тратит бюджет на рассуждения: выберите модель без обязательного мышления
+llm-prompt-cut = сервер прочитал только { $read } { $read ->
+    [one] токен
+    [few] токена
+   *[many] токенов
+} из запроса в { $chars } { $chars ->
+    [one] символ
+    [few] символа
+   *[many] символов
+} и отбросил начало — его контекст мал: увеличьте num_ctx в Ollama или Context Length модели в LM Studio

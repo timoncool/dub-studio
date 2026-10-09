@@ -19,6 +19,7 @@ use dub_llm::{strip_think, ChatClient, Message, Sampling};
 use serde_json::{json, Value};
 
 use crate::fitplan::{self, Calibration};
+use crate::localize::Localize;
 use crate::{jobs, AppState};
 
 /// Реплика к сокращению.
@@ -241,8 +242,9 @@ pub fn run(client: &ChatClient, lang: &str, style: &str, items: &[Item], log: &d
                 }
             },
             Err(e) => {
-                log(t!("shorten-line-no-answer", n = k + 1, total = items.len(), error = e.to_string()));
-                out.failed.push((item.id.clone(), e.to_string()));
+                let error = e.localize();
+                log(t!("shorten-line-no-answer", n = k + 1, total = items.len(), error = error.clone()));
+                out.failed.push((item.id.clone(), error));
             }
         }
     }

@@ -772,3 +772,24 @@ glossary-tsv-keep = línea { $line }: keep vale «{ $value }»; se esperaba 1 o 
 glossary-tsv-empty-term = línea { $line }: falta el término
 glossary-one-of = envía entradas o TSV, no ambos
 glossary-nothing = nada que guardar: no hay entradas ni TSV
+llm-spawn-failed = llama-server no se inició: { $error }
+llm-gguf-missing = no se encontró el modelo GGUF ({ $path })
+llm-log-file = registro de llama-server { $path }: { $error }
+llm-exited-early = llama-server terminó antes de estar listo ({ $status }); stderr: { $stderr }
+llm-not-ready = llama-server no arrancó en { $secs } s (puerto { $port }); stderr: { $stderr }
+llm-http = la solicitud al modelo falló: { $error }
+llm-api = API del modelo: { $error }
+llm-rejected = la API del modelo rechazó la solicitud ({ $status }): { $body }
+llm-empty-answer = el modelo { $model } devolvió una respuesta vacía (sin motivo)
+llm-empty-answer-reason = el modelo { $model } devolvió una respuesta vacía (finish_reason={ $reason })
+llm-cut-short = el modelo { $model } llegó al límite de { $max_tokens } { $max_tokens ->
+    [one] token
+   *[other] tokens
+} (finish_reason=length): la respuesta está incompleta; probablemente gasta el presupuesto en razonar — elige un modelo sin razonamiento obligatorio
+llm-prompt-cut = el servidor leyó solo { $read } { $read ->
+    [one] token
+   *[other] tokens
+} de una solicitud de { $chars } { $chars ->
+    [one] carácter
+   *[other] caracteres
+} y descartó el principio — su contexto es pequeño: aumenta num_ctx en Ollama o el Context Length del modelo en LM Studio

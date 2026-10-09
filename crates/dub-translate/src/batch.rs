@@ -17,7 +17,7 @@ use crate::TranslateError;
 fn size_bound(e: &TranslateError) -> bool {
     match e {
         TranslateError::Contract(_) => true,
-        TranslateError::Llm(LlmError::PromptCut(_) | LlmError::CutShort(_)) => true,
+        TranslateError::Llm(LlmError::PromptCut { .. } | LlmError::CutShort { .. }) => true,
         TranslateError::Llm(LlmError::Rejected { code, .. }) => matches!(code, 400 | 413 | 422),
         _ => false,
     }

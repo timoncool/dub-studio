@@ -613,3 +613,15 @@ glossary-tsv-keep = 第 { $line } 行：keep 为“{ $value }”，应为 1 或 
 glossary-tsv-empty-term = 第 { $line } 行没有术语
 glossary-one-of = 只能提交条目或 TSV 之一
 glossary-nothing = 没有可保存的内容：既无条目也无 TSV
+llm-spawn-failed = llama-server 未能启动：{ $error }
+llm-gguf-missing = 未找到 GGUF 模型（{ $path }）
+llm-log-file = llama-server 日志 { $path }：{ $error }
+llm-exited-early = llama-server 在就绪前退出（{ $status }）；stderr：{ $stderr }
+llm-not-ready = llama-server 在 { $secs } 秒内未启动（端口 { $port }）；stderr：{ $stderr }
+llm-http = 向模型发送请求失败：{ $error }
+llm-api = 模型 API：{ $error }
+llm-rejected = 模型 API 拒绝了请求（{ $status }）：{ $body }
+llm-empty-answer = 模型 { $model } 返回了空回答（未说明原因）
+llm-empty-answer-reason = 模型 { $model } 返回了空回答（finish_reason={ $reason }）
+llm-cut-short = 模型 { $model } 达到了 { $max_tokens } 个 token 的上限（finish_reason=length）：回答不完整；它可能把预算花在了推理上——请选择不强制思考的模型
+llm-prompt-cut = 服务器只读取了 { $chars } 个字符的请求中的 { $read } 个 token，并丢弃了开头——它的上下文太小：请在 Ollama 中调大 num_ctx，或在 LM Studio 中调大模型的 Context Length

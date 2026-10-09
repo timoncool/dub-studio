@@ -10,6 +10,7 @@ use std::path::Path;
 use dub_llm::openrouter::Capability;
 use dub_llm::{ChatClient, LlamaServer, ServerOpts};
 
+use crate::localize::Localize;
 use crate::models::LlmBackend;
 
 /// Режим вызова: плоский текст (перевод/ремикс) или мультимодальный (vision-анализ кадров).
@@ -84,8 +85,8 @@ fn start_gemma(o: &LlmOpen, with_mmproj: bool) -> Result<LlmProvider, String> {
     if with_mmproj {
         opts = opts.with_mmproj(o.mmproj);
     }
-    let server = LlamaServer::start(&opts).map_err(|e| format!("llama-server: {e}"))?;
-    let client = ChatClient::new(server.base_url()).map_err(|e| t!("llm-chat-client", error = e.to_string()))?;
+    let server = LlamaServer::start(&opts).map_err(|e| e.localize())?;
+    let client = ChatClient::new(server.base_url()).map_err(|e| t!("llm-chat-client", error = e.localize()))?;
     Ok(LlmProvider::Local { _server: server, client })
 }
 
@@ -101,7 +102,7 @@ fn open_server(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
         });
     }
     let client = ChatClient::openai_compatible(&url, model.clone(), crate::credentials::local_server_key_for(&url))
-        .map_err(|e| t!("llm-local-client", error = e.to_string()))?;
+        .map_err(|e| t!("llm-local-client", error = e.localize()))?;
     Ok(LlmProvider::Remote { client, label: t!("llm-local-label", url = url.clone(), model = model.clone()) })
 }
 
@@ -126,7 +127,7 @@ fn open_openrouter(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
         }
     }
     let client = ChatClient::openrouter(key, model.clone())
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.localize())?
         .with_profile(entry.as_ref().map(|entry| entry.profile()));
     Ok(LlmProvider::Remote { client, label: format!("OpenRouter · {model}") })
 }

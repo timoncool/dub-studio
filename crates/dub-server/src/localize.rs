@@ -3,6 +3,7 @@
 //! catalogues in the language the window shows.
 
 use dub_core::glossary::GlossaryError;
+use dub_llm::LlmError;
 
 /// A report of a library crate as the window reads it, in the window's language.
 pub trait Localize {
@@ -24,6 +25,32 @@ impl Localize for GlossaryError {
             GlossaryError::TsvEmptyTerm { line } => t!("glossary-tsv-empty-term", line = *line),
             GlossaryError::OneOf => t!("glossary-one-of"),
             GlossaryError::Nothing => t!("glossary-nothing"),
+        }
+    }
+}
+
+fn shown(path: &std::path::Path) -> String {
+    path.display().to_string()
+}
+
+impl Localize for LlmError {
+    fn localize(&self) -> String {
+        match self {
+            LlmError::Spawn(error) => t!("llm-spawn-failed", error = error.clone()),
+            LlmError::BinaryMissing(path) => t!("llm-llama-server-missing", path = shown(path)),
+            LlmError::ModelMissing(path) => t!("llm-gguf-missing", path = shown(path)),
+            LlmError::LogFile { path, error } => t!("llm-log-file", path = shown(path), error = error.clone()),
+            LlmError::ExitedEarly { status, stderr } => t!("llm-exited-early", status = status.clone(), stderr = stderr.clone()),
+            LlmError::NotReady { secs, port, stderr } => t!("llm-not-ready", secs = *secs, port = *port, stderr = stderr.clone()),
+            LlmError::Http(error) => t!("llm-http", error = error.clone()),
+            LlmError::Api(error) => t!("llm-api", error = error.clone()),
+            LlmError::Rejected { status, body, .. } => t!("llm-rejected", status = status.clone(), body = body.clone()),
+            LlmError::EmptyAnswer { model, finish_reason } if finish_reason.is_empty() => t!("llm-empty-answer", model = model.clone()),
+            LlmError::EmptyAnswer { model, finish_reason } => {
+                t!("llm-empty-answer-reason", model = model.clone(), reason = finish_reason.clone())
+            }
+            LlmError::CutShort { model, max_tokens } => t!("llm-cut-short", model = model.clone(), max_tokens = *max_tokens),
+            LlmError::PromptCut { read, chars } => t!("llm-prompt-cut", read = *read, chars = *chars),
         }
     }
 }

@@ -772,3 +772,24 @@ glossary-tsv-keep = ligne { $line } : keep vaut « { $value } » ; 1 ou 0 attend
 glossary-tsv-empty-term = ligne { $line } : terme manquant
 glossary-one-of = envoyez des entrées ou du TSV, pas les deux
 glossary-nothing = rien à enregistrer : ni entrées ni TSV
+llm-spawn-failed = llama-server n’a pas démarré : { $error }
+llm-gguf-missing = le modèle GGUF est introuvable ({ $path })
+llm-log-file = journal de llama-server { $path } : { $error }
+llm-exited-early = llama-server s’est arrêté avant d’être prêt ({ $status }) ; stderr : { $stderr }
+llm-not-ready = llama-server n’a pas démarré en { $secs } s (port { $port }) ; stderr : { $stderr }
+llm-http = la requête au modèle a échoué : { $error }
+llm-api = API du modèle : { $error }
+llm-rejected = l’API du modèle a refusé la requête ({ $status }) : { $body }
+llm-empty-answer = le modèle { $model } a renvoyé une réponse vide (sans raison)
+llm-empty-answer-reason = le modèle { $model } a renvoyé une réponse vide (finish_reason={ $reason })
+llm-cut-short = le modèle { $model } a atteint la limite de { $max_tokens } { $max_tokens ->
+    [one] jeton
+   *[other] jetons
+} (finish_reason=length) : la réponse est incomplète ; il dépense sans doute le budget à raisonner — choisissez un modèle sans raisonnement obligatoire
+llm-prompt-cut = le serveur n’a lu que { $read } { $read ->
+    [one] jeton
+   *[other] jetons
+} d’une requête de { $chars } { $chars ->
+    [one] caractère
+   *[other] caractères
+} et en a jeté le début — son contexte est trop petit : augmentez num_ctx dans Ollama ou le Context Length du modèle dans LM Studio

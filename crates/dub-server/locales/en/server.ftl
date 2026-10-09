@@ -772,3 +772,24 @@ glossary-tsv-keep = line { $line }: keep is “{ $value }”, 1 or 0 was expecte
 glossary-tsv-empty-term = line { $line } has no term
 glossary-one-of = send either entries or TSV, not both
 glossary-nothing = nothing to save: no entries and no TSV
+llm-spawn-failed = llama-server did not start: { $error }
+llm-gguf-missing = the GGUF model was not found ({ $path })
+llm-log-file = llama-server log { $path }: { $error }
+llm-exited-early = llama-server exited before it was ready ({ $status }); stderr: { $stderr }
+llm-not-ready = llama-server did not come up in { $secs } s (port { $port }); stderr: { $stderr }
+llm-http = the request to the model failed: { $error }
+llm-api = the model API: { $error }
+llm-rejected = the model API refused the request ({ $status }): { $body }
+llm-empty-answer = the model { $model } returned an empty answer (no reason given)
+llm-empty-answer-reason = the model { $model } returned an empty answer (finish_reason={ $reason })
+llm-cut-short = the model { $model } hit the limit of { $max_tokens } { $max_tokens ->
+    [one] token
+   *[other] tokens
+} (finish_reason=length): the answer is incomplete; it probably spends the budget on reasoning — choose a model without mandatory thinking
+llm-prompt-cut = the server read only { $read } { $read ->
+    [one] token
+   *[other] tokens
+} of a request of { $chars } { $chars ->
+    [one] character
+   *[other] characters
+} and dropped its start — its context is too small: raise num_ctx in Ollama or the model's Context Length in LM Studio
