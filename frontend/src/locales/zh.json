@@ -211,7 +211,9 @@
       "agent": "智能体 (MCP)",
       "agentHint": "将 AI 智能体连接到工作室",
       "about": "关于",
-      "aboutHint": "版本、链接与数据文件夹"
+      "aboutHint": "版本、链接与数据文件夹",
+      "privacy": "匿名统计",
+      "privacyHint": "匿名统计与来自作者的新闻"
     },
     "voiceGroup": "语音生成",
     "diagnostics": "诊断",
@@ -1299,5 +1301,16 @@
     "provider_local": "本地 · Higgs",
     "provider_openrouter": "通过 OpenRouter",
     "provider_google": "Google · 直连"
+  },
+  "hub": {
+    "why": "有多少人在用 Dub Studio、用来做什么，决定接下来做什么。不含任何个人信息：没有视频、文本、声音或文件名——只有任务计数、版本和显卡档次。",
+    "checkbox": "发送匿名使用统计",
+    "what": "发送的内容",
+    "byEnv": "已被环境变量 DO_NOT_TRACK 或 STUDIO_TELEMETRY 关闭。",
+    "reset": "新的安装 ID",
+    "nothing": "今天还没有需要发送的内容。",
+    "feedSource": "新闻来源",
+    "feedNever": "尚未获取服务器新闻：工作室显示其版本自带的新闻。",
+    "refresh": "立即检查"
   }
 }

@@ -213,7 +213,9 @@
       "agent": "Agent IA (MCP)",
       "agentHint": "Connecter un agent IA au studio",
       "about": "À propos",
-      "aboutHint": "Version, liens et dossier de données"
+      "aboutHint": "Version, liens et dossier de données",
+      "privacy": "Statistiques anonymes",
+      "privacyHint": "Statistiques anonymes et nouvelles de l'auteur"
     },
     "voiceGroup": "Génération de la voix",
     "diagnostics": "Diagnostic",
@@ -1335,5 +1337,16 @@
     "provider_local": "En local · Higgs",
     "provider_openrouter": "Via OpenRouter",
     "provider_google": "Google · directement"
+  },
+  "hub": {
+    "why": "Combien de personnes utilisent Dub Studio et pour quoi faire aide à décider de la suite. Rien de personnel : ni vidéos, ni textes, ni voix, ni noms de fichiers — seulement le nombre de tâches, la version et la classe de carte graphique.",
+    "checkbox": "Envoyer des statistiques d'utilisation anonymes",
+    "what": "Ce qui est envoyé",
+    "byEnv": "Désactivées par DO_NOT_TRACK ou STUDIO_TELEMETRY dans l'environnement.",
+    "reset": "Nouvel identifiant d'installation",
+    "nothing": "Rien à envoyer aujourd'hui pour l'instant.",
+    "feedSource": "Nouvelles de",
+    "feedNever": "Les nouvelles du serveur ne sont pas encore arrivées : le studio montre celles de sa version.",
+    "refresh": "Vérifier maintenant"
   }
 }

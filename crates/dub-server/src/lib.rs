@@ -31,6 +31,7 @@ mod frame;
 mod glossary_api;
 mod google_tts;
 mod guard;
+mod hub;
 mod hw;
 mod job_store;
 mod jobs;
@@ -312,6 +313,7 @@ pub async fn serve(state: AppState, listener: std::net::TcpListener) -> anyhow::
     listener.set_nonblocking(true)?;
     service::record_port(listener.local_addr()?.port());
     let listener = tokio::net::TcpListener::from_std(listener)?;
+    hub::start(&state.repo_root);
     axum::serve(listener, build_router(state)).await?;
     Ok(())
 }
@@ -607,6 +609,7 @@ pub fn build_router(state: AppState) -> Router {
         .layer(axum::extract::DefaultBodyLimit::disable())
         // Автор запроса (окно, агент, API), ревизия проекта в ответе и оповещение окон о переменах.
         .layer(axum::middleware::from_fn(mcp::track))
+        .merge(hub::router())
         .with_state(state);
     // MCP-инструменты зовут те же маршруты внутри процесса. Гард Origin/Host вешается ниже этой точки,
     // снаружи /mcp и /mcp/status, а не внутри `api`.

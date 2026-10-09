@@ -164,7 +164,7 @@ pub enum CancelError {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum JobStatus {
+pub(crate) enum JobStatus {
     Queued,
     Running,
     Done,
@@ -575,6 +575,7 @@ impl JobQueue {
                     };
                     j.status = status;
                     ctl.finish(status, err.as_deref(), ev);
+                    crate::hub::job_ended(kind, status);
                     if let Some(sender) = j.result_sender.take() {
                         let delivered = if cancelled {
                             sender.send(Err(CANCELLED.to_string()))

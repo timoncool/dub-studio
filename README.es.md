@@ -188,6 +188,19 @@ Cada etapa tiene su propio selector de dispositivo. *Sí* significa que el códi
 
 Sin NVIDIA, la voz, la traducción, la visión y el reconocimiento pueden ir a la nube y la separación y la diarización a la CPU, pero el quemado no tiene camino de CPU, así que un equipo así no es una configuración probada.
 
+## Estadísticas anónimas y noticias
+
+La app pide noticias al servidor del autor al arrancar y cada seis horas. La petición no lleva ningún id, así que las noticias llegan elijas lo que elijas abajo: las nuevas aparecen arriba en Novedades y, sin conexión, la app muestra las noticias de su versión.
+
+La pantalla del primer arranque tiene una casilla **Enviar estadísticas de uso anónimas**, marcada por defecto. El mismo interruptor está en Ajustes → Estadísticas anónimas, junto a **Qué se envía** (el informe exacto de hoy) y **Nuevo id de instalación**. Mientras esté marcada, la app envía una vez al día:
+
+- un id de instalación aleatorio creado en este equipo, sin vínculo con el hardware ni con una cuenta; desmarcar la casilla lo borra;
+- la app y su versión, el nombre y la versión del sistema, el idioma de la ventana;
+- la tarjeta gráfica: fabricante, rango de memoria de vídeo (hasta 8, 12, 16, 24+ GB) y si CUDA funciona;
+- cuántas tareas (análisis, doblaje, render, exportación, descarga y las demás) terminaron, fallaron o se cancelaron ese día.
+
+Nunca: vídeos, transcripciones, traducciones, voces, nombres de archivo o rutas, nada personal. El servidor guarda el país que Cloudflare indica para la conexión, no la dirección IP. `DO_NOT_TRACK=1` o `STUDIO_TELEMETRY=0` en el entorno apagan las estadísticas por completo: no existe id y no se cuenta nada.
+
 ## Solución de problemas
 
 **El instalador se detiene en WebView2.** La ventana de la app funciona sobre Microsoft Edge WebView2, y el instalador lo descarga cuando Windows no lo tiene. Con una conexión bloqueada o inestable, o en versiones de Windows 10 que rechazan el pequeño instalador de Microsoft (error 0x80040902), esa descarga falla. Instala WebView2 con el instalador independiente de Microsoft, [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701), y ejecuta de nuevo el instalador de Dub Studio.

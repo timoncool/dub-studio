@@ -188,6 +188,19 @@ Cada etapa tem seu próprio seletor de dispositivo. *Sim* significa que o códig
 
 Sem NVIDIA, a voz, a tradução, a visão e o reconhecimento podem ir para a nuvem e a separação e a diarização para a CPU, mas a gravação das legendas não tem caminho de CPU, então uma máquina assim não é uma configuração testada.
 
+## Estatísticas anônimas e novidades
+
+O app pede novidades ao servidor do autor ao iniciar e a cada seis horas. A requisição não leva nenhum id, então as novidades chegam seja qual for a sua escolha abaixo: as novas aparecem no topo de Novidades e, sem conexão, o app mostra as novidades da sua versão.
+
+A tela do primeiro início tem uma caixa **Enviar estatísticas de uso anônimas**, marcada por padrão. O mesmo controle fica em Configurações → Estatísticas anônimas, ao lado de **O que é enviado** (o relatório exato de hoje) e **Novo id de instalação**. Enquanto estiver marcada, o app envia uma vez por dia:
+
+- um id de instalação aleatório criado neste computador, sem ligação com o hardware ou uma conta; desmarcar a caixa o apaga;
+- o app e a sua versão, o nome e a versão do sistema, o idioma da janela;
+- a placa de vídeo: fabricante, faixa de memória de vídeo (até 8, 12, 16, 24+ GB) e se o CUDA funciona;
+- quantas tarefas (análise, dublagem, render, exportação, download e as demais) terminaram, falharam ou foram canceladas no dia.
+
+Nunca: vídeos, transcrições, traduções, vozes, nomes de arquivos ou caminhos, nada pessoal. O servidor guarda o país que a Cloudflare informa para a conexão, não o endereço IP. `DO_NOT_TRACK=1` ou `STUDIO_TELEMETRY=0` no ambiente desligam as estatísticas por completo: não existe id e nada é contado.
+
 ## Solução de problemas
 
 **O instalador para no WebView2.** A janela do app roda sobre o Microsoft Edge WebView2, e o instalador o baixa quando o Windows não o tem. Com uma conexão bloqueada ou instável, ou em versões do Windows 10 que recusam o pequeno inicializador da Microsoft (erro 0x80040902), esse download falha. Instale o WebView2 com o instalador independente da Microsoft, [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701), e execute o instalador do Dub Studio de novo.

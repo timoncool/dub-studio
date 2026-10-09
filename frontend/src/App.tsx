@@ -57,6 +57,8 @@ import { named } from "./lib/a11y";
 import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
 import { SourceText, TtsSkipNote } from "./components/SegmentText";
+import { hubChanged, setTelemetry, useHubState } from "./lib/studioHub";
+import HubTelemetryPreview from "./components/HubTelemetryPreview";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
 
@@ -4039,6 +4041,10 @@ const preselect = (s: SetupStatus) =>
 
 function FirstRun() {
   const { t } = useTranslation();
+  // Галочка статистики «Первого запуска»: включена, уходит с первой закачкой или «Продолжить» (выбор увиден).
+  const [telemetryOn, setTelemetryOn] = useState(true);
+  const [telemetryPreview, setTelemetryPreview] = useState(false);
+  const sendTelemetryChoice = () => setTelemetry(telemetryOn, true).catch((e: Error) => console.warn("[hub] the statistics choice was not saved:", e.message));
   const errText = useDownloadErrorText();
   const setStage = useStore((s) => s.setStage);
   // Выбор пользователя; null — ещё не трогал, берём преселект из текущего статуса (опрос его не сбрасывает).
@@ -4233,7 +4239,7 @@ function FirstRun() {
 
         <div className="mt-6 flex items-center gap-3">
           {status && !status.ready && (
-            <button onClick={() => download(selectedComps.filter((c) => c.delivery === "download" && !c.installed).map((c) => c.id))} disabled={busy || sel.size === 0 || noSpace} title={noSpace ? t("downloads.noSpace", { need: fmtBytes(selectedSpace), free: fmtBytes(status.freeBytes ?? 0) }) : undefined}
+            <button onClick={() => { sendTelemetryChoice(); download(selectedComps.filter((c) => c.delivery === "download" && !c.installed).map((c) => c.id)); }} disabled={busy || sel.size === 0 || noSpace} title={noSpace ? t("downloads.noSpace", { need: fmtBytes(selectedSpace), free: fmtBytes(status.freeBytes ?? 0) }) : undefined}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold disabled:opacity-40 hover:brightness-105">
               {busy ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
               {t("setup.download")} {selectedBytes > 0 && <span className="opacity-80">· {fmtBytes(selectedBytes)}</span>}
@@ -4251,10 +4257,18 @@ function FirstRun() {
               <FolderDown size={14} />{t("settings.browseFolder")}</button>
           )}
           {status?.ready && !busy && (
-            <button onClick={() => setStage("empty")}
+            <button onClick={() => { sendTelemetryChoice(); setStage("empty"); }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-sm font-semibold hover:brightness-105">
               <Check size={16} />{t("setup.continue")}</button>
           )}
+        </div>
+        <div className="mt-4 text-[13px] text-[var(--color-muted)]">
+          <label className="inline-flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={telemetryOn} onChange={(e) => { setTelemetryOn(e.target.checked); setTelemetry(e.target.checked, true).catch((err: Error) => console.warn("[hub] the statistics choice was not saved:", err.message)); }} />
+            {t("hub.checkbox")}
+          </label>
+          <button type="button" onClick={() => setTelemetryPreview(true)} className="ml-2 underline underline-offset-2 hover:text-[var(--color-text)]">{t("hub.what")}</button>
+          {telemetryPreview && <HubTelemetryPreview onClose={() => setTelemetryPreview(false)} />}
         </div>
       </motion.div>
     </div>
@@ -4731,8 +4745,16 @@ function TranscriptView() {
 }
 
 export default function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const stage = useStore((s) => s.stage);                 // only re-route on stage change (not on every store write)
+  // Анонимная статистика включена по умолчанию: на первом запуске решает галочка «Первого запуска», а установка,
+  // обновившаяся мимо него, остаётся при умолчании, пока галочку не снимут в Настройках.
+  const hub = useHubState(i18n.language);
+  useEffect(() => {
+    const tel = hub?.telemetry;
+    if (stage === "setup" || !tel || tel.acknowledged || tel.disabledByEnv) return;
+    setTelemetry(tel.enabled, true).catch((e: Error) => console.warn("[hub] the statistics default was not saved:", e.message)).finally(hubChanged);
+  }, [stage, hub?.telemetry.acknowledged]);
   const projMode = useStore((s) => (s.project as Project | null)?.mode);   // transcribe -> отдельный экран
   const setPid = useStore((s) => s.setPid);
   const setProject = useStore((s) => s.setProject);

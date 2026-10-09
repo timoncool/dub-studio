@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X, ExternalLink } from "lucide-react";
 import newsData from "../data/news.json";
+import { useHubState, type HubState } from "../lib/studioHub";
 import changelogRaw from "../../../CHANGELOG.md?raw";
 
 type Localized = Record<string, string>;
@@ -10,7 +11,30 @@ interface NewsItem { id: string; date: string; release?: string; title: Localize
 interface ChangelogSection { key: string; title: string; items: string[] }
 interface ChangelogRelease { heading: string; unreleased: boolean; version: string; date: string; sections: ChangelogSection[] }
 
-const NEWS = newsData as NewsItem[];
+const BUNDLED = newsData as NewsItem[];
+
+// Новости хаба — сверху: новая доходит до студии без релиза; вшитые с тем же id не повторяются.
+function useNews(lang: string): NewsItem[] {
+  const hub: HubState | null = useHubState(lang);
+  const fromHub: NewsItem[] = (hub?.items ?? [])
+    .filter((item) => item.kind === "news")
+    .map((item) => {
+      const local = item.content[lang] ?? item.content.en ?? Object.values(item.content)[0];
+      const link = local?.buttons.find((b) => b.action === "url" && b.url)?.url;
+      return {
+        id: `hub:${item.id}`,
+        date: item.date ?? "",
+        release: link,
+        title: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.title])),
+        body: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.body])),
+      };
+    })
+    .filter((n) => !BUNDLED.some((b) => b.id === n.id.slice(4)))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  return [...fromHub, ...BUNDLED];
+}
+
+const pick = (text: Localized, lang: string): string => text[lang] ?? text.en ?? Object.values(text)[0] ?? "";
 const SEEN_KEY = "dub-seen-news";
 
 function readSeen(): string | null {
@@ -81,7 +105,7 @@ function NewsBody({ text }: { text: string }) {
   );
 }
 
-function NewsTab({ lang }: { lang: string }) {
+function NewsTab({ lang, news: NEWS }: { lang: string; news: NewsItem[] }) {
   const { t } = useTranslation();
   if (NEWS.length === 0) return <p className="text-[13px] text-[var(--color-muted)] py-6 text-center">{t("news.empty")}</p>;
   return (
@@ -89,10 +113,10 @@ function NewsTab({ lang }: { lang: string }) {
       {NEWS.map((n) => (
         <article key={n.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3.5">
           <div className="flex items-baseline justify-between gap-3">
-            <h3 className="text-[14px] font-semibold">{n.title[lang]}</h3>
+            <h3 className="text-[14px] font-semibold">{pick(n.title, lang)}</h3>
             <time className="text-[11px] text-[var(--color-muted)] shrink-0 tabnum" dateTime={n.date}>{new Date(n.date).toLocaleDateString(lang)}</time>
           </div>
-          <NewsBody text={n.body[lang]} />
+          <NewsBody text={pick(n.body, lang)} />
           {n.release && (
             <a href={n.release} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-[12px] text-[var(--color-accent)] hover:underline">
               {t("news.releaseNotes")}<ExternalLink size={11} />
@@ -142,7 +166,7 @@ function ChangelogTab() {
 
 type Tab = "news" | "changelog";
 
-function WhatsNewModal({ onClose }: { onClose: () => void }) {
+function WhatsNewModal({ onClose, news }: { onClose: () => void; news: NewsItem[] }) {
   const { t, i18n } = useTranslation();
   const [tab, setTab] = useState<Tab>("news");
   const tabCls = (on: boolean) =>
@@ -159,14 +183,15 @@ function WhatsNewModal({ onClose }: { onClose: () => void }) {
           <button onClick={() => setTab("news")} className={tabCls(tab === "news")}>{t("news.tabNews")}</button>
           <button onClick={() => setTab("changelog")} className={tabCls(tab === "changelog")}>{t("news.tabChangelog")}</button>
         </div>
-        {tab === "news" ? <NewsTab lang={i18n.language} /> : <ChangelogTab />}
+        {tab === "news" ? <NewsTab lang={i18n.language} news={news} /> : <ChangelogTab />}
       </div>
     </div>
   );
 }
 
 export default function WhatsNew() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const NEWS = useNews(i18n.language);
   const latest = NEWS.length ? NEWS[0].id : null;
   const [seen, setSeen] = useState<string | null>(readSeen);
   const [open, setOpen] = useState(false);
@@ -182,7 +207,7 @@ export default function WhatsNew() {
         <Sparkles size={16} />
         {unseen && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--color-accent)]" />}
       </button>
-      {open && <WhatsNewModal onClose={() => setOpen(false)} />}
+      {open && <WhatsNewModal onClose={() => setOpen(false)} news={NEWS} />}
     </>
   );
 }
