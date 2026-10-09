@@ -2,6 +2,7 @@
 //! ensure_ort_dylib() — копия паттерна dub-asr: без явного ORT_DYLIB_PATH ort цепляет чужую
 //! system32\onnxruntime.dll (1.17) -> ДЕДЛОК при создании сессии. Выставляем на встроенную 1.28.2.
 
+use crate::OcrError;
 use ndarray::Array4;
 use ort::session::Session;
 use ort::value::TensorRef;
@@ -65,49 +66,49 @@ pub struct OnnxModel {
 }
 
 impl OnnxModel {
-    pub fn load(path: &Path) -> Result<Self, String> {
+    pub fn load(path: &Path) -> Result<Self, OcrError> {
         Self::load_with_intra(path, 0)
     }
 
     /// Загрузить сессию с заданным числом intra-op потоков (0 = дефолт ORT = все ядра). При кадровой
     /// параллельности ставим 1, чтобы W воркеров не оверсабскрайбили ядра.
-    pub fn load_with_intra(path: &Path, intra: usize) -> Result<Self, String> {
+    pub fn load_with_intra(path: &Path, intra: usize) -> Result<Self, OcrError> {
         ensure_ort_dylib();
-        let mut b = Session::builder().map_err(|e| format!("ort builder: {e}"))?;
+        let mut b = Session::builder().map_err(|e| OcrError::Ort(format!("ort builder: {e}")))?;
         if intra > 0 {
-            b = b.with_intra_threads(intra).map_err(|e| format!("intra_threads: {e}"))?;
+            b = b.with_intra_threads(intra).map_err(|e| OcrError::Ort(format!("intra_threads: {e}")))?;
         }
         let session = b
             .commit_from_file(path)
-            .map_err(|e| format!("commit_from_file {}: {e}", path.display()))?;
+            .map_err(|e| OcrError::Ort(format!("commit_from_file {}: {e}", path.display())))?;
         Ok(Self { session })
     }
 
     /// Кастомная метадата модели по ключу "character" (словарь rec, как RapidOCR v3). None если ключа нет.
-    pub fn metadata_character(&self) -> Result<Option<String>, String> {
-        let meta = self.session.metadata().map_err(|e| format!("metadata: {e}"))?;
+    pub fn metadata_character(&self) -> Result<Option<String>, OcrError> {
+        let meta = self.session.metadata().map_err(|e| OcrError::Ort(format!("metadata: {e}")))?;
         Ok(meta.custom("character").map(|s| s.to_string()))
     }
 
     /// Прогнать [N,3,H,W] f32 -> (shape, данные) первого выхода.
-    pub fn run(&mut self, input: Array4<f32>) -> Result<(Vec<usize>, Vec<f32>), String> {
+    pub fn run(&mut self, input: Array4<f32>) -> Result<(Vec<usize>, Vec<f32>), OcrError> {
         // (shape, &data)-форма конструктора тензора (ArrayView-бонд капризен).
         let shape: Vec<i64> = input.shape().iter().map(|&d| d as i64).collect();
         let (data, _) = input.into_raw_vec_and_offset();
         let tensor = TensorRef::from_array_view((shape, data.as_slice()))
-            .map_err(|e| format!("tensor: {e}"))?;
+            .map_err(|e| OcrError::Ort(format!("tensor: {e}")))?;
         let outputs = self
             .session
             .run(ort::inputs![tensor])
-            .map_err(|e| format!("run: {e}"))?;
+            .map_err(|e| OcrError::Ort(format!("run: {e}")))?;
         // первый выход по индексу.
         let (_, out) = outputs
             .iter()
             .next()
-            .ok_or_else(|| "нет выходов".to_string())?;
+            .ok_or(OcrError::NoOutputs)?;
         let (shape, data) = out
             .try_extract_tensor::<f32>()
-            .map_err(|e| format!("extract: {e}"))?;
+            .map_err(|e| OcrError::Ort(format!("extract: {e}")))?;
         let shape: Vec<usize> = shape.iter().map(|&d| d as usize).collect();
         Ok((shape, data.to_vec()))
     }

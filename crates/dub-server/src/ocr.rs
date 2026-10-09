@@ -46,7 +46,7 @@ pub fn detect(paths: &AnalyzePaths, progress: &Progress) -> Result<(Vec<Region>,
     // detect_regions: fps=caption_fps, дефолты как в питоне (min_dur .3, iou .3, pad 8, jitter 20, score .4).
     let fps = paths.caption_fps.max(1);
     detect_regions(&paths.input, &paths.work_dir, &ocr_paths, fps, 0.3, 0.3, 8, 20.0, 0.4)
-        .map_err(|e| t!("ocr-detection-failed", error = e.to_string()))
+        .map_err(|e| t!("ocr-detection-failed", error = crate::localize::Localize::localize(&e)))
 }
 
 /// Раскладка + блюр субтитр-полосы + caption-композит по готовым детекциям (дёшево; зависит от перевода).

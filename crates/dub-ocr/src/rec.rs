@@ -8,6 +8,7 @@
 //! (доп. пробел в конце / замена пустого токена) сдвигает индексы и портит CTC-декод — это и был
 //! корневой шум («КОРОЧЕ» -> «kрhеh»). Fallback на .dict.txt даёт то же: blank + строки файла как есть.
 
+use crate::OcrError;
 use crate::ort_engine::OnnxModel;
 use image::RgbImage;
 use ndarray::Array4;
@@ -23,10 +24,10 @@ pub struct RecDict {
 
 impl RecDict {
     /// Прочитать словарь из метаданных сессии (ключ "character") — источник истины RapidOCR v3.
-    pub fn from_session_meta(model: &OnnxModel) -> Result<Self, String> {
+    pub fn from_session_meta(model: &OnnxModel) -> Result<Self, OcrError> {
         let raw = model
             .metadata_character()?
-            .ok_or_else(|| "в модели нет метаданных 'character'".to_string())?;
+            .ok_or(OcrError::NoDictionary)?;
         Ok(Self::from_dict_str(&raw))
     }
 
@@ -40,8 +41,8 @@ impl RecDict {
 
     /// Fallback: загрузить словарь из .dict.txt (по строке на символ). blank префиксуется. Убираем лишь
     /// \r; порядок = порядок классов модели с индекса 1. Предпочтителен путь from_session_meta.
-    pub fn load(path: &std::path::Path) -> Result<Self, String> {
-        let txt = std::fs::read_to_string(path).map_err(|e| format!("dict {}: {e}", path.display()))?;
+    pub fn load(path: &std::path::Path) -> Result<Self, OcrError> {
+        let txt = std::fs::read_to_string(path).map_err(|e| OcrError::Io(format!("dict {}: {e}", path.display())))?;
         // нормализуем перевод строк, не трогая содержимое токенов (первая строка часто пробел).
         let normalized = txt.replace("\r\n", "\n").replace('\r', "");
         // отбрасываем единственный хвостовой перевод строки от финального \n (но не значимый пустой
@@ -118,11 +119,11 @@ fn ctc_decode(flat: &[f32], t: usize, c: usize, dict: &RecDict) -> (String, f32)
 
 /// Распознать текст в одном кропе (PP-OCR rec + CTC greedy). Билинейный ресайз к высоте 48, [-1,1].
 #[allow(dead_code)] // сохранено для single-crop fallback
-pub fn recognize(model: &mut OnnxModel, dict: &RecDict, img: &RgbImage) -> Result<(String, f32), String> {
+pub fn recognize(model: &mut OnnxModel, dict: &RecDict, img: &RgbImage) -> Result<(String, f32), OcrError> {
     let Some((rw, plane)) = preprocess(img) else { return Ok((String::new(), 0.0)) };
     // plane уже уложен в C-order (c, oy, ox) — строим тензор напрямую, без поэлементного копирования.
     let input = Array4::from_shape_vec((1, 3, REC_H, rw), plane)
-        .map_err(|e| format!("rec shape: {e}"))?;
+        .map_err(|e| OcrError::Internal(format!("rec shape: {e}")))?;
     let (shape, flat) = model.run(input)?;
     if shape.len() != 3 {
         return Ok((String::new(), 0.0));
@@ -136,7 +137,7 @@ pub fn recognize_batch(
     model: &mut OnnxModel,
     dict: &RecDict,
     imgs: &[RgbImage],
-) -> Result<Vec<(String, f32)>, String> {
+) -> Result<Vec<(String, f32)>, OcrError> {
     if imgs.is_empty() {
         return Ok(Vec::new());
     }

@@ -319,7 +319,8 @@ fn reading(input: PathBuf, dir: PathBuf, ocr: dub_ocr::OcrPaths, fps: i32, (widt
             return read_regions(&file);
         }
         progress(json!({ "stage": "ocr_detect", "msg": t!("ocr-detecting-burned-text", model = "PP-OCR DBNet+CRNN") }));
-        let (regions, _) = dub_ocr::detect_regions(&input, &dir, &ocr, fps, OCR_MIN_DUR, OCR_IOU, OCR_PAD, OCR_JITTER, OCR_SCORE)?;
+        let (regions, _) = dub_ocr::detect_regions(&input, &dir, &ocr, fps, OCR_MIN_DUR, OCR_IOU, OCR_PAD, OCR_JITTER, OCR_SCORE)
+            .map_err(|e| t!("ocr-detection-failed", error = crate::localize::Localize::localize(&e)))?;
         jobs::check_cancelled()?;
         let found = json!({
             "file": file.to_string_lossy(),
