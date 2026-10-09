@@ -19,6 +19,8 @@ permissions:
   contents: write
 
 env:
+  # the repository pins the Windows toolchain for the release machine
+  RUSTUP_TOOLCHAIN: stable
   CARGO_TERM_COLOR: never
 
 jobs:
