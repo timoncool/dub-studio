@@ -264,3 +264,31 @@ impl Localize for Note<'_> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn library_reports_follow_the_window_language() {
+        let _language = crate::i18n::test_language("ru");
+        let voices = AsrError::Speakers(SpeakerMatchError::TooManyVoices { given: 2, found: 5 });
+        assert_eq!(
+            voices.localize(),
+            "указано 2 спикера, но в фрагменте найдено 5 различных голосов: безопасно объединить их по голосу не удалось"
+        );
+        let reasons = [(2, LineFailure::Rejected(Reject::Echo))];
+        let note = Note::LinesRejected { bad: 1, total: 3, reasons: &reasons };
+        assert_eq!(note.localize(), "перевод: 1 из 3 строк не прошли проверку (2: повторяет исходник)");
+        assert_eq!(Note::ContentType { decided: "anime", votes: 3, frames: 4 }.localize(), "тип контента: анимация (3 внятных ответа из 4 кадров)");
+
+        crate::i18n::set_language("en").unwrap();
+        assert_eq!(voices.localize(), "2 speakers given, but the piece has 5 different voices: they could not be merged safely by voice");
+        assert_eq!(note.localize(), "translation: 1 of 3 lines failed the check (2: repeats the source)");
+        let cut = TranslateError::Llm(LlmError::CutShort { model: "m".into(), max_tokens: 1 });
+        assert!(cut.localize().starts_with("the model m hit the limit of 1 token "), "{}", cut.localize());
+
+        crate::i18n::set_language("zh").unwrap();
+        assert!(!Reject::Echo.localize().chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c)));
+    }
+}
