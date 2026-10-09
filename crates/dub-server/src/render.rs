@@ -528,7 +528,7 @@ fn voice_clone_guarded(
     std::thread::spawn(move || {
         let r = eng
             .voice_clone(&t, &rw, rt.as_deref(), &op)
-            .map_err(|e| e.to_string());
+            .map_err(|e| e.localize());
         let _ = tx.send(r); // получателя уже нет по таймауту — send вернёт Err, не паникуем
     });
     // Ждём порциями, чтобы отмена джобы доходила до движка, не дожидаясь таймаута синтеза.
@@ -563,7 +563,7 @@ fn voice_clone_guarded(
 
 /// Загрузить локальный Higgs (DLL + модель выбранного кванта).
 fn load_higgs(paths: &RenderPaths) -> Result<Arc<AudiocppEngine>, String> {
-    let e = Arc::new(AudiocppEngine::load(&paths.higgs_dll).map_err(|e| t!("render-higgs-load-failed", error = e.to_string()))?,
+    let e = Arc::new(AudiocppEngine::load(&paths.higgs_dll).map_err(|e| t!("render-higgs-load-failed", error = e.localize()))?,
     );
     e.load_model(
         &paths.higgs_model_root,
@@ -572,7 +572,7 @@ fn load_higgs(paths: &RenderPaths) -> Result<Arc<AudiocppEngine>, String> {
         paths.higgs_threads,
         Some(paths.higgs_quant.as_str()),
     )
-    .map_err(|e| format!("Higgs load_model: {e}"))?;
+    .map_err(|e| t!("render-higgs-model-failed", error = e.localize()))?;
     Ok(e)
 }
 

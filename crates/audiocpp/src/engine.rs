@@ -107,14 +107,29 @@ pub struct LoadModelRequest {
 
 #[derive(Error, Debug)]
 pub enum EngineError {
-    #[error("не удалось загрузить движок: {0}")]
+    #[error("could not load the engine: {0}")]
     LibraryLoad(String),
-    #[error("генерация отменена")]
+    #[error("generation cancelled")]
     Cancelled,
-    #[error("генерация не удалась: {0}")]
+    #[error("generation failed: {0}")]
     Generation(String),
-    #[error("неверный параметр: {0}")]
+    #[error("invalid parameter: {0}")]
     InvalidParam(String),
+    #[error("streaming is not supported by this DLL")]
+    StreamingUnsupported,
+}
+
+impl EngineError {
+    /// Стабильный код ошибки (аргументы — поля варианта).
+    pub fn code(&self) -> &'static str {
+        match self {
+            EngineError::LibraryLoad(_) => "tts_library_load",
+            EngineError::Cancelled => "tts_cancelled",
+            EngineError::Generation(_) => "tts_generation",
+            EngineError::InvalidParam(_) => "tts_invalid_param",
+            EngineError::StreamingUnsupported => "tts_streaming_unsupported",
+        }
+    }
 }
 
 // ─── типы FFI ──────────────────────────────────────────────────────────────
@@ -367,7 +382,7 @@ impl Engine {
             let handle = create_ptr();
             if handle.is_null() {
                 return Err(EngineError::LibraryLoad(
-                    "audiocpp_create вернул null".into(),
+                    "audiocpp_create returned null".into(),
                 ));
             }
 
@@ -627,9 +642,7 @@ impl Engine {
         audio: AudioChunkCallback,
     ) -> Result<AudioResult, EngineError> {
         let Some(generate_stream) = self.generate_tts_stream else {
-            return Err(EngineError::Generation(
-                "стриминг не поддерживается этой DLL".into(),
-            ));
+            return Err(EngineError::StreamingUnsupported);
         };
         let text_c = CString::new(text).map_err(|e| EngineError::InvalidParam(e.to_string()))?;
         let opts_c = opts_cstring(options)?;
@@ -694,9 +707,7 @@ impl Engine {
         audio: AudioChunkCallback,
     ) -> Result<AudioResult, EngineError> {
         let Some(generate_stream) = self.generate_voice_clone_stream else {
-            return Err(EngineError::Generation(
-                "стриминг не поддерживается этой DLL".into(),
-            ));
+            return Err(EngineError::StreamingUnsupported);
         };
         let text_c = CString::new(text).map_err(|e| EngineError::InvalidParam(e.to_string()))?;
         let ref_path_c =
@@ -763,9 +774,7 @@ impl Engine {
         audio: AudioChunkCallback,
     ) -> Result<AudioResult, EngineError> {
         let Some(generate_stream) = self.generate_finish_stream else {
-            return Err(EngineError::Generation(
-                "стриминг не поддерживается этой DLL".into(),
-            ));
+            return Err(EngineError::StreamingUnsupported);
         };
         let audio_c =
             CString::new(audio_path).map_err(|e| EngineError::InvalidParam(e.to_string()))?;
