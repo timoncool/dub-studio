@@ -944,7 +944,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 }
                 emit(progress, "separate", &t!("analyze-separating", model = "BSRoformer"));
                 dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model)
-                    .map_err(|e| e.to_string())?;
+                    .map_err(|e| e.localize())?;
                 media::mark_separation(&stems)?;
             } else {
                 emit(progress, "separate", &t!("analyze-separation-cached"));

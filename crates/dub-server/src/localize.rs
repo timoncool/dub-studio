@@ -5,6 +5,7 @@
 use dub_asr::{AsrError, SpeakerMatchError};
 use dub_core::glossary::GlossaryError;
 use dub_llm::LlmError;
+use dub_sep::SepError;
 use dub_translate::{AnswerProblem, LineFailure, Note, Reject, TranslateError};
 
 /// A report of a library crate as the window reads it, in the window's language.
@@ -79,6 +80,20 @@ impl Localize for SpeakerMatchError {
             SpeakerMatchError::DimensionChanged => t!("speakers-dimension-changed"),
             SpeakerMatchError::MoreVoicesThanSpeakers => t!("speakers-more-voices"),
             SpeakerMatchError::Unmatched => t!("speakers-unmatched"),
+        }
+    }
+}
+
+impl Localize for SepError {
+    fn localize(&self) -> String {
+        match self {
+            SepError::EngineMissing(path) => t!("sep-engine-missing", path = shown(path)),
+            SepError::ModelMissing(path) => t!("sep-model-missing", path = shown(path)),
+            SepError::Spawn(error) => t!("sep-spawn", error = error.clone()),
+            SepError::EngineFailed { code: Some(code), tail } => t!("sep-engine-failed", code = *code, tail = tail.clone()),
+            SepError::EngineFailed { code: None, tail } => t!("sep-engine-killed", tail = tail.clone()),
+            SepError::NoOutput(path) => t!("sep-no-output", path = shown(path)),
+            SepError::Wav(error) => t!("sep-audio-io", error = error.clone()),
         }
     }
 }

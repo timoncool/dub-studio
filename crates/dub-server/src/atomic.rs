@@ -252,7 +252,7 @@ fn separation(dir: PathBuf, input: PathBuf, cli: PathBuf, model: PathBuf, repo_r
             jobs::check_cancelled()?;
         }
         cb(json!({ "stage": "separate", "msg": t!("atomic-separating", model = "Mel-Band Roformer voc_fv6-Q8_0") }));
-        let split = dub_sep::separate(&audio_hq, &stems, &cli, &model).map_err(|e| t!("atomic-separation-failed", error = e.to_string()))?;
+        let split = dub_sep::separate(&audio_hq, &stems, &cli, &model).map_err(|e| t!("atomic-separation-failed", error = crate::localize::Localize::localize(&e)))?;
         media::mark_separation(&stems)?;
         Ok(json!({ "vocals": split.vocals.to_string_lossy(), "background": split.instrumental.to_string_lossy() }))
     })

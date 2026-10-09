@@ -855,7 +855,7 @@ fn build_dub_pass(
             );
             let sep = dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model,
             )
-                .map_err(|e| t!("atomic-separation-failed", error = e.to_string()))?;
+                .map_err(|e| t!("atomic-separation-failed", error = e.localize()))?;
             media::mark_separation(&stems)?;
             (sep.vocals, Some(sep.instrumental))
         } else {
@@ -2316,7 +2316,7 @@ pub(crate) fn speaker_voice_clip(
     let clip = tmp.join("cut44.wav");
     media::cut(input, &clip, a, b, 44_100, 2)?;
     let voc = dub_sep::separate(&clip, &tmp.join("stems"), sep.0, sep.1)
-        .map_err(|e| VoiceClipError::Separation(e.to_string()))?;
+        .map_err(|e| VoiceClipError::Separation(e.localize()))?;
     media::trim_ref(&voc.vocals, out, 0.0, b - a)?;
     Ok(text)
 }
@@ -3848,6 +3848,7 @@ mod tests {
 
     #[test]
     fn speaker_voice_without_stems_fails_when_the_line_cannot_be_separated() {
+        let _language = crate::i18n::test_language("ru");
         let wd = scratch("spkvoice_nosep");
         let input = wd.join("source.wav");
         stereo_wav(&input, 44_100, 5.0);
@@ -3859,7 +3860,7 @@ mod tests {
         let out = wd.join("voice.wav");
         match speaker_voice_clip(&seg("s0", 1.0, 3.0, "x"), 12.0, &wd, &input, (&broken, &model), &tmp, &out,
         ) {
-            Err(VoiceClipError::Separation(e)) => assert!(e.contains("запуск движка"), "{e}"),
+            Err(VoiceClipError::Separation(e)) => assert!(e.contains("запуск движка сепарации"), "{e}"),
             other => panic!("ждали сбой сепарации: {other:?}"),
         }
         assert!(!out.exists(), "голос с музыкой оригинала за очищенный не пишется");
