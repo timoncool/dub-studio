@@ -33,7 +33,7 @@ impl Client {
                 attempts: Some(1),
                 ..Default::default()
             });
-        if let Some(proxy) = dub_llm::net::proxy_url_for(BASE) {
+        if let Some(proxy) = dub_llm::net::proxy_url_for(base) {
             sdk = sdk.proxy(proxy.as_str());
         }
         Ok(Self {
@@ -178,7 +178,8 @@ impl Client {
         file.name.ok_or("Google uploaded JSONL has no name".into())
     }
 
-    fn batch_create(&self, model: &str, display: &str, file: &str) -> Result<String, String> {
+    /// `Err((refused, message))`: `refused` when Google answered 4xx, so no batch exists and a new submission is safe.
+    fn batch_create(&self, model: &str, display: &str, file: &str) -> Result<String, (bool, String)> {
         let src = rust_genai::types::batches::BatchJobSource {
             file_name: Some(file.into()),
             ..Default::default()
@@ -189,9 +190,12 @@ impl Client {
         };
         self.runtime
             .block_on(self.sdk.batches().create(model, src, config))
-            .map_err(|e| e.to_string().replace(&self.key, "[redacted]"))?
+            .map_err(|e| {
+                let refused = matches!(e, rust_genai::Error::ApiError { status: 400..=499, .. });
+                (refused, e.to_string().replace(&self.key, "[redacted]"))
+            })?
             .name
-            .ok_or("Google Batch has no name".into())
+            .ok_or((false, "Google Batch has no name".into()))
     }
 }
 
@@ -377,7 +381,7 @@ fn await_batch(
         crate::jobs::check_cancelled()?;
         journal["submitted"] = true.into();
         save(&path, &journal)?;
-        let name = client.batch_create(
+        let created = client.batch_create(
             model,
             journal["display_name"]
                 .as_str()
@@ -385,7 +389,18 @@ fn await_batch(
             journal["input_file"]
                 .as_str()
                 .ok_or("Batch has no input file")?,
-        )?;
+        );
+        let name = match created {
+            Ok(name) => name,
+            Err((refused, error)) => {
+                if refused {
+                    journal.as_object_mut().map(|j| j.remove("submitted"));
+                    journal["last_refusal"] = error.clone().into();
+                    save(&path, &journal)?;
+                }
+                return Err(error);
+            }
+        };
         validate_batch(&name)?;
         journal["name"] = name.into();
         journal["state"] = "BATCH_STATE_PENDING".into();
@@ -422,7 +437,7 @@ pub fn synth_jobs(
     jobs: &[crate::cloud_tts::Job],
     concurrency: usize,
     progress: &crate::render::Progress,
-) -> Result<Vec<bool>, String> {
+) -> Result<crate::cloud_tts::Synthesized, String> {
     let model = crate::models::tts_model(models_root);
     validate_model(&model)?;
     let batch = crate::models::google_tts_batch(models_root);
@@ -489,20 +504,25 @@ pub fn synth_jobs(
                             break;
                         }
                         let cached = dir.join(format!("response-{i}.json"));
-                        let response = match std::fs::read(&cached) {
-                            Ok(b) => serde_json::from_slice(&b).map_err(|e| e.to_string()),
-                            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        // only a response that holds a whole clip is kept: a refused or cut one is asked again
+                        let kept = std::fs::read(&cached)
+                            .ok()
+                            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+                            .filter(|r| audio(r).is_ok());
+                        let response = match kept {
+                            Some(r) => Ok(r),
+                            None => {
                                 let started = Instant::now();
                                 client
                                     .generate(model, &reqs[i]["request"])
                                     .and_then(|mut r| {
+                                        audio(&r)?;
                                         r["_dub_request_seconds"] =
                                             started.elapsed().as_secs_f64().into();
                                         save(&cached, &r)?;
                                         Ok(r)
                                     })
                             }
-                            Err(e) => Err(e.to_string()),
                         };
                         results.lock().expect("Google results")[i] = response;
                     }
@@ -511,7 +531,7 @@ pub fn synth_jobs(
         });
         results.into_inner().expect("Google results")
     };
-    let mut failures = Vec::new();
+    let mut done = crate::cloud_tts::Synthesized { ok: vec![false; jobs.len()], failures: Vec::new() };
     for (i, (job, result)) in jobs.iter().zip(results).enumerate() {
         let line = result.and_then(|response| {
             let (mime,bytes) = audio(&response)?;
@@ -523,9 +543,12 @@ pub fn synth_jobs(
             Ok(json!({"key":job.key,"voice":job.voice,"duration_seconds":duration,"request_seconds":response["_dub_request_seconds"],"usage":response["usageMetadata"],"cost_estimate":estimate(&model,batch,&response["usageMetadata"])}))
         });
         match line {
-            Ok(line) => report["lines"].as_array_mut().unwrap().push(line),
+            Ok(line) => {
+                done.ok[i] = true;
+                report["lines"].as_array_mut().unwrap().push(line)
+            }
             Err(error) => {
-                failures.push(format!("{}: {error}", job.key));
+                done.failures.push(format!("{}: {error}", job.key));
                 report["lines"]
                     .as_array_mut()
                     .unwrap()
@@ -574,13 +597,7 @@ pub fn synth_jobs(
     save(&dir.join("report.json"), &report)?;
     save(&wd.join("google-tts-latest.json"), &report)?;
     crate::jobs::check_cancelled()?;
-    if !failures.is_empty() {
-        return Err(format!(
-            "Google TTS failed; completed clips remain cached, no standard/provider fallback: {}",
-            failures.join("; ")
-        ));
-    }
-    Ok(vec![true; jobs.len()])
+    Ok(done)
 }
 
 pub async fn project_report(

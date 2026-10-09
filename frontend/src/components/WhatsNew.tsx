@@ -114,7 +114,7 @@ function NewsTab({ lang, news: NEWS }: { lang: string; news: NewsItem[] }) {
         <article key={n.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3.5">
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-[14px] font-semibold">{pick(n.title, lang)}</h3>
-            <time className="text-[11px] text-[var(--color-muted)] shrink-0 tabnum" dateTime={n.date}>{new Date(n.date).toLocaleDateString(lang)}</time>
+            {n.date && <time className="text-[11px] text-[var(--color-muted)] shrink-0 tabnum" dateTime={n.date}>{new Date(n.date).toLocaleDateString(lang)}</time>}
           </div>
           <NewsBody text={pick(n.body, lang)} />
           {n.release && (

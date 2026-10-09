@@ -36,20 +36,34 @@ export const telemetryPreview = () => call<{ enabled: boolean; report: unknown }
 export const resetInstall = () => call<unknown>("/v1/hub/telemetry/reset", { method: "POST" });
 export const refreshHub = () => call<unknown>("/v1/hub/refresh", { method: "POST" });
 
-/** Состояние хаба для языка окна; перечитывается раз в минуту и после любого изменения выбора. */
+/** Состояние хаба для языка окна: один опрос на окно раз в минуту и после любого изменения выбора. */
+const listeners = new Set<(state: HubState) => void>();
+let shared: { lang: string; state: HubState | null; timer: number } | null = null;
+
+function load(lang: string): void {
+  call<HubState>(`/v1/hub/state?lang=${encodeURIComponent(lang)}`)
+    .then((state) => {
+      if (shared?.lang !== lang) return;
+      shared.state = state;
+      listeners.forEach((listener) => listener(state));
+    })
+    .catch((e: Error) => console.warn("[hub]", e.message));
+}
+
+if (typeof window !== "undefined") window.addEventListener(CHANGED, () => { if (shared) load(shared.lang); });
+
 export function useHubState(lang: string): HubState | null {
-  const [state, setState] = useState<HubState | null>(null);
+  const [state, setState] = useState<HubState | null>(shared?.lang === lang ? shared.state : null);
   useEffect(() => {
-    let alive = true;
-    const load = () => {
-      call<HubState>(`/v1/hub/state?lang=${encodeURIComponent(lang)}`)
-        .then((s) => { if (alive) setState(s); })
-        .catch((e: Error) => console.warn("[hub]", e.message));
-    };
-    load();
-    const timer = window.setInterval(load, 60_000);
-    window.addEventListener(CHANGED, load);
-    return () => { alive = false; window.clearInterval(timer); window.removeEventListener(CHANGED, load); };
+    if (shared?.lang !== lang) {
+      if (shared) window.clearInterval(shared.timer);
+      shared = { lang, state: null, timer: window.setInterval(() => load(lang), 60_000) };
+      load(lang);
+    } else if (shared.state) {
+      setState(shared.state);
+    }
+    listeners.add(setState);
+    return () => { listeners.delete(setState); };
   }, [lang]);
   return state;
 }

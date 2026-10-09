@@ -1289,7 +1289,7 @@ fn build_dub_pass(
             );
             let done = crate::cloud_tts::synth_batch(&paths.models_root, wd, jobs, conc, progress)?;
             let mut ok = 0usize;
-            for (&idx, &good) in job_segs.iter().zip(&done) {
+            for (&idx, &good) in job_segs.iter().zip(&done.ok) {
                 if good {
                     ckpts.set(&sid_of(segs[idx].0, segs[idx].1), &keys[idx])?;
                     batch_new.insert(idx);
@@ -1299,6 +1299,10 @@ fn build_dub_pass(
             emit(progress, "tts", &t!("render-cloud-tts-ready", count = ok),
             );
             crate::jobs::check_cancelled()?;
+            // the made lines are kept above, so a new run asks again for the failed ones only
+            if !done.failures.is_empty() {
+                return Err(format!("Google TTS failed for {} line(s), the others are kept: {}", done.failures.len(), done.failures.join("; ")));
+            }
         }
     }
     // Сегменты, где синтез провалился и стоит оригинальная реплика: их ключ записывается только когда

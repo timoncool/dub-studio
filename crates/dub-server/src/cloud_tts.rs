@@ -18,6 +18,12 @@ pub struct Job {
     pub style: String,
 }
 
+/// What a batch made: success per job and, for a provider that has no fallback, why the others failed.
+pub struct Synthesized {
+    pub ok: Vec<bool>,
+    pub failures: Vec<String>,
+}
+
 pub fn style(s: &dub_core::Segment) -> &str {
     s.extra
         .get("tts_style")
@@ -125,9 +131,9 @@ pub fn synth_batch(models_root: &Path,
     wd: &Path,
     jobs: Vec<Job>, concurrency: usize,
     progress: &crate::render::Progress,
-) -> Result<Vec<bool>, String> {
+) -> Result<Synthesized, String> {
     if jobs.is_empty() {
-        return Ok(Vec::new());
+        return Ok(Synthesized { ok: Vec::new(), failures: Vec::new() });
     }
     if crate::models::tts_provider(models_root) == "google" {
         return crate::google_tts::synth_jobs(models_root, wd, &jobs, concurrency, progress);
@@ -136,7 +142,7 @@ pub fn synth_batch(models_root: &Path,
     let n = jobs.len();
     let ok: Vec<AtomicBool> = (0..n).map(|_| AtomicBool::new(false)).collect();
     if n == 0 {
-        return Ok(Vec::new());
+        return Ok(Synthesized { ok: Vec::new(), failures: Vec::new() });
     }
     let workers = concurrency.max(1).min(n);
     let next = AtomicUsize::new(0);
@@ -163,7 +169,7 @@ pub fn synth_batch(models_root: &Path,
             });
         }
     });
-    Ok(ok.iter().map(|b| b.load(Ordering::Relaxed)).collect())
+    Ok(Synthesized { ok: ok.iter().map(|b| b.load(Ordering::Relaxed)).collect(), failures: Vec::new() })
 }
 
 #[cfg(test)]
