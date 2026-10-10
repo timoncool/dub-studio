@@ -202,6 +202,8 @@ The first-run screen has a checkbox **Send anonymous usage statistics**, checked
 - the app and its version, the OS name and version, the window language;
 - the graphics card as vendor, a video memory bucket (up to 8, 12, 16, 24+ GB) and whether CUDA works;
 - how many tasks (analysis, dubbing, render, export, download and the others) finished, failed or were cancelled that day.
+- the models each stage ran on (voice, recognition, translation, frame analysis, separation), with how many jobs used them;
+- why a job failed, as one line with paths, names, links and anything in quotes removed on this computer before it leaves; the server keeps these reasons 30 days.
 
 Never: videos, transcripts, translations, voices, file names or paths, anything personal. The server keeps the country Cloudflare reports for the connection, not the IP address. `DO_NOT_TRACK=1` or `STUDIO_TELEMETRY=0` in the environment turns statistics off entirely: no id exists and nothing is counted.
 

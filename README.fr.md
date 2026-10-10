@@ -202,6 +202,8 @@ L'écran du premier lancement a une case **Envoyer des statistiques d'utilisatio
 - l'app et sa version, le nom et la version du système, la langue de la fenêtre ;
 - la carte graphique : fabricant, tranche de mémoire vidéo (jusqu'à 8, 12, 16, 24+ Go) et si CUDA fonctionne ;
 - combien de tâches (analyse, doublage, rendu, export, téléchargement et les autres) se sont terminées, ont échoué ou ont été annulées ce jour-là.
+- les modèles de chaque étape (voix, reconnaissance, traduction, analyse d’images, séparation) et combien de tâches les ont utilisés ;
+- la raison d’un échec, en une ligne dont les chemins, noms, liens et tout texte entre guillemets sont retirés sur cet ordinateur avant l’envoi ; le serveur garde ces raisons 30 jours.
 
 Jamais : vidéos, transcriptions, traductions, voix, noms de fichiers ou chemins, rien de personnel. Le serveur garde le pays que Cloudflare indique pour la connexion, pas l'adresse IP. `DO_NOT_TRACK=1` ou `STUDIO_TELEMETRY=0` dans l'environnement coupent entièrement les statistiques : aucun id n'existe et rien n'est compté.
 

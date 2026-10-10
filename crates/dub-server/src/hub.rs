@@ -1,16 +1,19 @@
 //! Studio Hub in Dub Studio: anonymous statistics (only after the first-run screen showed its checkbox, off under
 //! DO_NOT_TRACK or STUDIO_TELEMETRY=0) and the news feed shown on top of the bundled news.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use crate::jobs::{JobKind, JobStatus};
 
 static HUB: OnceLock<Option<studio_hub_client::Hub>> = OnceLock::new();
+/// The models folder, whose active.json says what a job ran on.
+static MODELS: OnceLock<PathBuf> = OnceLock::new();
 
 /// Starts the hub once, inside the tokio runtime of the server; a state file that cannot be read leaves the studio
 /// without it, said once.
 pub fn start(repo_root: &Path) {
+    let _ = MODELS.set(crate::models_root(repo_root));
     HUB.get_or_init(|| {
         let gpu = crate::hw::gpu_report();
         let name = gpu.name.clone().unwrap_or_default().to_ascii_lowercase();
@@ -70,8 +73,9 @@ pub fn router<S: Clone + Send + Sync + 'static>() -> axum::Router<S> {
     HUB.get().and_then(Option::as_ref).map(studio_hub_client::Hub::router).unwrap_or_default()
 }
 
-/// A finished job, counted as `<kind>_done`, `<kind>_failed` or `<kind>_cancelled` (frame previews are not counted).
-pub fn job_ended(kind: JobKind, status: JobStatus) {
+/// A finished job, counted as `<kind>_done`, `<kind>_failed` or `<kind>_cancelled` (frame previews are not counted);
+/// a failure keeps its reason, which the hub client scrubs, and finished work names the models it ran on.
+pub fn job_ended(kind: JobKind, status: JobStatus, error: Option<&str>) {
     let Some(hub) = HUB.get().and_then(Option::as_ref) else { return };
     if kind == JobKind::Frame {
         return;
@@ -82,4 +86,40 @@ pub fn job_ended(kind: JobKind, status: JobStatus) {
         _ => "failed",
     };
     hub.count(&format!("{}_{outcome}", kind.as_str()), 1);
+    match status {
+        JobStatus::Done if matches!(kind, JobKind::Analyze | JobKind::DubAudio | JobKind::Render | JobKind::Retranslate) => {
+            if let Some(root) = MODELS.get() {
+                hub.used_models(None, &models_in_use(root), 1);
+            }
+        }
+        JobStatus::Done | JobStatus::Cancelled => {}
+        _ => hub.failed(kind.as_str(), error.unwrap_or("")),
+    }
+}
+
+/// What the studio's stages run on now, each as `stage:model`: Dub has no named sets, its choice per stage is the set.
+fn models_in_use(mroot: &Path) -> Vec<String> {
+    use crate::models::{self, LlmBackend};
+    let sel = models::load_selection(mroot);
+    let slot = |key: &str| sel.get(key).and_then(serde_json::Value::as_str).map(str::trim).filter(|value| !value.is_empty()).unwrap_or("default").to_string();
+    let mut parts = vec![match models::tts_provider(mroot) {
+        "local" => format!("tts:higgs-{}", slot("tts")),
+        provider => format!("tts:{provider}:{}", models::tts_model(mroot)),
+    }];
+    parts.push(if models::openrouter_asr_on(mroot) {
+        format!("asr:openrouter:{}", slot("or_asr"))
+    } else if slot("asr_engine") == "whisper" {
+        format!("asr:whisper-{}", slot("whisper_model"))
+    } else {
+        format!("asr:parakeet-{}", slot("asr"))
+    });
+    for stage in ["llm", "vision"] {
+        parts.push(match models::llm_backend(mroot, stage) {
+            LlmBackend::Local => format!("{stage}:gemma-{}", slot("mt")),
+            LlmBackend::Server => format!("{stage}:server"),
+            LlmBackend::OpenRouter => format!("{stage}:openrouter:{}", models::openrouter_model(mroot, stage)),
+        });
+    }
+    parts.push(format!("sep:roformer-{}", slot("sep")));
+    parts
 }
