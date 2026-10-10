@@ -52,6 +52,13 @@ fn fatal(message: &str) {
         .show();
 }
 
+fn open_in_browser(app: &tauri::AppHandle, url: &tauri::Url) {
+    use tauri_plugin_opener::OpenerExt;
+    if let Err(e) = app.opener().open_url(url.as_str(), None::<&str>) {
+        eprintln!("[ERROR] ссылка {url} не открылась в браузере: {e}");
+    }
+}
+
 /// tauri-plugin-single-instance называет мьютекс и окно только по identifier, общему у установленной,
 /// портативной и дев-сборок: с ним дев-копия рядом с открытой установленной молча выходила бы, подняв
 /// старое окно. Замок нужен только релизной сборке на порту по умолчанию; дев-сборка и копия с явным
@@ -140,17 +147,25 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             _ => return, // нет апдейта или ошибка сети -> тихо
         };
         let ver = update.version.clone();
+        // the window tells its language a moment after it loads; the question waits for it
+        let _ = tauri::async_runtime::spawn_blocking(|| {
+            for _ in 0..100 {
+                if dub_server::i18n::reported() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        })
+        .await;
         if !install_in_place {
             let open = app
                 .dialog()
-                .message(format!(
-                    "Доступна новая версия {ver}. Открыть страницу загрузки?"
-                ))
-                .title("Обновление Dub Studio")
+                .message(dub_server::i18n::text("update-open-page", &[("version", ver.clone())]))
+                .title(dub_server::i18n::text("update-title", &[]))
                 .kind(MessageDialogKind::Info)
                 .buttons(MessageDialogButtons::OkCancelCustom(
-                    "Открыть".into(),
-                    "Позже".into(),
+                    dub_server::i18n::text("update-button-open", &[]),
+                    dub_server::i18n::text("update-button-later", &[]),
                 ))
                 .blocking_show();
             if open {
@@ -162,8 +177,8 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
                 .spawn();
                 if let Err(e) = opened {
                     app.dialog()
-                        .message(format!("Не удалось открыть {RELEASES_URL}: {e}"))
-                        .title("Обновление Dub Studio")
+                        .message(dub_server::i18n::text("update-open-failed", &[("url", RELEASES_URL.to_string()), ("error", e.to_string())]))
+                        .title(dub_server::i18n::text("update-title", &[]))
                         .kind(MessageDialogKind::Error)
                         .blocking_show();
                 }
@@ -172,14 +187,12 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
         }
         let yes = app
             .dialog()
-            .message(format!(
-                "Доступна новая версия {ver}. Обновить сейчас? Приложение перезапустится."
-            ))
-            .title("Обновление Dub Studio")
+            .message(dub_server::i18n::text("update-install-now", &[("version", ver.clone())]))
+            .title(dub_server::i18n::text("update-title", &[]))
             .kind(MessageDialogKind::Info)
             .buttons(MessageDialogButtons::OkCancelCustom(
-                "Обновить".into(),
-                "Позже".into(),
+                dub_server::i18n::text("update-button-install", &[]),
+                dub_server::i18n::text("update-button-later", &[]),
             ))
             .blocking_show();
         if !yes {
@@ -191,8 +204,8 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             }
             Err(e) => {
                 app.dialog()
-                    .message(format!("Не удалось обновить: {e}"))
-                    .title("Обновление Dub Studio")
+                    .message(dub_server::i18n::text("update-failed", &[("error", e.to_string())]))
+                    .title(dub_server::i18n::text("update-title", &[]))
                     .kind(MessageDialogKind::Error)
                     .blocking_show();
             }
@@ -263,8 +276,9 @@ pub fn run() {
         }));
     }
     builder
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_opener::init())
+        // a plugin's link script answers a click through IPC, which a page on http://127.0.0.1 is not given;
+        // left to the webview, a click reaches on_new_window
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
@@ -282,6 +296,7 @@ pub fn run() {
             // Иконка бандла для GUI-окна: без явной установки окно оставалось пустым в ALT+TAB/панели задач
             // (иконка висела на консольном окне). Ставим её на само GUI-окно.
             let icon = app.default_window_icon().cloned();
+            let (for_tabs, for_links) = (app.handle().clone(), app.handle().clone());
             let win = WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -294,6 +309,19 @@ pub fn run() {
             // Tauri v2 по умолчанию перехватывает OS-drop файлов -> HTML5 onDrop в дропзоне НЕ срабатывает
             // (юзеры жаловались «перетаскивание не работает»). Отключаем перехват -> webview сам ловит drop.
             .disable_drag_drop_handler()
+            // WebView2 молча глотает target="_blank" и window.open, если у окна нет обработчика новых окон.
+            .on_new_window(move |target, _features| {
+                open_in_browser(&for_tabs, &target);
+                tauri::webview::NewWindowResponse::Deny
+            })
+            .on_navigation(move |target| {
+                let own = target.host_str() == Some("127.0.0.1") && target.port() == Some(port);
+                if own || !matches!(target.scheme(), "http" | "https") {
+                    return true;
+                }
+                open_in_browser(&for_links, target);
+                false
+            })
             .build()?;
             // Иконка окна (ALT+TAB/таскбар) — ПОСЛЕ создания: не паникуем, если не выйдет, окно рабочее.
             if let Some(ic) = icon {
@@ -303,6 +331,11 @@ pub fn run() {
             spawn_update_check(app.handle().clone(), layout::is_portable());
             Ok(())
         })
-        .run(context)
-        .expect("ошибка запуска Tauri");
+        .build(context)
+        .expect("ошибка запуска Tauri")
+        .run(|_, event| {
+            if let tauri::RunEvent::Exit = event {
+                dub_server::flush_hub_on_exit();
+            }
+        });
 }

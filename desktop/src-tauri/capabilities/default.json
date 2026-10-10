@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Права по умолчанию для окна Dub Studio",
   "windows": ["main"],
-  "permissions": ["core:default", "shell:default", "updater:default", "dialog:default", "opener:default"]
+  "permissions": ["core:default", "updater:default", "dialog:default", "opener:default"]
 }

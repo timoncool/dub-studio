@@ -1355,6 +1355,8 @@
     "nothing": "Rien à envoyer aujourd'hui pour l'instant.",
     "feedSource": "Nouvelles de",
     "feedNever": "Les nouvelles du serveur ne sont pas encore arrivées : le studio montre celles de sa version.",
-    "refresh": "Vérifier maintenant"
+    "refresh": "Vérifier maintenant",
+    "notices": "Annonces",
+    "close": "Fermer"
   }
 }

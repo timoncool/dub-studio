@@ -1355,6 +1355,8 @@
     "nothing": "Nada para enviar hoje ainda.",
     "feedSource": "Novidades de",
     "feedNever": "As novidades do servidor ainda não chegaram: o estúdio mostra as da sua versão.",
-    "refresh": "Verificar agora"
+    "refresh": "Verificar agora",
+    "notices": "Avisos",
+    "close": "Fechar"
   }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "dub-studio-desktop"
-version = "4.2.0"
+version = "4.2.1"
 edition = "2021"
 description = "Tauri-оболочка Dub Studio: поднимает dub-server на 127.0.0.1:8793 (DUB_STUDIO_PORT) и открывает окно"
 
@@ -13,7 +13,6 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2", features = [] }
-tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"   # авто-обновление: качает подписанный NSIS с GitHub-релиза, ставит в один клик
 tauri-plugin-dialog = "2"    # нативный диалог «Обновить? [Обновить] [Позже]»
 tauri-plugin-opener = "2"    # opener:default окна; страницу релиза оболочка открывает сама, вне job (spawn_update_check)

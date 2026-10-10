@@ -1337,6 +1337,8 @@
     "nothing": "Nothing is waiting to be sent today.",
     "feedSource": "News from",
     "feedNever": "News have not been fetched from the server yet: the studio shows the news of its release.",
-    "refresh": "Check now"
+    "refresh": "Check now",
+    "notices": "Notices",
+    "close": "Close"
   }
 }

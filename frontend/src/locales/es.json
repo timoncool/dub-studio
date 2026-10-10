@@ -1355,6 +1355,8 @@
     "nothing": "Hoy no hay nada pendiente de enviar.",
     "feedSource": "Noticias de",
     "feedNever": "Aún no se han recibido noticias del servidor: el estudio muestra las de su versión.",
-    "refresh": "Comprobar ahora"
+    "refresh": "Comprobar ahora",
+    "notices": "Avisos",
+    "close": "Cerrar"
   }
 }

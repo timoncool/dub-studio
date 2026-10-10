@@ -4,7 +4,20 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
-## Unreleased — 4.2.0
+## 2026-10-10 — 4.2.1
+
+### Added
+
+- **News strips.** Short notes from the author appear as a strip across the top of the window, in the window's language, with a link and a close button; the first one is about YuE2 Studio, the song studio. A closed strip does not come back.
+
+### Fixed
+
+- **Links in the window open in the default browser.** In the desktop app a link meant for a new tab did nothing (About, news, release notes, support, the driver page); it now opens in the system's browser.
+- **The original file name instead of source.mp4.** The transcript's header, the Files panel, the several-languages view and the downloaded export (`<name>_dub.mp4`) carry the name of the file you opened.
+- **The update question is in the window's language** instead of always in Russian.
+- **The day's statistics leave when the app closes** instead of at its next start.
+
+## 2026-10-10 — 4.2.0
 
 ### Added
 

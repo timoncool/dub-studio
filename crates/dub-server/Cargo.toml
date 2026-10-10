@@ -32,6 +32,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 mime_guess = "2"
+percent-encoding = "2.3"
 # MCP: картинки кадров в ответе инструмента, заголовки =?base64?…?= и границы since/until в часовом поясе компьютера.
 base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
@@ -59,7 +60,7 @@ blake3 = "1"
 # SHA-256 скачанных моделей и движков против закреплённых хэшей (HF lfs.oid, digest GitHub, PyPI/NVIDIA).
 sha2 = "0.11"
 # Studio Hub: anonymous statistics and the news feed (telemetry only after the first-run screen showed its choice).
-studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "7a0e30e3eec5ff7cd40bba26c9dae1b9b297de93" }
+studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "531327a64882580bd44f8e173908be0a046c7adc" }
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
 rust-genai = { version = "=0.3.1", default-features = false }
