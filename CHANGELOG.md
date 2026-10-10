@@ -4,6 +4,13 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## 2026-10-10 — 4.1.1
+
+### Fixed
+
+- On the first-run screen the statistics checkbox, its label and What is sent stand on one line in one
+  colour; the link sat lower than the label and in another colour.
+
 ## 2026-10-09 — 4.1.0
 
 ### Added

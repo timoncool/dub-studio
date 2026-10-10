@@ -1,6 +1,6 @@
 [package]
 name = "dub-studio-desktop"
-version = "4.1.0"
+version = "4.1.1"
 edition = "2021"
 description = "Tauri-оболочка Dub Studio: поднимает dub-server на 127.0.0.1:8793 (DUB_STUDIO_PORT) и открывает окно"
 
