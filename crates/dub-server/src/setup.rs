@@ -1580,7 +1580,8 @@ const VRAM_HEADROOM: u64 = 512 * 1024 * 1024;
 
 /// Модели по видеопамяти карты (`total`, байт; 0 — неизвестна): каждой отмечено, влезет ли она, а в группе
 /// квантов одной модели (`higgs`, `higgs-q6_k`, ...) обязательным становится самый большой влезающий вариант.
-/// Группа, где не влезает ничего, готовность не держит: эта стадия идёт на сервере или в облаке.
+/// Группа, где не влезает ничего, готовность не держит: эта стадия идёт на сервере или в облаке. Группу, где
+/// вариант уже скачан, не трогает: выбор сделан.
 fn fit_to_vram(comps: &mut [ComponentStatus], total: u64) {
     if total == 0 {
         return;
@@ -1593,6 +1594,7 @@ fn fit_to_vram(comps: &mut [ComponentStatus], total: u64) {
         .iter()
         .filter(|c| c.vram > 0 && c.requirement == Requirement::Required && c.fits_vram == Some(false))
         .map(|c| group(&c.id))
+        .filter(|g| !comps.iter().any(|c| c.vram > 0 && c.installed && group(&c.id) == *g))
         .collect();
     for g in groups {
         let best = comps
@@ -2933,6 +2935,11 @@ mod tests {
         fit_to_vram(&mut comps, 24 * 1024 * 1024 * 1024);
         assert_eq!(required(&comps), ["higgs", "gemma", "higgs-engine"]);
         assert!(comps.iter().filter(|c| c.vram > 0).all(|c| c.fits_vram == Some(true)));
+
+        let mut comps = models();
+        comps[0].installed = true;
+        fit_to_vram(&mut comps, 6 * 1024 * 1024 * 1024);
+        assert_eq!(required(&comps), ["higgs", "higgs-engine"]);
 
         let mut comps = models();
         fit_to_vram(&mut comps, 0);

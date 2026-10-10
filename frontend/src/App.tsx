@@ -263,7 +263,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
     const variants = ids.map(get).filter(Boolean) as SetupComponent[];
     const installed = variants.find((v) => v.installed);
     const sel = cap?.selection ?? {};
-    const pick = picks[ids[0]] ?? activeVariantId(ids, sel) ?? installed?.id ?? variants[0]?.id ?? "";
+    const pick = picks[ids[0]] ?? activeVariantId(ids, sel) ?? installed?.id ?? variants.find((v) => v.fitsVram !== false)?.id ?? variants[0]?.id ?? "";
     const c = get(pick);
     if (!c) return null;
     const quant = (v: SetupComponent) => i18n?.[v.id] ? t(i18n[v.id].label) : (v.name.match(/\b(q\d[\w]*|int8|fp32|f16|large-v3-turbo|large-v3|tiny|base|small|medium)\b/i)?.[1] ?? v.name);
