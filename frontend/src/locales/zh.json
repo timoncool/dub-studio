@@ -1319,6 +1319,8 @@
     "nothing": "今天还没有需要发送的内容。",
     "feedSource": "新闻来源",
     "feedNever": "尚未获取服务器新闻：工作室显示其版本自带的新闻。",
-    "refresh": "立即检查"
+    "refresh": "立即检查",
+    "notices": "通知",
+    "close": "关闭"
   }
 }

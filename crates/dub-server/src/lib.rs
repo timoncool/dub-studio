@@ -32,6 +32,7 @@ mod glossary_api;
 mod google_tts;
 mod guard;
 mod hub;
+pub use hub::flush_on_exit as flush_hub_on_exit;
 mod hw;
 mod job_store;
 mod jobs;

@@ -11,7 +11,11 @@ export interface HubItem {
   date: string | null;
   content: Record<string, HubContent>;
   eligible: boolean;
+  dismissible: boolean;
+  theme: HubTheme | null;
+  rules: { delay_s: number };
 }
+export type HubTheme = "sunset" | "orchid" | "lime" | "graphite";
 export interface HubState {
   telemetry: { enabled: boolean; acknowledged: boolean; disabledByEnv: boolean; install: string | null };
   source: string | null;
@@ -74,3 +78,15 @@ export function useHubState(lang: string): HubState | null {
 export function hubText(item: HubItem, lang: string): HubContent | undefined {
   return item.content[lang] ?? item.content.en ?? Object.values(item.content)[0];
 }
+
+/** The strip gradients and text colours, the hub's own (studio-hub src/shared/themes.ts), copied by value. */
+export const HUB_GRADIENTS: Record<HubTheme, string> = {
+  sunset: "linear-gradient(90deg, #f97316 0%, #db2777 100%)",
+  orchid: "linear-gradient(90deg, #ec4899 0%, #9333ea 100%)",
+  lime: "linear-gradient(90deg, #c6f24e 0%, #5be0c8 100%)",
+  graphite: "linear-gradient(90deg, #27272a 0%, #3f3f46 100%)",
+};
+export const HUB_TEXT: Record<HubTheme, string> = { sunset: "#ffffff", orchid: "#ffffff", lime: "#0b0c0e", graphite: "#ffffff" };
+const THEMES: HubTheme[] = ["sunset", "orchid", "lime", "graphite"];
+/** A strip's colour: its own theme, or the next one by its place in the stack. */
+export const stackTheme = (theme: HubTheme | null, index: number): HubTheme => theme ?? THEMES[index % THEMES.length];

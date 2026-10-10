@@ -68,6 +68,15 @@ pub fn start(repo_root: &Path) {
     });
 }
 
+/// The day's statistics, sent as the studio closes instead of at its next start; at most a few seconds.
+pub fn flush_on_exit() {
+    let Some(hub) = HUB.get().and_then(Option::as_ref).cloned() else { return };
+    match tokio::runtime::Builder::new_current_thread().enable_all().build() {
+        Ok(runtime) => runtime.block_on(hub.flush(std::time::Duration::from_secs(8))),
+        Err(e) => eprintln!("[ERROR] the statistics were not sent at exit, no runtime: {e}"),
+    }
+}
+
 /// The hub's routes for the window (`/v1/hub/*`); none when the hub did not start.
 pub fn router<S: Clone + Send + Sync + 'static>() -> axum::Router<S> {
     HUB.get().and_then(Option::as_ref).map(studio_hub_client::Hub::router).unwrap_or_default()

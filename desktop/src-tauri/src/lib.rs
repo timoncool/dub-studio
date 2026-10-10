@@ -147,17 +147,25 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             _ => return, // нет апдейта или ошибка сети -> тихо
         };
         let ver = update.version.clone();
+        // the window tells its language a moment after it loads; the question waits for it
+        let _ = tauri::async_runtime::spawn_blocking(|| {
+            for _ in 0..100 {
+                if dub_server::i18n::reported() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        })
+        .await;
         if !install_in_place {
             let open = app
                 .dialog()
-                .message(format!(
-                    "Доступна новая версия {ver}. Открыть страницу загрузки?"
-                ))
-                .title("Обновление Dub Studio")
+                .message(dub_server::i18n::text("update-open-page", &[("version", ver.clone())]))
+                .title(dub_server::i18n::text("update-title", &[]))
                 .kind(MessageDialogKind::Info)
                 .buttons(MessageDialogButtons::OkCancelCustom(
-                    "Открыть".into(),
-                    "Позже".into(),
+                    dub_server::i18n::text("update-button-open", &[]),
+                    dub_server::i18n::text("update-button-later", &[]),
                 ))
                 .blocking_show();
             if open {
@@ -169,8 +177,8 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
                 .spawn();
                 if let Err(e) = opened {
                     app.dialog()
-                        .message(format!("Не удалось открыть {RELEASES_URL}: {e}"))
-                        .title("Обновление Dub Studio")
+                        .message(dub_server::i18n::text("update-open-failed", &[("url", RELEASES_URL.to_string()), ("error", e.to_string())]))
+                        .title(dub_server::i18n::text("update-title", &[]))
                         .kind(MessageDialogKind::Error)
                         .blocking_show();
                 }
@@ -179,14 +187,12 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
         }
         let yes = app
             .dialog()
-            .message(format!(
-                "Доступна новая версия {ver}. Обновить сейчас? Приложение перезапустится."
-            ))
-            .title("Обновление Dub Studio")
+            .message(dub_server::i18n::text("update-install-now", &[("version", ver.clone())]))
+            .title(dub_server::i18n::text("update-title", &[]))
             .kind(MessageDialogKind::Info)
             .buttons(MessageDialogButtons::OkCancelCustom(
-                "Обновить".into(),
-                "Позже".into(),
+                dub_server::i18n::text("update-button-install", &[]),
+                dub_server::i18n::text("update-button-later", &[]),
             ))
             .blocking_show();
         if !yes {
@@ -198,8 +204,8 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             }
             Err(e) => {
                 app.dialog()
-                    .message(format!("Не удалось обновить: {e}"))
-                    .title("Обновление Dub Studio")
+                    .message(dub_server::i18n::text("update-failed", &[("error", e.to_string())]))
+                    .title(dub_server::i18n::text("update-title", &[]))
                     .kind(MessageDialogKind::Error)
                     .blocking_show();
             }
@@ -324,6 +330,11 @@ pub fn run() {
             spawn_update_check(app.handle().clone(), layout::is_portable());
             Ok(())
         })
-        .run(context)
-        .expect("ошибка запуска Tauri");
+        .build(context)
+        .expect("ошибка запуска Tauri")
+        .run(|_, event| {
+            if let tauri::RunEvent::Exit = event {
+                dub_server::flush_hub_on_exit();
+            }
+        });
 }

@@ -58,6 +58,7 @@ import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
 import { SourceText, TtsSkipNote } from "./components/SegmentText";
 import { hubChanged, setTelemetry, useHubState } from "./lib/studioHub";
+import { HubBars } from "./components/HubBars";
 import HubTelemetryPreview from "./components/HubTelemetryPreview";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -4789,6 +4790,7 @@ export default function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="h-full flex flex-col">
+      {hub && stage !== "setup" && <HubBars items={hub.items} />}
       <TopBar />
       {stage === "boot" && <div className="flex-1 grid place-items-center"><Loader2 size={22} className="animate-spin text-[var(--color-muted)]" /></div>}
       {stage === "offline" && <ServerOffline />}

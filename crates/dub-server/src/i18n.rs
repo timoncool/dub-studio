@@ -40,6 +40,11 @@ pub fn language() -> LanguageIdentifier {
     CURRENT.read().ok().and_then(|current| current.clone()).unwrap_or_else(|| "en".parse().expect("a language tag"))
 }
 
+/// Whether the window has told its language yet.
+pub fn reported() -> bool {
+    CURRENT.read().is_ok_and(|current| current.is_some())
+}
+
 pub fn set_language(code: &str) -> Result<(), String> {
     if !LANGUAGES.contains(&code) {
         return Err(format!("unknown interface language {code}; one of {}", LANGUAGES.join(", ")));
@@ -54,6 +59,11 @@ pub fn set_language(code: &str) -> Result<(), String> {
 pub fn tr(key: &str, args: Vec<(&'static str, FluentValue<'static>)>) -> String {
     let map: HashMap<Cow<'static, str>, FluentValue<'static>> = args.into_iter().map(|(name, value)| (Cow::Borrowed(name), value)).collect();
     LOCALES.try_lookup_with_args(&language(), key, &map).unwrap_or_else(|| key.to_string())
+}
+
+/// A message for a caller outside this crate (the desktop shell), with text arguments.
+pub fn text(key: &str, args: &[(&'static str, String)]) -> String {
+    tr(key, args.iter().map(|(name, value)| (*name, FluentValue::from(value.clone()))).collect())
 }
 
 /// `t!("key")` or `t!("key", name = value, ...)`: a message of the catalogues in the current language.
