@@ -1540,7 +1540,7 @@ dependencies = [
 
 [[package]]
 name = "dub-studio-desktop"
-version = "4.2.0"
+version = "4.2.1"
 dependencies = [
  "dub-server",
  "rfd 0.17.2",
