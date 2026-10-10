@@ -129,3 +129,18 @@ fn models_in_use(mroot: &Path, stages: &[&str]) -> Vec<String> {
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::models_in_use;
+
+    #[test]
+    fn a_job_names_only_the_stages_it_ran() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("active.json"), r#"{"tts_provider":"local","tts":"q8_0","llm_provider":"local","mt":"e4b","sep":"fv6"}"#).unwrap();
+        let retranslate = models_in_use(dir.path(), &["llm"]);
+        assert_eq!(retranslate, ["llm:gemma-e4b"]);
+        let render = models_in_use(dir.path(), &["tts", "sep"]);
+        assert_eq!(render, ["tts:higgs-q8_0", "sep:roformer-fv6"]);
+    }
+}
