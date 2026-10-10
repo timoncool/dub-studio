@@ -202,6 +202,8 @@ A tela do primeiro início tem uma caixa **Enviar estatísticas de uso anônimas
 - o app e a sua versão, o nome e a versão do sistema, o idioma da janela;
 - a placa de vídeo: fabricante, faixa de memória de vídeo (até 8, 12, 16, 24+ GB) e se o CUDA funciona;
 - quantas tarefas (análise, dublagem, render, exportação, download e as demais) terminaram, falharam ou foram canceladas no dia.
+- os modelos de cada etapa (voz, reconhecimento, tradução, análise de quadros, separação) e quantas tarefas os usaram;
+- por que uma tarefa falhou, numa linha da qual caminhos, nomes, links e tudo entre aspas são removidos neste computador antes do envio; o servidor guarda esses motivos por 30 dias.
 
 Nunca: vídeos, transcrições, traduções, vozes, nomes de arquivos ou caminhos, nada pessoal. O servidor guarda o país que a Cloudflare informa para a conexão, não o endereço IP. `DO_NOT_TRACK=1` ou `STUDIO_TELEMETRY=0` no ambiente desligam as estatísticas por completo: não existe id e nada é contado.
 

@@ -1339,7 +1339,7 @@
     "provider_google": "Google · directement"
   },
   "hub": {
-    "why": "Combien de personnes utilisent Dub Studio et pour quoi faire aide à décider de la suite. Rien de personnel : ni vidéos, ni textes, ni voix, ni noms de fichiers — seulement le nombre de tâches, la version et la classe de carte graphique.",
+    "why": "Savoir combien de personnes utilisent Dub Studio et pour quoi aide à décider de la suite. Rien de personnel : ni vidéos, ni textes, ni voix, ni noms de fichiers — seulement des compteurs de tâches, les modèles de chaque étape, la version, la classe de carte graphique et la raison d’un échec, chemins, noms et texte entre guillemets retirés sur cet ordinateur avant l’envoi.",
     "checkbox": "Envoyer des statistiques d'utilisation anonymes",
     "what": "Ce qui est envoyé",
     "byEnv": "Désactivées par DO_NOT_TRACK ou STUDIO_TELEMETRY dans l'environnement.",

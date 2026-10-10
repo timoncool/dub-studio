@@ -16,7 +16,7 @@
 //!   • модели — прямые файлы HF (higgs-q8_0/*, gemma-4 + mmproj, parakeet-tdt int8, nemotron 3
 //!     diarization, roformer voc_fv6-Q8_0);
 //!   • сайдкары/движки — zip-релизы GitHub (BSRoformer.cpp v0.1.0, llama.cpp b11146 win-cuda-13.4,
-//!     onnxruntime 1.28.2, ffmpeg BtbN, deno 2.9.7) + audiocpp_engine.dll (HF) + yt-dlp.exe 2026.08.19;
+//!     onnxruntime 1.28.2, ffmpeg BtbN, deno 2.9.7) + audiocpp_engine.dll (своя сборка с sm_75, GitHub timoncool/Higgs-Ultimate) + yt-dlp.exe 2026.08.19;
 //!   • CUDA-runtime — PyPI-wheel'ы NVIDIA (cudart 13.4.92 / cublas 13.8.0.4 / cuDNN 9.27.0.42) + redist cuFFT
 //!     12.4.0.43, распаковка *.dll плоско;
 //!   • VC++ runtime + OCR-модели — БАНДЛ (кладутся в релиз рядом с exe, как VC++ в Higgs); не качаются,
@@ -200,11 +200,11 @@ mod platform {
     // yt-dlp.exe; вики yt-dlp EJS: deno не ниже 2.3.0).
     const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-pc-windows-msvc.zip";
     pub const HIGGS_ENGINE: Parts = Parts {
-        size: 71_727_104,
+        size: 129_390_080,
         files: &[
-            FileSpec { url: "https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/engines/audiocpp_engine.dll", dest_rel: "models/higgs-engine/audiocpp_engine.dll", size: 71_727_104, sha256: "25dcf30acf54bdee059810f94c5e46ea9c59022a0b53f134d8a422291188449c", extract: Extract::None },
+            FileSpec { url: "https://github.com/timoncool/Higgs-Ultimate/releases/download/engine-0.2.3-turing/audiocpp_engine.dll", dest_rel: "models/higgs-engine/audiocpp_engine.dll", size: 129_390_080, sha256: "c3608613bd54bdd41c85cc90412d4add67b928b07b32be24f26d91cb9626f46d", extract: Extract::None },
         ],
-        markers: &[Marker { rel: "models/higgs-engine/audiocpp_engine.dll", expect: 71_727_104 }],
+        markers: &[Marker { rel: "models/higgs-engine/audiocpp_engine.dll", expect: 129_390_080 }],
     };
 
     pub const WHISPER_ENGINE: Parts = Parts {

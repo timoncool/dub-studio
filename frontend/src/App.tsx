@@ -4262,12 +4262,12 @@ function FirstRun() {
               <Check size={16} />{t("setup.continue")}</button>
           )}
         </div>
-        <div className="mt-4 text-[13px] text-[var(--color-muted)]">
+        <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-[var(--color-muted)]">
           <label className="inline-flex items-center gap-2 cursor-pointer">
             <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={telemetryOn} onChange={(e) => { setTelemetryOn(e.target.checked); setTelemetry(e.target.checked, true).catch((err: Error) => console.warn("[hub] the statistics choice was not saved:", err.message)); }} />
             {t("hub.checkbox")}
           </label>
-          <button type="button" onClick={() => setTelemetryPreview(true)} className="ml-2 underline underline-offset-2 hover:text-[var(--color-text)]">{t("hub.what")}</button>
+          <button type="button" onClick={() => setTelemetryPreview(true)} className="text-[13px] leading-5 text-[var(--color-muted)] underline underline-offset-2 hover:text-[var(--color-text)]">{t("hub.what")}</button>
           {telemetryPreview && <HubTelemetryPreview onClose={() => setTelemetryPreview(false)} />}
         </div>
       </motion.div>

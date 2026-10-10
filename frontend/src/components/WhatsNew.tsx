@@ -1,13 +1,13 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X, ExternalLink } from "lucide-react";
 import newsData from "../data/news.json";
-import { useHubState, type HubState } from "../lib/studioHub";
+import { reportNotice, useHubState, type HubState } from "../lib/studioHub";
 import changelogRaw from "../../../CHANGELOG.md?raw";
 
 type Localized = Record<string, string>;
-interface NewsItem { id: string; date: string; release?: string; title: Localized; body: Localized }
+interface NewsItem { id: string; date: string; release?: string; releaseButton?: string; title: Localized; body: Localized }
 interface ChangelogSection { key: string; title: string; items: string[] }
 interface ChangelogRelease { heading: string; unreleased: boolean; version: string; date: string; sections: ChangelogSection[] }
 
@@ -20,11 +20,12 @@ function useNews(lang: string): NewsItem[] {
     .filter((item) => item.kind === "news")
     .map((item) => {
       const local = item.content[lang] ?? item.content.en ?? Object.values(item.content)[0];
-      const link = local?.buttons.find((b) => b.action === "url" && b.url)?.url;
+      const index = local?.buttons.findIndex((b) => b.action === "url" && b.url) ?? -1;
       return {
         id: `hub:${item.id}`,
         date: item.date ?? "",
-        release: link,
+        release: index >= 0 ? local?.buttons[index].url : undefined,
+        releaseButton: index >= 0 ? `b${index}` : undefined,
         title: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.title])),
         body: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.body])),
       };
@@ -107,11 +108,22 @@ function NewsBody({ text }: { text: string }) {
 
 function NewsTab({ lang, news: NEWS }: { lang: string; news: NewsItem[] }) {
   const { t } = useTranslation();
+  // the hub's news count as its notices do: seen once a launch, clicks by button or link
+  const hubIds = NEWS.filter((n) => n.id.startsWith("hub:")).map((n) => n.id.slice(4)).join(",");
+  useEffect(() => {
+    for (const id of hubIds ? hubIds.split(",") : []) reportNotice(id, "shown").catch((e: Error) => console.warn("[hub] news shown not recorded:", e.message));
+  }, [hubIds]);
   if (NEWS.length === 0) return <p className="text-[13px] text-[var(--color-muted)] py-6 text-center">{t("news.empty")}</p>;
   return (
     <div className="space-y-3">
       {NEWS.map((n) => (
-        <article key={n.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3.5">
+        <article key={n.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3.5"
+          onClickCapture={(e) => {
+            const anchor = (e.target as HTMLElement).closest("a");
+            if (!anchor || !n.id.startsWith("hub:")) return;
+            const button = anchor.getAttribute("href") === n.release && n.releaseButton ? n.releaseButton : "link";
+            reportNotice(n.id.slice(4), "clicked", button).catch((err: Error) => console.warn("[hub] news click not recorded:", err.message));
+          }}>
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-[14px] font-semibold">{pick(n.title, lang)}</h3>
             {n.date && <time className="text-[11px] text-[var(--color-muted)] shrink-0 tabnum" dateTime={n.date}>{new Date(n.date).toLocaleDateString(lang)}</time>}

@@ -1321,7 +1321,7 @@
     "provider_google": "Google · direct"
   },
   "hub": {
-    "why": "How many people use Dub Studio and what for helps decide what to work on next. Nothing personal: no videos, texts, voices or file names — only counts of jobs, the version and the graphics card class.",
+    "why": "How many people use Dub Studio and what for helps decide what to work on next. Nothing personal: no videos, texts, voices or file names — only counts of jobs, the models each stage used, the version, the graphics card class and why a job failed, with paths, names and quoted text cut out on this computer before it is sent.",
     "checkbox": "Send anonymous usage statistics",
     "what": "What is sent",
     "byEnv": "Turned off by DO_NOT_TRACK or STUDIO_TELEMETRY in the environment.",

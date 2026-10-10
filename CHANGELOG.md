@@ -4,6 +4,20 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## 2026-10-10 — 4.1.1
+
+### Fixed
+
+- **Statistics name the models of each stage** (voice, recognition, translation, frame analysis, separation)
+  with how many jobs used them, and a failed job reports its reason, with paths, names, links and quoted text
+  cut out on this computer before it leaves.
+- **Local voice on every NVIDIA card from Turing on.** The Higgs engine was built for RTX 30, 40 and 50
+  only, and on a GTX 16 or RTX 20 card (and on A100 or H100) voicing stopped as the model loaded. The
+  engine is now built from its source for Turing, Ampere, Ada, Hopper and Blackwell alike; the setup
+  screen offers the new engine once, in place of the old one.
+- On the first-run screen the statistics checkbox, its label and What is sent stand on one line in one
+  colour; the link sat lower than the label and in another colour.
+
 ## 2026-10-09 — 4.1.0
 
 ### Added

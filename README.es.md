@@ -202,6 +202,8 @@ La pantalla del primer arranque tiene una casilla **Enviar estadísticas de uso 
 - la app y su versión, el nombre y la versión del sistema, el idioma de la ventana;
 - la tarjeta gráfica: fabricante, rango de memoria de vídeo (hasta 8, 12, 16, 24+ GB) y si CUDA funciona;
 - cuántas tareas (análisis, doblaje, render, exportación, descarga y las demás) terminaron, fallaron o se cancelaron ese día.
+- los modelos de cada etapa (voz, reconocimiento, traducción, análisis de fotogramas, separación) y cuántas tareas los usaron;
+- por qué falló una tarea, en una línea de la que se quitan en este equipo rutas, nombres, enlaces y todo lo que va entre comillas antes de enviarla; el servidor guarda estos motivos 30 días.
 
 Nunca: vídeos, transcripciones, traducciones, voces, nombres de archivo o rutas, nada personal. El servidor guarda el país que Cloudflare indica para la conexión, no la dirección IP. `DO_NOT_TRACK=1` o `STUDIO_TELEMETRY=0` en el entorno apagan las estadísticas por completo: no existe id y no se cuenta nada.
 
