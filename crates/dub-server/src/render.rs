@@ -562,8 +562,18 @@ fn voice_clone_guarded(
     }
 }
 
-/// Загрузить локальный Higgs (DLL + модель выбранного кванта).
 fn load_higgs(paths: &RenderPaths) -> Result<Arc<AudiocppEngine>, String> {
+    if paths.higgs_backend == "cuda" {
+        let gpu = crate::hw::gpu_report();
+        if !gpu.cuda13_ok {
+            let card = gpu.summary().unwrap_or_else(|| "-".to_string());
+            return Err(match gpu.reason {
+                Some("gpu_old") => t!("render-higgs-gpu-old", card = card, min = gpu.min_compute.clone()),
+                Some("driver_old") => t!("render-higgs-driver-old", card = card, min = gpu.min_driver),
+                _ => t!("render-higgs-no-gpu", card = card),
+            });
+        }
+    }
     let e = Arc::new(AudiocppEngine::load(&paths.higgs_dll).map_err(|e| t!("render-higgs-load-failed", error = e.localize()))?,
     );
     e.load_model(
@@ -1126,6 +1136,7 @@ fn build_dub_pass(
     // Обрезка тишины TTS: фраз с обрезкой, снято секунд (из них паузами), фраз, чьё ускорение вернулось в
     // кап сегмента только благодаря обрезке.
     let (mut trim_phrases, mut trim_secs, mut trim_pause_secs, mut trim_into_cap) = (0usize, 0.0f64, 0.0f64, 0usize);
+    let (mut lead_lines, mut lead_secs) = (0usize, 0.0f64);
     // Multi-take: генерировать 3 дубля и выбирать лучший по близости к target-длительности.
     let multitake_on = crate::models::load_selection(&paths.models_root)
         .get("multitake")
@@ -1739,6 +1750,17 @@ fn build_dub_pass(
             }
             (t.path, t.after, t.before)
         };
+        // «Начинать в тишине»: тишина перед репликой есть, только пока дубль не отстал от неё.
+        let free = if at > s.start { 0.0 } else { crate::fitplan::silence_before(proj, fi).min(s.start - cursor) };
+        let lead = if kept_original { 0.0 } else { dub_core::fit::lead(raw_dur, &slot, free, &fit_rules) };
+        let (at, slot) = if lead > 0.0 {
+            lead_lines += 1;
+            lead_secs += lead;
+            (at - lead, dub_core::fit::slot(s.start - lead, s.end, at - lead, nxt, &fit_rules))
+        } else {
+            (at, slot)
+        };
+        let (target_slot, seg_cap) = (slot.target, slot.cap);
         let needed = dub_core::fit::needed(raw_dur, target_slot);
         let eff_cap = dub_core::fit::eff_cap(seg_cap, needed, drift, &fit_rules);
         if drift > dub_core::fit::DRIFT_ESCALATE && eff_cap > seg_cap {
@@ -1790,6 +1812,9 @@ fn build_dub_pass(
             qc_takes.push(take_n);
         }
     }
+    if lead_lines > 0 {
+        emit(progress, "mix", &t!("render-lead-into-silence", lines = lead_lines, seconds = format!("{lead_secs:.1}")));
+    }
     if trim_phrases > 0 {
         emit(progress, "mix", &t!(
             "render-silence-trimmed",
@@ -1820,9 +1845,10 @@ fn build_dub_pass(
     if run_qc_asr && !qc_list.is_empty() {
         emit(progress, "tts", &t!("render-qc-start", count = qc_list.len()),
         );
-        let mut qc_asr = crate::models::build_engine(&paths.asr);
+        // Higgs и распознаватель не держатся в видеопамяти одновременно.
+        drop(engine.take());
         let files: Vec<PathBuf> = qc_list.iter().map(|q| q.2.clone()).collect();
-        let heard = qc_asr.transcribe_many(&files, &proj.tgt_lang);
+        let heard = crate::models::build_engine(&paths.asr).transcribe_many(&files, &proj.tgt_lang);
         // Сходство QC — в дубль истории, который проверялся.
         let qc_note = |fi: usize, n: Option<u32>, sim: f64| -> Result<(), String> {
             let Some(n) = n else { return Ok(()) };
@@ -1849,6 +1875,10 @@ fn build_dub_pass(
         if !bad_idx.is_empty() {
             emit(progress, "tts", &t!("render-qc-mismatch", count = bad_idx.len()),
             );
+            if engine.is_none() {
+                emit(progress, "tts", &t!("render-loading-higgs"));
+                *engine = Some(load_higgs(paths)?);
+            }
             for &i in &bad_idx {
                 crate::jobs::check_cancelled()?;
                 let (fi, pidx, raw, tgtq, spk, room, fitp) = &qc_list[i];
@@ -1924,7 +1954,8 @@ fn build_dub_pass(
             }
             // финальная сверка пересинтезированных — честный отчёт в журнал
             let files2: Vec<PathBuf> = bad_idx.iter().map(|&i| qc_list[i].2.clone()).collect();
-            let heard2 = qc_asr.transcribe_many(&files2, &proj.tgt_lang);
+            drop(engine.take());
+            let heard2 = crate::models::build_engine(&paths.asr).transcribe_many(&files2, &proj.tgt_lang);
             let mut still = 0usize;
             let mut unheard2: Vec<String> = Vec::new();
             for (j, &i) in bad_idx.iter().enumerate() {

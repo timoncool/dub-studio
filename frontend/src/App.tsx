@@ -287,7 +287,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
               if (sv?.installed) api.selectModel(id).then(loadCap).catch((er) => setErr(er instanceof Error ? er.message : String(er)));
             }}
             className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md px-2 py-1 text-[11px] mono focus:border-[var(--color-accent)] focus:outline-none">
-            {variants.map((v) => <option key={v.id} value={v.id}>{quant(v)}{v.installed ? " ✓" : ""} · {fmtBytes(v.size)}{v.vram ? ` / ${fmtBytes(v.vram)} VRAM` : ""}</option>)}
+            {variants.map((v) => <option key={v.id} value={v.id} disabled={v.fitsVram === false && !v.installed}>{quant(v)}{v.installed ? " ✓" : ""} · {fmtBytes(v.size)}{v.vram ? ` / ${fmtBytes(v.vram)} VRAM` : ""}{v.fitsVram === false ? ` · ${t("setup.noVramShort")}` : ""}</option>)}
           </select>
           {active ? (
             <span className="mono text-[11px] text-[var(--color-accent)] w-10 text-right">{Math.round(pct ?? 0)}%</span>
@@ -295,7 +295,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             <>
               <RemoveComponent c={c} disabled={!!prog} onDone={(s) => { adopt(s); loadCap(); }} onError={setErr} />
               <BrowseBtn id={c.id} />
-              <button onClick={() => dl([c.id])} disabled={!!prog} title={c.installed ? t("settings.redownload") : t("setup.downloadOne")}
+              <button onClick={() => dl([c.id])} disabled={!!prog || (c.fitsVram === false && !c.installed)} title={c.fitsVram === false && !c.installed ? t("setup.noVram") : c.installed ? t("settings.redownload") : t("setup.downloadOne")}
                 className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12px] border border-[var(--color-border)] text-[var(--color-accent-2)] hover:border-[var(--color-accent)] disabled:opacity-40">
                 {c.installed ? <RefreshCw size={12} /> : <Download size={12} />}
               </button>
@@ -4165,7 +4165,7 @@ function FirstRun() {
                         <label key={c.id} className={`flex items-center gap-2.5 rounded-lg px-2 py-1.5 ${c.installed ? "" : "cursor-pointer hover:bg-[var(--color-surface-2)]"} ${checked && !c.installed ? "bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]" : ""}`}>
                           {c.installed
                             ? <span className="w-4 h-4 shrink-0 grid place-items-center text-[var(--color-accent)]"><Check size={15} strokeWidth={3} /></span>
-                            : <input type="radio" name={`grp-${group}`} checked={checked} onChange={() => pickOne(c.id, group)} disabled={busy} className="w-4 h-4 accent-[var(--color-accent)] shrink-0" />}
+                            : <input type="radio" name={`grp-${group}`} checked={checked} onChange={() => pickOne(c.id, group)} disabled={busy || c.fitsVram === false} className="w-4 h-4 accent-[var(--color-accent)] shrink-0" />}
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="text-[13px] truncate">{c.name}</span>
@@ -4175,6 +4175,7 @@ function FirstRun() {
                               {c.installed && <span className="text-[10px] text-[var(--color-accent)] shrink-0">{t("setup.installed")}</span>}
                             </div>
                             {ASR_VARIANT_I18N[c.id] && <div className="text-[11px] leading-snug text-[var(--color-muted)]">{t(ASR_VARIANT_I18N[c.id].hint)}</div>}
+                            {c.fitsVram === false && !c.installed && <div className="text-[11px] leading-snug text-[var(--color-warn)]">{t("setup.noVram")}</div>}
                             {pct != null && <div className="mt-1 h-1 rounded-full bg-[var(--color-surface-2)] overflow-hidden"><div className="h-full bg-[var(--color-accent)]" style={{ width: `${pct}%` }} /></div>}
                           </div>
                           <span className="mono text-[11px] text-[var(--color-muted)] shrink-0">{fmtBytes(c.size)}{c.vram ? ` · ${fmtBytes(c.vram)} VRAM` : ""}</span>
@@ -4183,6 +4184,7 @@ function FirstRun() {
                     })}
                   </div>
                   <div className="mt-1.5 text-[10px] text-[var(--color-muted)]">{t("setup.quantHint")}</div>
+                  {members.every((m) => m.fitsVram === false) && <div className="mt-1 text-[11px] leading-snug text-[var(--color-warn)]">{t("setup.noVramGroup")}</div>}
                 </div>
               );
             }

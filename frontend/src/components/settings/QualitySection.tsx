@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AudioLines, Captions, Clock, Mic2, Scissors, Sparkles, Star, Timer } from "lucide-react";
+import { AudioLines, Captions, Clock, Mic2, Rewind, Scissors, Sparkles, Star, Timer } from "lucide-react";
 import { api } from "../../lib/api";
 import SettingSwitch from "./SettingSwitch";
 import { useChanged } from "../editorBridge";
@@ -12,6 +12,7 @@ const VOICE = [
   { key: "qc_duration", icon: Clock, labelKey: "qc.duration.label", hintKey: "qc.duration.hint", tipKey: "qc.duration.tip", defaultOn: true },
   { key: "multitake", icon: Star, labelKey: "qc.multitake.label", hintKey: "qc.multitake.hint", tipKey: "qc.multitake.tip", defaultOn: false },
   { key: "speech_rate_on", icon: Sparkles, labelKey: "qc.speechRate.label", hintKey: "qc.speechRate.hint", tipKey: "qc.speechRate.tip", defaultOn: true },
+  { key: "lead_into_silence", icon: Rewind, labelKey: "qc.leadIntoSilence.label", hintKey: "qc.leadIntoSilence.hint", tipKey: "qc.leadIntoSilence.tip", defaultOn: false },
   { key: "auto_shorten", icon: Scissors, labelKey: "qc.autoShorten.label", hintKey: "qc.autoShorten.hint", tipKey: "qc.autoShorten.tip", defaultOn: true },
   { key: "emo_ref_on", icon: Mic2, labelKey: "qc.emoRef.label", hintKey: "qc.emoRef.hint", tipKey: "qc.emoRef.tip", defaultOn: true },
   { key: "breath_on", icon: AudioLines, labelKey: "qc.breath.label", hintKey: "qc.breath.hint", tipKey: "qc.breath.tip", defaultOn: false },

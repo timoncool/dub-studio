@@ -563,6 +563,9 @@
     "default": "padrão",
     "alt": "ou",
     "quantHint": "Uma variante por modelo. Quant maior = melhor qualidade, mais VRAM e disco; menor = mais leve.",
+    "noVram": "Não cabe na memória de vídeo desta placa, então não vale a pena baixá-lo.",
+    "noVramShort": "não cabe na VRAM",
+    "noVramGroup": "Nenhuma variante cabe na memória de vídeo desta placa: rode esta etapa em um servidor ou na nuvem, com a predefinição acima.",
     "cloudHint": "Escolheu <b>Nuvem</b> e inseriu a chave? Os pesados modelos locais abaixo podem ser dispensados — a tradução e a voz seguirão pelo OpenRouter."
   },
   "batch": {
@@ -881,6 +884,11 @@
       "tip": "Adapta dinamicamente o ritmo de fala da rede neural ao tamanho do texto e ao intervalo de tempo disponível",
       "label": "Ritmo de fala dinâmico (Speech Rate TTS)",
       "hint": "adapta a velocidade de fala ao tamanho do texto na janela"
+    },
+    "leadIntoSilence": {
+      "tip": "Quando uma fala dublada é mais longa que o seu espaço e há silêncio antes dela, ela começa antes — até um segundo — e mantém o ritmo em vez de ser acelerada. Termina onde termina a original.",
+      "label": "Começar no silêncio",
+      "hint": "uma fala que não cabe começa antes, na pausa anterior"
     },
     "emoRef": {
       "tip": "Transfere emoção, entonação e interpretação diretamente do áudio original da cena",

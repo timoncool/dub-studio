@@ -563,6 +563,9 @@
     "default": "par défaut",
     "alt": "ou",
     "quantHint": "Une variante par modèle. Quant plus élevé = meilleure qualité, plus de VRAM et disque ; plus bas = plus léger.",
+    "noVram": "Ne tiendra pas dans la mémoire vidéo de cette carte : inutile de le télécharger.",
+    "noVramShort": "ne tient pas en VRAM",
+    "noVramGroup": "Aucune variante ne tient dans la mémoire vidéo de cette carte : faites tourner cette étape sur un serveur ou dans le cloud, avec le préréglage ci-dessus.",
     "cloudHint": "Vous avez choisi <b>Cloud</b> et saisi la clé ? Vous pouvez ne pas télécharger les lourds modèles locaux ci-dessous — la traduction et la voix passeront par OpenRouter."
   },
   "batch": {
@@ -881,6 +884,11 @@
       "tip": "Adapte dynamiquement le rythme de parole du modèle à la longueur du texte et à la plage de temps disponible",
       "label": "Débit de parole dynamique (Speech Rate TTS)",
       "hint": "adapte la vitesse de parole à la longueur du texte dans la fenêtre"
+    },
+    "leadIntoSilence": {
+      "tip": "Quand une réplique doublée dépasse son créneau et qu’il y a du silence avant, elle commence plus tôt — jusqu’à une seconde — et garde son débit au lieu d’être accélérée. Elle finit là où finit l’originale.",
+      "label": "Démarrer dans le silence",
+      "hint": "une réplique trop longue commence plus tôt, dans la pause qui la précède"
     },
     "emoRef": {
       "tip": "Transfère l'émotion, l'intonation et le jeu directement depuis l'audio original de la scène",

@@ -572,6 +572,9 @@
     "default": "default",
     "alt": "or",
     "quantHint": "One variant per model. Higher quant = better quality, more VRAM and disk; lower = lighter.",
+    "noVram": "Will not fit this card's video memory, so there is no point downloading it.",
+    "noVramShort": "won't fit in VRAM",
+    "noVramGroup": "No variant fits this card's video memory: run this stage on a server or in the cloud, with the preset above.",
     "download": "Download all",
     "downloadOne": "Download",
     "cancel": "Cancel",
@@ -870,6 +873,11 @@
       "tip": "Dynamically adapts the neural model's speaking pace to the text length and the available time slot",
       "label": "Dynamic speech rate (Speech Rate TTS)",
       "hint": "adapts the speaking speed to the text length in the window"
+    },
+    "leadIntoSilence": {
+      "tip": "When a voiced line is longer than its slot and there is silence before it, it starts earlier - up to a second - and keeps its pace instead of being sped up. It still ends where the original does.",
+      "label": "Start in the silence",
+      "hint": "a line that does not fit starts earlier, in the pause before it"
     },
     "emoRef": {
       "tip": "Transfers emotion, intonation and delivery straight from the scene's original audio",

@@ -89,6 +89,18 @@ pub fn snapshot() -> HardwareSnapshot {
     snap
 }
 
+/// Видеопамять карты 0, байт (NVML); 0 — карты нет или NVML не ответил.
+pub fn total_vram() -> u64 {
+    let mut ng = nvml().lock().unwrap();
+    if ng.is_none() {
+        *ng = Nvml::init().ok();
+    }
+    ng.as_ref()
+        .and_then(|n| n.device_by_index(0).ok())
+        .and_then(|d| d.memory_info().ok())
+        .map_or(0, |m| m.total)
+}
+
 // ── Видеокарта против требований CUDA 13 ─────────────────────────────────────
 //
 // Весь GPU-стек (llama.cpp, Higgs, onnxruntime CUDA-EP, BSRoformer) собран под CUDA 13: ему нужен драйвер,

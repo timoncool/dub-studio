@@ -563,6 +563,9 @@
     "default": "predeterminado",
     "alt": "o",
     "quantHint": "Una variante por modelo. Quant más alto = mejor calidad, más VRAM y disco; más bajo = más ligero.",
+    "noVram": "No cabe en la memoria de vídeo de esta tarjeta, así que no tiene sentido descargarlo.",
+    "noVramShort": "no cabe en VRAM",
+    "noVramGroup": "Ninguna variante cabe en la memoria de vídeo de esta tarjeta: ejecuta esta etapa en un servidor o en la nube con el preajuste de arriba.",
     "cloudHint": "¿Has elegido <b>Nube</b> e introducido la clave? Puedes omitir la descarga de los pesados modelos locales de abajo: la traducción y el doblaje irán por OpenRouter."
   },
   "batch": {
@@ -881,6 +884,11 @@
       "tip": "Adapta dinámicamente el ritmo de habla de la red neuronal a la longitud del texto y al tramo de tiempo disponible",
       "label": "Ritmo de habla dinámico (Speech Rate TTS)",
       "hint": "adapta la velocidad de habla a la longitud del texto en la ventana"
+    },
+    "leadIntoSilence": {
+      "tip": "Si una frase doblada es más larga que su hueco y antes hay silencio, empieza antes —hasta un segundo— y mantiene su ritmo en lugar de acelerarse. Termina donde termina la original.",
+      "label": "Empezar en el silencio",
+      "hint": "una frase que no cabe empieza antes, en la pausa previa"
     },
     "emoRef": {
       "tip": "Transfiere la emoción, la entonación y la interpretación directamente del audio original de la escena",

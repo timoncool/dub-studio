@@ -542,6 +542,9 @@ render-synth-thread-ended = a thread de síntese terminou sem resultado
 render-synth-timeout = a síntese passou de { $seconds } s; cancelada, o motor está livre
 render-engine-stuck = a síntese não cancela após { $seconds } s; a renderização parou (o motor travou na DLL)
 render-higgs-load-failed = carregando a DLL do Higgs: { $error }
+render-higgs-gpu-old = A voz local Higgs não roda em { $card }: precisa de uma NVIDIA a partir da Turing (compute capability { $min }, GTX 16 e RTX 20 ou mais novas). Escolha a voz "Google · direto" ou "Pelo OpenRouter".
+render-higgs-driver-old = A voz local Higgs precisa do driver NVIDIA { $min } ou mais novo, e este é mais antigo: { $card }. Atualize o driver ou escolha a voz "Google · direto" ou "Pelo OpenRouter".
+render-higgs-no-gpu = A voz local Higgs precisa de uma placa NVIDIA com CUDA, e nenhuma foi encontrada ({ $card }). Escolha a voz "Google · direto" ou "Pelo OpenRouter".
 render-defect-runaway = descontrolada
 render-defect-cutoff = cortada
 render-defect-silence = silêncio
@@ -591,6 +594,7 @@ render-write-segment = gravando seg{ $line }: { $error }
 render-too-many-artifacts = TTS: artefatos de zumbido demais ({ $in_a_row } seguidos, { $retries } novas tentativas no total); regenerar não ajuda. O problema provavelmente é a máquina (modelo/VRAM) ou os clipes de referência de voz. Parado no segmento { $line }.
 render-multi-take = segmento { $line }: várias tomadas; escolhida a mais próxima do espaço (desvio de { $deviation } s)
 render-stretch-over-cap = segmento { $line }: precisa esticar x{ $needed } (espaço { $slot } s), limite x{ $cap }; o texto está mais rápido que o normal
+render-lead-into-silence = começar no silêncio: { $lines } falas começam antes, { $seconds } s no total, em vez de serem aceleradas
 render-silence-trimmed = corte de silêncio do TTS: { $seconds } s removidos de { $lines } { $lines ->
     [one] fala
    *[other] falas

@@ -1079,6 +1079,8 @@ pub struct ComponentStatus {
     pub external_url: Option<String>,
     /// Оценка VRAM при загрузке модели, байт (0 для движков/рантаймов без весов).
     pub vram: u64,
+    /// Влезает ли модель в видеопамять карты; None — модель без весов, карты нет или стадии идут на CPU.
+    pub fits_vram: Option<bool>,
 }
 
 /// Оценка VRAM загруженной модели по id (движки/рантаймы = 0). Грубо, для показа в UI.
@@ -1341,6 +1343,7 @@ fn status_with_system_dir(repo_root: &Path, c: &Component, system: Option<&Path>
         detail,
         external_url: c.external_url.map(|s| s.to_string()),
         vram: vram_estimate(c.id),
+        fits_vram: None,
     }
 }
 
@@ -1572,6 +1575,41 @@ pub struct SetupStatus {
     pub active: Option<crate::downloads::DownloadJob>,
 }
 
+/// Запас видеопамяти под рабочий стол и окна поверх оценки модели.
+const VRAM_HEADROOM: u64 = 512 * 1024 * 1024;
+
+/// Модели по видеопамяти карты (`total`, байт; 0 — неизвестна): каждой отмечено, влезет ли она, а в группе
+/// квантов одной модели (`higgs`, `higgs-q6_k`, ...) обязательным становится самый большой влезающий вариант.
+/// Группа, где не влезает ничего, готовность не держит: эта стадия идёт на сервере или в облаке.
+fn fit_to_vram(comps: &mut [ComponentStatus], total: u64) {
+    if total == 0 {
+        return;
+    }
+    let group = |id: &str| id.split('-').next().unwrap_or(id).to_string();
+    for c in comps.iter_mut().filter(|c| c.vram > 0) {
+        c.fits_vram = Some(c.vram + VRAM_HEADROOM <= total);
+    }
+    let groups: std::collections::BTreeSet<String> = comps
+        .iter()
+        .filter(|c| c.vram > 0 && c.requirement == Requirement::Required && c.fits_vram == Some(false))
+        .map(|c| group(&c.id))
+        .collect();
+    for g in groups {
+        let best = comps
+            .iter()
+            .filter(|c| c.vram > 0 && group(&c.id) == g && c.fits_vram == Some(true))
+            .max_by_key(|c| c.vram)
+            .map(|c| c.id.clone());
+        for c in comps.iter_mut().filter(|c| c.vram > 0 && group(&c.id) == g) {
+            if Some(&c.id) == best.as_ref() {
+                c.requirement = Requirement::Required;
+            } else if c.requirement == Requirement::Required {
+                c.requirement = Requirement::Optional;
+            }
+        }
+    }
+}
+
 pub fn setup_status(repo_root: &Path) -> SetupStatus {
     let mut comps: Vec<ComponentStatus> = manifest()
         .iter()
@@ -1610,6 +1648,9 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
         } else if c.id == "bsroformer-engine-cpu" {
             c.requirement = Requirement::Optional;
         }
+    }
+    if backend == "gpu" {
+        fit_to_vram(&mut comps, crate::hw::total_vram());
     }
     // ready = всё СКАЧИВАЕМОЕ/бандл-обязательное на месте. External (драйвер NVIDIA) НЕ гейтит: без NVIDIA
     // приложение работает на CPU/в облаке, а старый драйвер — предупреждение на экране, а не запертый вход.
@@ -2842,6 +2883,61 @@ mod tests {
 
     fn download_proxy(address: &str, kind: dub_llm::net::ProxyKind) -> Result<ureq::Proxy, String> {
         dl_proxy(&dub_llm::net::normalize(address, kind).map_err(|e| format!("{e:#}"))?)
+    }
+
+    fn model(id: &str, gb: f64, requirement: Requirement) -> ComponentStatus {
+        ComponentStatus {
+            id: id.into(),
+            name: id.into(),
+            purpose: String::new(),
+            requirement,
+            delivery: Delivery::Download,
+            size: 0,
+            installed: false,
+            bytes_on_disk: 0,
+            space_needed: 0,
+            missing: vec![],
+            detail: None,
+            external_url: None,
+            vram: (gb * 1024.0 * 1024.0 * 1024.0) as u64,
+            fits_vram: None,
+        }
+    }
+
+    fn models() -> Vec<ComponentStatus> {
+        vec![
+            model("higgs", 5.6, Requirement::Required),
+            model("higgs-q6_k", 5.1, Requirement::Optional),
+            model("higgs-q4_k_m", 4.2, Requirement::Optional),
+            model("gemma", 8.5, Requirement::Required),
+            model("gemma-q8_0", 14.0, Requirement::Optional),
+            model("higgs-engine", 0.0, Requirement::Required),
+        ]
+    }
+
+    fn required(comps: &[ComponentStatus]) -> Vec<&str> {
+        comps.iter().filter(|c| c.requirement == Requirement::Required).map(|c| c.id.as_str()).collect()
+    }
+
+    #[test]
+    fn a_small_card_gets_the_largest_quant_that_fits_and_no_model_it_cannot_hold() {
+        let mut comps = models();
+        fit_to_vram(&mut comps, 6 * 1024 * 1024 * 1024);
+        assert_eq!(required(&comps), ["higgs-q6_k", "higgs-engine"]);
+        assert_eq!(comps[0].fits_vram, Some(false));
+        assert_eq!(comps[1].fits_vram, Some(true));
+        assert_eq!(comps[3].fits_vram, Some(false));
+        assert_eq!(comps[5].fits_vram, None);
+
+        let mut comps = models();
+        fit_to_vram(&mut comps, 24 * 1024 * 1024 * 1024);
+        assert_eq!(required(&comps), ["higgs", "gemma", "higgs-engine"]);
+        assert!(comps.iter().filter(|c| c.vram > 0).all(|c| c.fits_vram == Some(true)));
+
+        let mut comps = models();
+        fit_to_vram(&mut comps, 0);
+        assert_eq!(required(&comps), ["higgs", "gemma", "higgs-engine"]);
+        assert!(comps.iter().all(|c| c.fits_vram.is_none()));
     }
 
     #[test]

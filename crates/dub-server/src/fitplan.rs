@@ -24,7 +24,12 @@ fn flag(sel: &Value, key: &str, default_on: bool) -> bool {
 /// Настройки подгонки из active.json — те же, что читает рендер.
 pub fn rules(models_root: &Path, max_stretch: f64) -> FitRules {
     let sel = crate::models::load_selection(models_root);
-    FitRules { speech_rate_on: flag(&sel, "speech_rate_on", true), qc_duration: flag(&sel, "qc_duration", true), max_stretch }
+    FitRules {
+        speech_rate_on: flag(&sel, "speech_rate_on", true),
+        qc_duration: flag(&sel, "qc_duration", true),
+        max_stretch,
+        lead_into_silence: flag(&sel, "lead_into_silence", false),
+    }
 }
 
 /// «Сокращать перевод, если фраза не влезла» (включено по умолчанию).
@@ -76,13 +81,20 @@ impl Calibration {
     }
 }
 
-/// Слот реплики `i` без учёта отставания дубля (прогноз до рендера): укладка с её начала, до начала
-/// следующей реплики или конца ролика.
-pub fn predicted_slot(proj: &Project, i: usize, rules: &FitRules) -> Slot {
+/// Слот реплики `i` без учёта отставания дубля (прогноз до рендера): укладка с её начала, раньше на `lead`
+/// секунд, до начала следующей реплики или конца ролика.
+pub fn predicted_slot(proj: &Project, i: usize, rules: &FitRules, lead: f64) -> Slot {
     let s = &proj.segments[i];
     let total = if proj.meta.duration > 0.0 { proj.meta.duration } else { s.end };
     let next = proj.segments.get(i + 1).map(|n| n.start).unwrap_or(total);
-    fit::slot(s.start, s.end, s.start, next, rules)
+    fit::slot(s.start - lead, s.end, s.start - lead, next, rules)
+}
+
+/// Тишина перед репликой `i` в исходнике: от конца самой поздней предыдущей реплики (или начала ролика) до её начала.
+pub fn silence_before(proj: &Project, i: usize) -> f64 {
+    let s = &proj.segments[i];
+    let heard_until = proj.segments[..i].iter().map(|p| p.end).fold(0.0, f64::max);
+    (s.start - heard_until).max(0.0)
 }
 
 fn r2(x: f64) -> f64 {
@@ -139,9 +151,10 @@ pub fn seg_fit(proj: &Project, i: usize, rules: &FitRules, calib: &Calibration, 
     if !voiced(s) {
         return None;
     }
-    let slot = predicted_slot(proj, i, rules);
     let (cps, calibrated) = calib.cps(&speaker_of(s));
     let est = fit::estimate(&s.tgt_text, cps);
+    let lead = fit::lead(est, &predicted_slot(proj, i, rules, 0.0), silence_before(proj, i), rules);
+    let slot = predicted_slot(proj, i, rules, lead);
     let fresh = timing.and_then(|t| t.fresh(s));
     Some(SegFit {
         est,
@@ -216,7 +229,7 @@ mod tests {
     use super::*;
     use crate::dub_timing::{FitRecord, SegTiming};
 
-    const RULES: FitRules = FitRules { speech_rate_on: false, qc_duration: true, max_stretch: 1.25 };
+    const RULES: FitRules = FitRules { speech_rate_on: false, qc_duration: true, max_stretch: 1.25, lead_into_silence: false };
 
     fn seg(id: &str, start: f64, end: f64, spk: &str, tgt: &str) -> Segment {
         Segment { id: id.into(), start, end, speaker: Some(spk.into()), tgt_text: tgt.into(), ..Default::default() }

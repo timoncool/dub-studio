@@ -4,6 +4,18 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## Unreleased — 4.2.0
+
+### Added
+
+- **Start in the silence** (Settings - Quality, off by default; [#16](https://github.com/timoncool/dub-studio/issues/16)): a voiced line longer than its slot starts earlier, up to a second, into the silence before it, and keeps its pace instead of being sped up; it still ends where the original does. Only silence counts: no earlier line of the original reaches into it and the dub is not running late. The editor's fit forecast takes the same shift, the render journal says how many lines started earlier, and agents set `lead_into_silence`.
+
+### Fixed
+
+- **Models a card cannot hold are not offered.** The first-run screen picks, for each model, the largest quant that fits the card's video memory (a 6 GB card gets Higgs Q6_K instead of Q8_0) and does not let you pick one that will not fit; Settings marks such variants and does not download them. When no variant of a model fits, that stage stops holding up the first run and the screen says to run it on a server or in the cloud.
+- **The local voice on a card it cannot run on** stops with a message naming the card and what it needs (an NVIDIA card from Turing on, driver 580 or newer) and pointing to the Google and OpenRouter voices, instead of failing inside the engine.
+- **The voice check after dubbing no longer holds two models in video memory.** With the check on, Higgs is unloaded before the recogniser listens and loaded again only to voice the lines that failed, so 6-8 GB cards no longer run out of memory there.
+
 ## 2026-10-10 — 4.1.1
 
 ### Fixed

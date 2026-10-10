@@ -542,6 +542,9 @@ render-synth-thread-ended = the synthesis thread ended without a result
 render-synth-timeout = synthesis timed out after >{ $seconds }s; cancelled, the engine is free
 render-engine-stuck = synthesis does not cancel after >{ $seconds }s; the render is stopped (the engine hung in the DLL)
 render-higgs-load-failed = loading the Higgs DLL: { $error }
+render-higgs-gpu-old = The local Higgs voice cannot run on { $card }: it needs an NVIDIA card from Turing on (compute capability { $min }, GTX 16 and RTX 20 or newer). Choose the "Google · direct" or "OpenRouter" voice.
+render-higgs-driver-old = The local Higgs voice needs NVIDIA driver { $min } or newer, and this one is older: { $card }. Update the driver or choose the "Google · direct" or "OpenRouter" voice.
+render-higgs-no-gpu = The local Higgs voice needs an NVIDIA card with CUDA, and none was found ({ $card }). Choose the "Google · direct" or "OpenRouter" voice.
 render-defect-runaway = runaway
 render-defect-cutoff = cut off
 render-defect-silence = silence
@@ -591,6 +594,10 @@ render-write-segment = writing seg{ $line }: { $error }
 render-too-many-artifacts = TTS: too many hum artifacts ({ $in_a_row } in a row, { $retries } retries in total); regenerating does not help. The problem is likely the setup (model/VRAM) or the voice reference clips. Stopped at segment { $line }.
 render-multi-take = segment { $line }: multi-take; the take closest to the slot is chosen ({ $deviation }s off)
 render-stretch-over-cap = segment { $line }: needs a stretch of x{ $needed } (slot { $slot }s), cap x{ $cap }; the text is faster than normal
+render-lead-into-silence = starting in the silence: { $lines } { $lines ->
+    [one] line starts
+   *[other] lines start
+} earlier, { $seconds } s in all, instead of being sped up
 render-silence-trimmed = trimming TTS silence: { $seconds } s cut from { $lines } { $lines ->
     [one] line
    *[other] lines
