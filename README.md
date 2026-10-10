@@ -192,21 +192,6 @@ Every stage has its own switch for the device. *Yes* means the code has that pat
 
 With no NVIDIA, voice, translation, vision and recognition can go to the cloud and separation and diarization to the CPU, but the burn-in has no CPU path, so such a machine is not a tested setup.
 
-## Anonymous statistics and news
-
-The app asks the author's server for news at start and every six hours. The request carries no id, so news arrive whatever you choose below: new items appear on top of What's new, and with no connection the app shows the news of its release.
-
-The first-run screen has a checkbox **Send anonymous usage statistics**, checked by default. The same switch is in Settings → Anonymous statistics, next to **What is sent** (the exact report of today) and **New install id**. While it is checked, the app sends once a day:
-
-- a random install id made on this computer, not tied to the hardware or an account; unchecking the box deletes it;
-- the app and its version, the OS name and version, the window language;
-- the graphics card as vendor, a video memory bucket (up to 8, 12, 16, 24+ GB) and whether CUDA works;
-- how many tasks (analysis, dubbing, render, export, download and the others) finished, failed or were cancelled that day.
-- the models each stage ran on (voice, recognition, translation, frame analysis, separation), with how many jobs used them;
-- why a job failed, as one line with paths, names, links and anything in quotes removed on this computer before it leaves; the server keeps these reasons 30 days.
-
-Never: videos, transcripts, translations, voices, file names or paths, anything personal. The server keeps the country Cloudflare reports for the connection, not the IP address. `DO_NOT_TRACK=1` or `STUDIO_TELEMETRY=0` in the environment turns statistics off entirely: no id exists and nothing is counted.
-
 ## Troubleshooting
 
 **The installer stops on WebView2.** The window of the app runs on Microsoft Edge WebView2, and the installer fetches it when Windows lacks it. On a blocked or unsteady connection, or on Windows 10 builds that refuse Microsoft's small bootstrapper (error 0x80040902), that fetch fails. Install WebView2 from Microsoft's standalone installer, [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701), then run the installer of Dub Studio again.
@@ -245,6 +230,21 @@ The .deb and the AppImage for Linux x86-64 are **experimental**. They come from 
 - Local voice needs an NVIDIA card from Turing on (GTX 16, RTX 20 and newer), as on Windows. The cloud voices work on any machine.
 - The NVIDIA driver (580 or newer), `libgomp1` and `libssl3` come from the system; models, engines and CUDA libraries the app downloads on first run into `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
 - Built by hand: the `Linux build (experimental)` workflow (`.github/workflows/release-linux.yml`) or `scripts/build-release-linux.sh <folder with models/ocr>`.
+
+## Anonymous statistics and news
+
+The app asks the author's server for news at start and then every hour. The request carries no id, so news arrive whatever you choose below: new items appear on top of What's new or as a strip across the top of the window, and with no connection the app shows the news of its release.
+
+The first-run screen has a checkbox **Send anonymous usage statistics**, checked by default. The same switch is in Settings → Anonymous statistics, next to **What is sent** (the exact report of today) and **New install id**. While it is checked, the app sends the day's report a minute after start, every six hours, two minutes after work ends and when it closes (a later report of the same day replaces the earlier one):
+
+- a random install id made on this computer, not tied to the hardware or an account; unchecking the box deletes it;
+- the app and its version, the OS name and version, the window language;
+- the graphics card as vendor, a video memory bucket (up to 8, 12, 16, 24+ GB) and whether CUDA works;
+- how many tasks (analysis, dubbing, render, export, download and the others) finished, failed or were cancelled that day.
+- the models each stage ran on (voice, recognition, translation, frame analysis, separation), with how many jobs used them;
+- why a job failed, as one line with paths, names, links and anything in quotes removed on this computer before it leaves; the server keeps these reasons 30 days.
+
+Never: videos, transcripts, translations, voices, file names or paths, anything personal. The server keeps the country Cloudflare reports for the connection, not the IP address. `DO_NOT_TRACK=1` or `STUDIO_TELEMETRY=0` in the environment turns statistics off entirely: no id exists and nothing is counted.
 
 ## More portable AI apps
 
