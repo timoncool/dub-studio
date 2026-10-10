@@ -102,6 +102,8 @@ export type Project = {
   };
   render: { burn_cq: number; blur_sigma: number; blur: boolean; codec: string };
   work_dir?: string | null;
+  /** Исходное имя файла (name.txt); meta.video — внутреннее source.*. */
+  source_name?: string;
 };
 // Вид, состояние и код ошибки джобы проекта: ровно ключи jobs.kind/state/error локалей (подписи в окне).
 export type JobKind = keyof typeof en.jobs.kind;

@@ -52,6 +52,13 @@ fn fatal(message: &str) {
         .show();
 }
 
+fn open_in_browser(app: &tauri::AppHandle, url: &tauri::Url) {
+    use tauri_plugin_opener::OpenerExt;
+    if let Err(e) = app.opener().open_url(url.as_str(), None::<&str>) {
+        eprintln!("[ERROR] ссылка {url} не открылась в браузере: {e}");
+    }
+}
+
 /// tauri-plugin-single-instance называет мьютекс и окно только по identifier, общему у установленной,
 /// портативной и дев-сборок: с ним дев-копия рядом с открытой установленной молча выходила бы, подняв
 /// старое окно. Замок нужен только релизной сборке на порту по умолчанию; дев-сборка и копия с явным
@@ -282,6 +289,7 @@ pub fn run() {
             // Иконка бандла для GUI-окна: без явной установки окно оставалось пустым в ALT+TAB/панели задач
             // (иконка висела на консольном окне). Ставим её на само GUI-окно.
             let icon = app.default_window_icon().cloned();
+            let (for_tabs, for_links) = (app.handle().clone(), app.handle().clone());
             let win = WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -294,6 +302,19 @@ pub fn run() {
             // Tauri v2 по умолчанию перехватывает OS-drop файлов -> HTML5 onDrop в дропзоне НЕ срабатывает
             // (юзеры жаловались «перетаскивание не работает»). Отключаем перехват -> webview сам ловит drop.
             .disable_drag_drop_handler()
+            // WebView2 молча глотает target="_blank" и window.open, если у окна нет обработчика новых окон.
+            .on_new_window(move |target, _features| {
+                open_in_browser(&for_tabs, &target);
+                tauri::webview::NewWindowResponse::Deny
+            })
+            .on_navigation(move |target| {
+                let own = target.host_str() == Some("127.0.0.1") && target.port() == Some(port);
+                if own || !matches!(target.scheme(), "http" | "https") {
+                    return true;
+                }
+                open_in_browser(&for_links, target);
+                false
+            })
             .build()?;
             // Иконка окна (ALT+TAB/таскбар) — ПОСЛЕ создания: не паникуем, если не выйдет, окно рабочее.
             if let Some(ic) = icon {

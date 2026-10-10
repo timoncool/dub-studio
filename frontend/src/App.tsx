@@ -2903,7 +2903,7 @@ function Editor() {
   }, [pid]);   // eslint-disable-line react-hooks/exhaustive-deps
   async function doExport() {
     const exId = `export-${pid}`;   // одна запись на проект (повторный экспорт заменяет её, а не плодит дубли)
-    const name = baseName(p.meta.video || pid);
+    const name = p.source_name || baseName(p.meta.video || pid);
     addExport({ id: exId, name, status: "rendering", msg: t("common.rendering"), pid });   // queue entry -> Files panel (no screen block)
     setRendering(true); pushActivity(`${t("export.proceed")}: ${name}`);
     try {
@@ -3386,7 +3386,7 @@ function Editor() {
                   placeholder={t("multilang.add")} noResults={t("voice.noMatch")} size="sm" className="w-full" />
                 <button disabled={exportLangs.length === 0}
                   onClick={() => {
-                    Object.assign(multiLangState, { sourcePid: pid, sourceName: p.meta.video || pid, langs: exportLangs });
+                    Object.assign(multiLangState, { sourcePid: pid, sourceName: p.source_name || baseName(p.meta.video || pid), langs: exportLangs });
                     setLangMenu(false); setStage("multilang");
                   }}
                   className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-[12px] font-semibold disabled:opacity-50 hover:brightness-105">
@@ -4666,7 +4666,7 @@ function TranscriptView() {
         <div className="px-3 py-2 flex items-center justify-between border-b border-[var(--color-border)]">
           <span className="text-[13px] font-medium flex items-center gap-2 min-w-0">
             <button onClick={() => setStage("empty")} title={t("batch.back")} className="shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)] inline-flex items-center gap-1"><ArrowRight size={14} className="rotate-180" /><span className="hidden sm:inline text-[12px]">{t("batch.back")}</span></button>
-            <FileText size={15} className="text-[var(--color-accent)] shrink-0" /><span className="truncate">{p.meta.video ? baseName(p.meta.video) : t("transcribe.title")}</span>
+            <FileText size={15} className="text-[var(--color-accent)] shrink-0" /><span className="truncate">{p.source_name || (p.meta.video ? baseName(p.meta.video) : t("transcribe.title"))}</span>
           </span>
           <span className="text-[11px] text-[var(--color-muted)] shrink-0">{t("transcribe.speakersCount", { count: speakers.length })}</span>
         </div>

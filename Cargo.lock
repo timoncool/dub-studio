@@ -988,6 +988,7 @@ dependencies = [
  "lzma-rust2",
  "mime_guess",
  "nvml-wrapper",
+ "percent-encoding",
  "regex",
  "reqwest 0.13.5",
  "rfd",

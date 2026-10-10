@@ -1737,18 +1737,7 @@ async fn list_projects(State(st): State<AppState>) -> Response {
                 .ok()
                 .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                 .map(|d| d.as_secs());
-            // Имя: исходный файл из name.txt (новые проекты), иначе basename meta.video (старые).
-            let video = std::fs::read_to_string(dir.join("name.txt"))
-                .ok()
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| {
-                    Path::new(&proj.meta.video)
-                        .file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or(proj.meta.video.as_str())
-                        .to_string()
-                });
+            let video = source_name(&dir, &proj.meta.video);
             let audio_only = proj.meta.width <= 0 || proj.meta.height <= 0;
             let done = dir.join("output.mp4").is_file()
                 || dir.join("output.mkv").is_file()
@@ -1818,9 +1807,22 @@ pub(crate) fn project_response(st: &AppState, dir: &Path, proj: &Project) -> Res
     let mut shown = proj.clone();
     tts_text::annotate(&mut shown);
     match fitplan::decorate(dir, &shown, &rules) {
-        Ok(v) => Json(v).into_response(),
+        Ok(mut v) => {
+            v["source_name"] = source_name(dir, &proj.meta.video).into();
+            Json(v).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     }
+}
+
+/// Имя, под которым пользователь знает проект: исходный файл из name.txt; у проектов до name.txt —
+/// имя из meta.video (там лежит внутреннее source.*).
+pub(crate) fn source_name(dir: &Path, video: &str) -> String {
+    std::fs::read_to_string(dir.join("name.txt"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| Path::new(video).file_name().and_then(|s| s.to_str()).unwrap_or(video).to_string())
 }
 
 // ─── DELETE /projects/{pid} — удалить проект (весь каталог workspace/<pid>) ───
@@ -2658,7 +2660,13 @@ async fn output(
     }
     let dl = q.get("dl").map(|v| v == "1").unwrap_or(false);
     let ext = f.extension().and_then(|s| s.to_str()).unwrap_or("mp4");
-    let filename = if dl { Some(format!("{pid}_dub.{ext}")) } else { None };
+    let filename = if dl {
+        let source = source_name(&dir, &st.load_project(&pid).map(|p| p.meta.video).unwrap_or_default());
+        let stem = Path::new(&source).file_stem().and_then(|s| s.to_str()).filter(|s| !s.is_empty()).unwrap_or(&pid);
+        Some(format!("{stem}_dub.{ext}"))
+    } else {
+        None
+    };
     serve_file_range(&f, req, filename).await
 }
 
@@ -2873,9 +2881,10 @@ async fn serve_file_range(
     match svc.oneshot(req).await {
         Ok(mut resp) => {
             if let Some(name) = download_name {
-                if let Ok(v) = axum::http::HeaderValue::from_str(&format!(
-                    "attachment; filename=\"{name}\""
-                )) {
+                // RFC 6266: filename — ASCII для старых клиентов, filename* — настоящее имя в UTF-8.
+                let ascii: String = name.chars().map(|c| if c.is_ascii_graphic() && c != '"' && c != '\\' || c == ' ' { c } else { '_' }).collect();
+                let utf8 = percent_encoding::utf8_percent_encode(&name, percent_encoding::NON_ALPHANUMERIC);
+                if let Ok(v) = axum::http::HeaderValue::from_str(&format!("attachment; filename=\"{ascii}\"; filename*=UTF-8''{utf8}")) {
                     resp.headers_mut().insert(axum::http::header::CONTENT_DISPOSITION, v);
                 }
             }

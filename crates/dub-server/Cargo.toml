@@ -32,6 +32,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 mime_guess = "2"
+percent-encoding = "2.3"
 # MCP: картинки кадров в ответе инструмента, заголовки =?base64?…?= и границы since/until в часовом поясе компьютера.
 base64 = "0.23"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }

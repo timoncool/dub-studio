@@ -90,7 +90,8 @@ export default function ProjectJobBar({ pid }: { pid: string }) {
         setLive({ stage: active.stage ?? "", msg: active.msg ?? "", ahead: active.position ?? null });
         // Экспорт, подхваченный окном, — та же запись в панели файлов, что у кнопки «Экспорт».
         const exportId = `export-${pid}`;
-        const exportName = fileName(useStore.getState().project?.meta.video || pid);
+        const project = useStore.getState().project;
+        const exportName = project?.source_name || fileName(project?.meta.video || pid);
         if (active.kind === "render") useStore.getState().addExport({ id: exportId, name: exportName, status: "rendering", msg: i18n.t("common.rendering"), pid });
         try {
           await api.watchJob(active.id, (e) => {
