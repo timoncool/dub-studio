@@ -28,7 +28,12 @@ jobs:
       - name: Build workspace
         run: cargo build --workspace
       - name: Install ffmpeg
-        run: choco install ffmpeg -y --no-progress
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
+      - name: ffmpeg is there
+        shell: bash
+        run: ffmpeg -hide_banner -version | head -n 1 && ffprobe -hide_banner -version | head -n 1
       - name: Test workspace
         shell: bash
         run: |

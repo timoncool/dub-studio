@@ -38,7 +38,9 @@ jobs:
             frontend/package-lock.json
             desktop/package-lock.json
       - name: Install ffmpeg
-        run: choco install ffmpeg -y --no-progress
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
 
       # models\higgs-engine and models\ocr are not in git. The VC++ runtime comes from the runner's Visual
       # Studio redistributable, the PP-OCR models from the installer of the last published release.
