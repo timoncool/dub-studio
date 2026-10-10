@@ -242,7 +242,7 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 Сборки для Linux x86-64 (.deb и AppImage) — **экспериментальные**. Они собраны из того же кода с Linux-версиями тех же движков (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, движок Higgs для Linux, yt-dlp, faster-whisper), но автор работает на Windows и на живом Linux-десктопе их не гонял. **Будет круто, если кто-то, кто сидит на Linux, дошлифует их и вольёт правки обратно пулл-реквестом.**
 
-- Локальной озвучке нужна NVIDIA RTX 30 или новее: движок Higgs для Linux собран только под sm 86, 89 и 120. Облачные голоса работают на любой машине.
+- Локальной озвучке нужна NVIDIA начиная с Turing (GTX 16, RTX 20 и новее), как на Windows. Облачные голоса работают на любой машине.
 - Драйвер NVIDIA (580 или новее), `libgomp1` и `libssl3` берутся из системы; модели, движки и CUDA-библиотеки приложение скачивает при первом запуске в `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
 - Собираются вручную: workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) или `scripts/build-release-linux.sh <папка с models/ocr>`.
 

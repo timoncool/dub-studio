@@ -14,6 +14,7 @@ release notes on GitHub are taken from the release's section.
 
 - **Models a card cannot hold are not offered.** The first-run screen picks, for each model, the largest quant that fits the card's video memory (a 6 GB card gets Higgs Q6_K instead of Q8_0) and does not let you pick one that will not fit; Settings marks such variants and does not download them. When no variant of a model fits, that stage stops holding up the first run and the screen says to run it on a server or in the cloud.
 - **The local voice on a card it cannot run on** stops with a message naming the card and what it needs (an NVIDIA card from Turing on, driver 580 or newer) and pointing to the Google and OpenRouter voices, instead of failing inside the engine.
+- **Local voice on Linux from Turing on.** The Higgs engine for Linux was built for RTX 30 and newer only; it is now built from its source for Turing, Ampere, Ada, Hopper and Blackwell, as on Windows, and the setup screen offers the new engine once, in place of the old one.
 - **The voice check after dubbing no longer holds two models in video memory.** With the check on, Higgs is unloaded before the recogniser listens and loaded again only to voice the lines that failed, so 6-8 GB cards no longer run out of memory there.
 
 ## 2026-10-10 — 4.1.1

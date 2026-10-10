@@ -242,7 +242,7 @@ Requiere Node 20+, Rust (toolchain MSVC) y WebView2. Los motores nativos no hace
 
 El .deb y el AppImage para Linux x86-64 son **experimentales**. Salen del mismo código con las versiones para Linux de los mismos motores (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, el motor Higgs para Linux, yt-dlp, faster-whisper), pero el autor trabaja en Windows y no los ha probado en un escritorio Linux real. **Si vives en Linux, sería genial que los pulieras y devolvieras los arreglos con un pull request.**
 
-- La voz local necesita una NVIDIA RTX 30 o más nueva: el motor Higgs para Linux está compilado solo para sm 86, 89 y 120. Las voces en la nube funcionan en cualquier equipo.
+- La voz local necesita una NVIDIA desde Turing (GTX 16, RTX 20 o más nuevas), como en Windows. Las voces en la nube funcionan en cualquier equipo.
 - El driver de NVIDIA (580 o más nuevo), `libgomp1` y `libssl3` vienen del sistema; los modelos, motores y bibliotecas CUDA la app los descarga en el primer arranque en `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
 - Se compilan a mano: el workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) o `scripts/build-release-linux.sh <carpeta con models/ocr>`.
 

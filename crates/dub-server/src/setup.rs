@@ -320,14 +320,14 @@ mod platform {
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
-    // Тот же движок Higgs, собранный под Linux автором (engines_linux, sm 86/89/120): RUNPATH $ORIGIN, CUDA-
-    // библиотеки берёт из своего каталога (их кладёт cuda-runtime).
+    // Движок Higgs, собранный под Linux из исходника (timoncool/Higgs-Ultimate, sm 75/80/86/89/90/120a): RUNPATH
+    // $ORIGIN, CUDA-библиотеки берёт из своего каталога (их кладёт cuda-runtime).
     pub const HIGGS_ENGINE: Parts = Parts {
-        size: 85_339_992,
+        size: 136_774_464,
         files: &[
-            FileSpec { url: "https://huggingface.co/drbaph/Higgs-Audio-v3-Studio/resolve/c6e9db5a2062c15accc1b9bfa54d927bbdb124dc/engines_linux/libaudiocpp_engine.so", dest_rel: "models/higgs-engine/libaudiocpp_engine.so", size: 85_339_992, sha256: "6d7982e551ff311d2bc2e43dfab50d49b1b889f3f5ba515583c170cf83430ee5", extract: Extract::None },
+            FileSpec { url: "https://github.com/timoncool/Higgs-Ultimate/releases/download/engine-0.2.3-turing/libaudiocpp_engine.so", dest_rel: "models/higgs-engine/libaudiocpp_engine.so", size: 136_774_464, sha256: "dae7b29111acf1e564f9afa541b2a4d360ba2cd6fc60eb4d5b8bdb9c04d722f6", extract: Extract::None },
         ],
-        markers: &[Marker { rel: "models/higgs-engine/libaudiocpp_engine.so", expect: 85_339_992 }],
+        markers: &[Marker { rel: "models/higgs-engine/libaudiocpp_engine.so", expect: 136_774_464 }],
     };
 
     // Purfview faster-whisper r189.1 для Linux (последняя Linux-сборка не-XXL, CTranslate2 под CUDA 11).

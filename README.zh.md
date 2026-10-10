@@ -242,7 +242,7 @@ cd desktop && npm install && npx tauri build            # 3) 桌面外壳 (Tauri
 
 Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份代码，配的是同一批引擎的 Linux 版本（llama.cpp、ONNX Runtime、BSRoformer.cpp、ffmpeg、Linux 版 Higgs 引擎、yt-dlp、faster-whisper），但作者在 Windows 上工作，没有在真实的 Linux 桌面上跑过。**如果你日常用 Linux，非常欢迎你把它们打磨好，再通过 pull request 把修复合回来。**
 
-- 本地配音需要 NVIDIA RTX 30 或更新的显卡：Linux 版 Higgs 引擎只为 sm 86、89 和 120 编译。云端声音在任何机器上都能用。
+- 本地配音需要 Turing 及更新的 NVIDIA 显卡（GTX 16、RTX 20 及以上），与 Windows 相同。云端声音在任何机器上都能用。
 - NVIDIA 驱动（580 或更新）、`libgomp1` 和 `libssl3` 由系统提供；模型、引擎和 CUDA 库由应用在首次运行时下载到 `~/.local/share/dub-studio`（`$XDG_DATA_HOME`）。
 - 手动构建：`Linux build (experimental)` workflow（`.github/workflows/release-linux.yml`）或 `scripts/build-release-linux.sh <含 models/ocr 的文件夹>`。
 

@@ -242,7 +242,7 @@ Needs Node 20+, Rust (MSVC toolchain) and WebView2. Native engines (`audiocpp_en
 
 The .deb and the AppImage for Linux x86-64 are **experimental**. They come from the same code with the Linux builds of the same engines (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, the Higgs engine for Linux, yt-dlp, faster-whisper), but the author works on Windows and has not run them on a real Linux desktop. **If you live on Linux, it would be great if you polished them and sent the fixes back as a pull request.**
 
-- Local voice needs an NVIDIA RTX 30 or newer: the Higgs engine for Linux is built for sm 86, 89 and 120 only. The cloud voices work on any machine.
+- Local voice needs an NVIDIA card from Turing on (GTX 16, RTX 20 and newer), as on Windows. The cloud voices work on any machine.
 - The NVIDIA driver (580 or newer), `libgomp1` and `libssl3` come from the system; models, engines and CUDA libraries the app downloads on first run into `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
 - Built by hand: the `Linux build (experimental)` workflow (`.github/workflows/release-linux.yml`) or `scripts/build-release-linux.sh <folder with models/ocr>`.
 
