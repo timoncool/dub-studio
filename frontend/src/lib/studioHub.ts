@@ -35,6 +35,9 @@ export const setTelemetry = (enabled: boolean, acknowledge = false) =>
 export const telemetryPreview = () => call<{ enabled: boolean; report: unknown }>("/v1/hub/telemetry/preview");
 export const resetInstall = () => call<unknown>("/v1/hub/telemetry/reset", { method: "POST" });
 export const refreshHub = () => call<unknown>("/v1/hub/refresh", { method: "POST" });
+/** `button` names a click: `b0`, `b1`... the notice's buttons in order, `link` a link in its text. */
+export const reportNotice = (id: string, event: "shown" | "clicked" | "dismissed", button?: string) =>
+  call<{ ok: true }>(`/v1/hub/notices/${encodeURIComponent(id)}/${event}${button ? `?button=${encodeURIComponent(button)}` : ""}`, { method: "POST" });
 
 /** Состояние хаба для языка окна: один опрос на окно раз в минуту и после любого изменения выбора. */
 const listeners = new Set<(state: HubState) => void>();
