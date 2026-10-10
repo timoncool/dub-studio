@@ -192,21 +192,6 @@ Cada etapa tiene su propio selector de dispositivo. *Sí* significa que el códi
 
 Sin NVIDIA, la voz, la traducción, la visión y el reconocimiento pueden ir a la nube y la separación y la diarización a la CPU, pero el quemado no tiene camino de CPU, así que un equipo así no es una configuración probada.
 
-## Estadísticas anónimas y noticias
-
-La app pide noticias al servidor del autor al arrancar y cada seis horas. La petición no lleva ningún id, así que las noticias llegan elijas lo que elijas abajo: las nuevas aparecen arriba en Novedades y, sin conexión, la app muestra las noticias de su versión.
-
-La pantalla del primer arranque tiene una casilla **Enviar estadísticas de uso anónimas**, marcada por defecto. El mismo interruptor está en Ajustes → Estadísticas anónimas, junto a **Qué se envía** (el informe exacto de hoy) y **Nuevo id de instalación**. Mientras esté marcada, la app envía una vez al día:
-
-- un id de instalación aleatorio creado en este equipo, sin vínculo con el hardware ni con una cuenta; desmarcar la casilla lo borra;
-- la app y su versión, el nombre y la versión del sistema, el idioma de la ventana;
-- la tarjeta gráfica: fabricante, rango de memoria de vídeo (hasta 8, 12, 16, 24+ GB) y si CUDA funciona;
-- cuántas tareas (análisis, doblaje, render, exportación, descarga y las demás) terminaron, fallaron o se cancelaron ese día.
-- los modelos de cada etapa (voz, reconocimiento, traducción, análisis de fotogramas, separación) y cuántas tareas los usaron;
-- por qué falló una tarea, en una línea de la que se quitan en este equipo rutas, nombres, enlaces y todo lo que va entre comillas antes de enviarla; el servidor guarda estos motivos 30 días.
-
-Nunca: vídeos, transcripciones, traducciones, voces, nombres de archivo o rutas, nada personal. El servidor guarda el país que Cloudflare indica para la conexión, no la dirección IP. `DO_NOT_TRACK=1` o `STUDIO_TELEMETRY=0` en el entorno apagan las estadísticas por completo: no existe id y no se cuenta nada.
-
 ## Solución de problemas
 
 **El instalador se detiene en WebView2.** La ventana de la app funciona sobre Microsoft Edge WebView2, y el instalador lo descarga cuando Windows no lo tiene. Con una conexión bloqueada o inestable, o en versiones de Windows 10 que rechazan el pequeño instalador de Microsoft (error 0x80040902), esa descarga falla. Instala WebView2 con el instalador independiente de Microsoft, [Evergreen Standalone x64](https://go.microsoft.com/fwlink/p/?LinkId=2124701), y ejecuta de nuevo el instalador de Dub Studio.
@@ -245,6 +230,21 @@ El .deb y el AppImage para Linux x86-64 son **experimentales**. Salen del mismo 
 - La voz local necesita una NVIDIA desde Turing (GTX 16, RTX 20 o más nuevas), como en Windows. Las voces en la nube funcionan en cualquier equipo.
 - El driver de NVIDIA (580 o más nuevo), `libgomp1` y `libssl3` vienen del sistema; los modelos, motores y bibliotecas CUDA la app los descarga en el primer arranque en `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
 - Se compilan a mano: el workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) o `scripts/build-release-linux.sh <carpeta con models/ocr>`.
+
+## Estadísticas anónimas y noticias
+
+La app pide noticias al servidor del autor al arrancar y luego cada hora. La petición no lleva ningún id, así que las noticias llegan elijas lo que elijas abajo: las nuevas aparecen arriba en Novedades o como una franja en la parte superior de la ventana y, sin conexión, la app muestra las noticias de su versión.
+
+La pantalla del primer arranque tiene una casilla **Enviar estadísticas de uso anónimas**, marcada por defecto. El mismo interruptor está en Ajustes → Estadísticas anónimas, junto a **Qué se envía** (el informe exacto de hoy) y **Nuevo id de instalación**. Mientras esté marcada, la app envía el informe del día un minuto después de arrancar, cada seis horas, dos minutos después de terminar un trabajo y al cerrarse (un informe posterior del mismo día sustituye al anterior):
+
+- un id de instalación aleatorio creado en este equipo, sin vínculo con el hardware ni con una cuenta; desmarcar la casilla lo borra;
+- la app y su versión, el nombre y la versión del sistema, el idioma de la ventana;
+- la tarjeta gráfica: fabricante, rango de memoria de vídeo (hasta 8, 12, 16, 24+ GB) y si CUDA funciona;
+- cuántas tareas (análisis, doblaje, render, exportación, descarga y las demás) terminaron, fallaron o se cancelaron ese día.
+- los modelos de cada etapa (voz, reconocimiento, traducción, análisis de fotogramas, separación) y cuántas tareas los usaron;
+- por qué falló una tarea, en una línea de la que se quitan en este equipo rutas, nombres, enlaces y todo lo que va entre comillas antes de enviarla; el servidor guarda estos motivos 30 días.
+
+Nunca: vídeos, transcripciones, traducciones, voces, nombres de archivo o rutas, nada personal. El servidor guarda el país que Cloudflare indica para la conexión, no la dirección IP. `DO_NOT_TRACK=1` o `STUDIO_TELEMETRY=0` en el entorno apagan las estadísticas por completo: no existe id y no se cuenta nada.
 
 ## Contribuciones y forks
 
