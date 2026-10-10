@@ -59,7 +59,7 @@ blake3 = "1"
 # SHA-256 скачанных моделей и движков против закреплённых хэшей (HF lfs.oid, digest GitHub, PyPI/NVIDIA).
 sha2 = "0.11"
 # Studio Hub: anonymous statistics and the news feed (telemetry only after the first-run screen showed its choice).
-studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "c972d81bbf5129a30cd90f9b6ba98553a594c247" }
+studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "7a0e30e3eec5ff7cd40bba26c9dae1b9b297de93" }
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
 rust-genai = { version = "=0.3.1", default-features = false }

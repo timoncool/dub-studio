@@ -87,39 +87,45 @@ pub fn job_ended(kind: JobKind, status: JobStatus, error: Option<&str>) {
     };
     hub.count(&format!("{}_{outcome}", kind.as_str()), 1);
     match status {
-        JobStatus::Done if matches!(kind, JobKind::Analyze | JobKind::DubAudio | JobKind::Render | JobKind::Retranslate) => {
-            if let Some(root) = MODELS.get() {
-                hub.used_models(None, &models_in_use(root), 1);
+        JobStatus::Done => {
+            let stages: &[&str] = match kind {
+                JobKind::Analyze => &["asr", "llm", "vision", "sep"],
+                JobKind::Retranslate => &["llm"],
+                JobKind::DubAudio => &["tts"],
+                JobKind::Render => &["tts", "sep"],
+                _ => &[],
+            };
+            match MODELS.get() {
+                Some(root) if !stages.is_empty() => hub.used_models(None, &models_in_use(root, stages), 1),
+                _ => {}
             }
         }
-        JobStatus::Done | JobStatus::Cancelled => {}
+        JobStatus::Cancelled => {}
         _ => hub.failed(kind.as_str(), error.unwrap_or("")),
     }
 }
 
-/// What the studio's stages run on now, each as `stage:model`: Dub has no named sets, its choice per stage is the set.
-fn models_in_use(mroot: &Path) -> Vec<String> {
+/// What these stages run on now, each as `stage:model`: Dub has no named sets, its choice per stage is the set.
+fn models_in_use(mroot: &Path, stages: &[&str]) -> Vec<String> {
     use crate::models::{self, LlmBackend};
     let sel = models::load_selection(mroot);
     let slot = |key: &str| sel.get(key).and_then(serde_json::Value::as_str).map(str::trim).filter(|value| !value.is_empty()).unwrap_or("default").to_string();
-    let mut parts = vec![match models::tts_provider(mroot) {
-        "local" => format!("tts:higgs-{}", slot("tts")),
-        provider => format!("tts:{provider}:{}", models::tts_model(mroot)),
-    }];
-    parts.push(if models::openrouter_asr_on(mroot) {
-        format!("asr:openrouter:{}", slot("or_asr"))
-    } else if slot("asr_engine") == "whisper" {
-        format!("asr:whisper-{}", slot("whisper_model"))
-    } else {
-        format!("asr:parakeet-{}", slot("asr"))
-    });
-    for stage in ["llm", "vision"] {
-        parts.push(match models::llm_backend(mroot, stage) {
-            LlmBackend::Local => format!("{stage}:gemma-{}", slot("mt")),
-            LlmBackend::Server => format!("{stage}:server"),
-            LlmBackend::OpenRouter => format!("{stage}:openrouter:{}", models::openrouter_model(mroot, stage)),
-        });
-    }
-    parts.push(format!("sep:roformer-{}", slot("sep")));
-    parts
+    stages
+        .iter()
+        .map(|&stage| match stage {
+            "tts" => match models::tts_provider(mroot) {
+                "local" => format!("tts:higgs-{}", slot("tts")),
+                provider => format!("tts:{provider}:{}", models::tts_model(mroot)),
+            },
+            "asr" if models::openrouter_asr_on(mroot) => format!("asr:openrouter:{}", slot("or_asr")),
+            "asr" if slot("asr_engine") == "whisper" => format!("asr:whisper-{}", slot("whisper_model")),
+            "asr" => format!("asr:parakeet-{}", slot("asr")),
+            "sep" => format!("sep:roformer-{}", slot("sep")),
+            stage => match models::llm_backend(mroot, stage) {
+                LlmBackend::Local => format!("{stage}:gemma-{}", slot("mt")),
+                LlmBackend::Server => format!("{stage}:server"),
+                LlmBackend::OpenRouter => format!("{stage}:openrouter:{}", models::openrouter_model(mroot, stage)),
+            },
+        })
+        .collect()
 }
