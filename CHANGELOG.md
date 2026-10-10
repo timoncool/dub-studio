@@ -8,6 +8,10 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Local voice on every NVIDIA card from Turing on.** The Higgs engine was built for RTX 30, 40 and 50
+  only, and on a GTX 16 or RTX 20 card (and on A100 or H100) voicing stopped as the model loaded. The
+  engine is now built from its source for Turing, Ampere, Ada, Hopper and Blackwell alike; the setup
+  screen offers the new engine once, in place of the old one.
 - On the first-run screen the statistics checkbox, its label and What is sent stand on one line in one
   colour; the link sat lower than the label and in another colour.
 
