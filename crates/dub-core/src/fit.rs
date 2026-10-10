@@ -102,6 +102,20 @@ pub struct FitRules {
     pub qc_duration: bool,
     /// Штатный предел ускорения (EngineOpts::max_stretch).
     pub max_stretch: f64,
+    /// «Начинать в тишине»: не влезающая фраза начинается раньше, в тишину перед репликой, вместо ускорения.
+    pub lead_into_silence: bool,
+}
+
+/// Самый большой сдвиг начала реплики назад, в тишину перед ней, с.
+pub const LEAD_MAX: f64 = 1.0;
+
+/// На сколько секунд начать реплику раньше, чтобы фраза длиной `clip` уложилась в `slot` без ускорения: недостающее
+/// время, но не больше тишины перед репликой `free` и [`LEAD_MAX`]; 0 без «Начинать в тишине».
+pub fn lead(clip: f64, slot: &Slot, free: f64, rules: &FitRules) -> f64 {
+    if !rules.lead_into_silence {
+        return 0.0;
+    }
+    (clip - slot.target).min(free).min(LEAD_MAX).max(0.0)
 }
 
 /// Слот фразы: `room` — от начала укладки до начала следующей реплики, `target` — во что фраза
@@ -213,7 +227,7 @@ pub fn char_budget(dur: f64, cps: f64) -> Option<usize> {
 mod tests {
     use super::*;
 
-    const RULES: FitRules = FitRules { speech_rate_on: false, qc_duration: true, max_stretch: 1.25 };
+    const RULES: FitRules = FitRules { speech_rate_on: false, qc_duration: true, max_stretch: 1.25, lead_into_silence: false };
 
     #[test]
     fn units_count_characters_with_single_spaces() {
@@ -300,5 +314,18 @@ mod tests {
         assert_eq!(char_budget(0.01, 14.0), Some(MIN_BUDGET));
         assert_eq!(char_budget(0.0, 14.0), None);
         assert_eq!(char_budget(-1.0, 14.0), None);
+    }
+
+    #[test]
+    fn a_line_that_does_not_fit_starts_earlier_into_the_silence_before_it() {
+        let on = FitRules { lead_into_silence: true, ..RULES };
+        let sl = slot(10.0, 12.0, 10.0, 12.0, &on);
+        assert_eq!(lead(2.5, &sl, 3.0, &on), 0.5);
+        assert_eq!(lead(2.5, &sl, 0.2, &on), 0.2);
+        assert_eq!(lead(4.0, &sl, 3.0, &on), LEAD_MAX);
+        assert_eq!(lead(1.5, &sl, 3.0, &on), 0.0);
+        assert_eq!(lead(2.5, &sl, 3.0, &RULES), 0.0);
+        let shifted = slot(10.0 - 0.5, 12.0, 10.0 - 0.5, 12.0, &on);
+        assert_eq!(shifted.room, 2.5);
     }
 }

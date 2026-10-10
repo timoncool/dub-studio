@@ -542,6 +542,9 @@ render-synth-thread-ended = le fil de synthèse s’est terminé sans résultat
 render-synth-timeout = la synthèse a dépassé { $seconds } s ; annulée, le moteur est libre
 render-engine-stuck = la synthèse ne s’annule pas après { $seconds } s ; le rendu est interrompu (le moteur est bloqué dans la DLL)
 render-higgs-load-failed = chargement de la DLL Higgs : { $error }
+render-higgs-gpu-old = La voix locale Higgs ne peut pas tourner sur { $card } : il lui faut une NVIDIA à partir de Turing (compute capability { $min }, GTX 16 et RTX 20 ou plus récentes). Choisissez la voix « Google · directement » ou « Via OpenRouter ».
+render-higgs-driver-old = La voix locale Higgs demande le pilote NVIDIA { $min } ou plus récent, celui-ci est plus ancien : { $card }. Mettez le pilote à jour ou choisissez la voix « Google · directement » ou « Via OpenRouter ».
+render-higgs-no-gpu = La voix locale Higgs demande une carte NVIDIA avec CUDA, et aucune n'a été trouvée ({ $card }). Choisissez la voix « Google · directement » ou « Via OpenRouter ».
 render-defect-runaway = emballement
 render-defect-cutoff = coupure
 render-defect-silence = silence
@@ -591,6 +594,7 @@ render-write-segment = écriture de seg{ $line } : { $error }
 render-too-many-artifacts = TTS : trop d’artefacts de bourdonnement ({ $in_a_row } d’affilée, { $retries } nouvelles tentatives au total) ; régénérer n’aide pas. Le problème vient sans doute de la configuration (modèle/VRAM) ou des extraits de référence des voix. Arrêté au segment { $line }.
 render-multi-take = segment { $line } : plusieurs prises ; la plus proche du créneau est choisie (écart de { $deviation } s)
 render-stretch-over-cap = segment { $line } : il faut étirer x{ $needed } (créneau { $slot } s), plafond x{ $cap } ; le texte est plus rapide que la normale
+render-lead-into-silence = démarrer dans le silence : { $lines } répliques commencent plus tôt, { $seconds } s en tout, au lieu d’être accélérées
 render-silence-trimmed = découpe des silences du TTS : { $seconds } s retirées sur { $lines } { $lines ->
     [one] réplique
    *[other] répliques

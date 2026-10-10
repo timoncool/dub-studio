@@ -89,6 +89,18 @@ pub fn snapshot() -> HardwareSnapshot {
     snap
 }
 
+/// Видеопамять карты 0, байт (NVML); 0 — карты нет или NVML не ответил.
+pub fn total_vram() -> u64 {
+    let mut ng = nvml().lock().unwrap();
+    if ng.is_none() {
+        *ng = Nvml::init().ok();
+    }
+    ng.as_ref()
+        .and_then(|n| n.device_by_index(0).ok())
+        .and_then(|d| d.memory_info().ok())
+        .map_or(0, |m| m.total)
+}
+
 // ── Видеокарта против требований CUDA 13 ─────────────────────────────────────
 //
 // Весь GPU-стек (llama.cpp, Higgs, onnxruntime CUDA-EP, BSRoformer) собран под CUDA 13: ему нужен драйвер,
@@ -99,12 +111,8 @@ pub fn snapshot() -> HardwareSnapshot {
 
 /// Первый драйвер ветки CUDA 13 (Windows и Linux).
 pub const CUDA13_DRIVER: u32 = 580;
-/// Самая старая архитектура: CUDA 13 собирает от Turing; Linux-сборка движка Higgs есть только под sm 86/89/120
-/// (RTX 30 и новее).
-#[cfg(windows)]
+/// Самая старая архитектура: CUDA 13 собирает от Turing, движок Higgs собран под неё на обеих платформах.
 pub const CUDA13_OLDEST: (u32, u32) = (7, 5);
-#[cfg(not(windows))]
-pub const CUDA13_OLDEST: (u32, u32) = (8, 6);
 /// cuDriverGetVersion драйвера, поддерживающего CUDA 13.0 (1000 * major + 10 * minor).
 const CUDA13_DRIVER_API: u32 = 13_000;
 

@@ -190,7 +190,7 @@ export type SetupComponent = {
   delivery: "download" | "bundled" | "external";
   size: number; installed: boolean; bytesOnDisk: number;
   spaceNeeded: number;   // место на томе моделей под докачку (остаток + распаковка архивов)
-  missing: string[]; detail?: string | null; externalUrl?: string | null; vram?: number;
+  missing: string[]; detail?: string | null; externalUrl?: string | null; vram?: number; fitsVram?: boolean | null;
 };
 // Фоновая закачка (мимо GPU-очереди): её состояние приходит в /setup/status.active, опрос вместо SSE.
 export type DownloadStatus = "downloading" | "completed" | "paused" | "interrupted" | "failed";
