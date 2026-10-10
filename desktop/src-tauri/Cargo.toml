@@ -23,3 +23,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # axum-бэкенд встроен В ЭТОТ ЖЕ процесс (один exe, без dub-server.exe-сайдкара): serve_blocking с фонового потока.
 dub-server = { path = "../../crates/dub-server" }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
