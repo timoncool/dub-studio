@@ -277,7 +277,9 @@ pub fn run() {
     }
     builder
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_opener::init())
+        // the plugin's own link script answers a click through IPC, which a page on http://127.0.0.1 is not given;
+        // left to the webview, the click reaches on_new_window below
+        .plugin(tauri_plugin_opener::Builder::new().open_js_links_on_click(false).build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(move |app| {
