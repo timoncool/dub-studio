@@ -85,17 +85,18 @@ pub fn dies_with_parent(cmd: &mut Command) -> &mut Command {
 }
 
 /// Библиотеки, лежащие рядом с программой, видны её загрузчику: на Linux каталог встаёт первым в
-/// LD_LIBRARY_PATH запуска (сборки сайдкаров не несут RUNPATH на свой каталог); Windows и так ищет DLL в
-/// каталоге программы и cwd.
+/// LD_LIBRARY_PATH запуска (сборки сайдкаров не несут RUNPATH на свой каталог), на macOS — в DYLD_LIBRARY_PATH
+/// (их @rpath указывает на каталог CI); Windows и так ищет DLL в каталоге программы и cwd.
 pub fn libraries_beside<'a>(cmd: &'a mut Command, dir: &std::path::Path) -> &'a mut Command {
     #[cfg(not(windows))]
     {
+        let var = if cfg!(target_os = "macos") { "DYLD_LIBRARY_PATH" } else { "LD_LIBRARY_PATH" };
         let mut paths = vec![dir.to_path_buf()];
-        if let Some(cur) = std::env::var_os("LD_LIBRARY_PATH") {
+        if let Some(cur) = std::env::var_os(var) {
             paths.extend(std::env::split_paths(&cur));
         }
         if let Ok(joined) = std::env::join_paths(paths) {
-            cmd.env("LD_LIBRARY_PATH", joined);
+            cmd.env(var, joined);
         }
     }
     #[cfg(windows)]
