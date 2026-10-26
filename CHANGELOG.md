@@ -9,6 +9,7 @@ release notes on GitHub are taken from the release's section.
 ### Changed
 
 - **Recognition of other languages is CrisperWhisper 2.0 turbo** instead of Faster-Whisper: 99 languages with word timestamps, run by the audio.cpp engine on the graphics card or the processor. When the source language is left on Auto, the VoxLingua107 language id hears it first; a language CrisperWhisper does not know is named in the error instead of being read as English. Settings → Models offers one model, without a choice of size and compute; the old Faster-Whisper program, its CUDA 11 libraries and its models are removed at start (a model another program shares stays with it). Its licence is nyra health Non-Commercial (LICENSE.md beside the weights).
+- **Fresher tools**: llama.cpp b11900 for translation, FFmpeg of 30 September, yt-dlp 2026.10.21 with deno 2.9.8 for links; an installed studio counts the older ones as missing and downloads the new ones in their place.
 - **Higgs Audio v3 voices run in the audio.cpp engine** (a server process of the studio) instead of the old library: a stop ends the phrase being spoken at once, and the weights leave the card when voicing is done.
 
 ### Added

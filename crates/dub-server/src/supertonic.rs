@@ -288,12 +288,24 @@ mod tests {
         assert!(mean.abs() < 0.1 && (var - 1.0).abs() < 0.15, "{mean} {var}");
     }
 
-    /// The real model: `SUPERTONIC_ROOT` is a models root holding `supertonic3/`, `ORT_DYLIB_PATH` onnxruntime 1.28 (GPU).
+    /// The real model: `SUPERTONIC_ROOT` is a models root holding `supertonic3/`, `ORT_DYLIB_PATH` an onnxruntime of the
+    /// pinned version (its GPU build).
     #[test]
     #[ignore]
     fn speaks_russian_on_the_gpu() {
+        speaks_russian(true);
+    }
+
+    /// As `speaks_russian_on_the_gpu`, on the processor: `ORT_DYLIB_PATH` may name the CPU build of onnxruntime.
+    #[test]
+    #[ignore]
+    fn speaks_russian_on_the_processor() {
+        speaks_russian(false);
+    }
+
+    fn speaks_russian(gpu: bool) {
         let root = PathBuf::from(std::env::var("SUPERTONIC_ROOT").expect("SUPERTONIC_ROOT"));
-        let m = Model::load(&root, true).unwrap();
+        let m = Model::load(&root, gpu).unwrap();
         let started = std::time::Instant::now();
         let wav = m.speak("Сегодня в восемь вечера мы встретимся у старого моста.", "ru", "F1", DEFAULT_STEPS, DEFAULT_SPEED, 42).unwrap();
         let secs = wav.len() as f64 / m.sample_rate() as f64;

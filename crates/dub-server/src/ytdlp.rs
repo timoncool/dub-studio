@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 /// Компонент менеджера моделей.
 pub const COMPONENT: &str = "ytdlp";
 /// Версия yt-dlp.exe из манифеста (setup.rs, GH_YTDLP).
-pub const PINNED_VERSION: &str = "2026.08.19";
+pub const PINNED_VERSION: &str = "2026.10.21";
 const DIR: &str = "tools/yt-dlp";
 /// Файл yt-dlp на диске и ассет релиза, который его даёт (в SHA2-256SUMS он под тем же именем).
 #[cfg(windows)]
@@ -1199,10 +1199,10 @@ mod tests {
         let a = active(root.path(), &none);
         assert_eq!((a.version.as_str(), a.updated, a.problem.is_none()), (PINNED_VERSION, false, true));
         std::fs::create_dir_all(updates_dir(root.path())).unwrap();
-        std::fs::write(updates_dir(root.path()).join("yt-dlp-2026.09.30.exe"), b"exe!").unwrap();
-        let rec = UpdateRecord { version: Some("2026.09.30".into()), file: Some("yt-dlp-2026.09.30.exe".into()), size: Some(4), ..Default::default() };
+        std::fs::write(updates_dir(root.path()).join("yt-dlp-2026.11.30.exe"), b"exe!").unwrap();
+        let rec = UpdateRecord { version: Some("2026.11.30".into()), file: Some("yt-dlp-2026.11.30.exe".into()), size: Some(4), ..Default::default() };
         let a = active(root.path(), &rec);
-        assert_eq!((a.version.as_str(), a.updated), ("2026.09.30", true));
+        assert_eq!((a.version.as_str(), a.updated), ("2026.11.30", true));
         write_record(root.path(), &rec).unwrap();
         assert_eq!(read_record(root.path()), rec, "the record survives a restart");
         let torn = UpdateRecord { size: Some(5), ..rec.clone() };
