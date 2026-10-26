@@ -108,6 +108,25 @@ impl ModelEntry {
     pub fn supertonic(id: &str, model: &Path) -> ModelEntry {
         ModelEntry { output_rate: Some(44_100), ..ModelEntry::new(id, "supertonic", model, "tts", Mode::Streaming) }
     }
+
+    /// HTDemucs 6-stem separation (family `htdemucs_6stems`, task `sep`): drums, bass, vocals, other, guitar and piano
+    /// as the result's named audio outputs. `gguf` is the package's `htdemucs-6stems-f16.gguf`.
+    pub fn htdemucs(id: &str, gguf: &Path) -> ModelEntry {
+        ModelEntry::new(id, "htdemucs_6stems", gguf, "sep", Mode::Offline)
+    }
+
+    /// MuScriptor audio-to-MIDI (task `midi`): the MIDI file comes back as a `midi` artifact, or note-event JSON with
+    /// request option `output_format: json`. `model` is the model's safetensors folder or its GGUF.
+    pub fn muscriptor(id: &str, model: &Path) -> ModelEntry {
+        ModelEntry::new(id, "muscriptor", model, "midi", Mode::Offline)
+    }
+
+    /// SheetSage2 score transcription (task `midi`): the score comes back as an artifact. `gguf` is yue2.cpp's head
+    /// GGUF with the MERT GGUF of the same quant beside it (`SheetSage2-Q8_0.gguf` → `MERT-v2-FullSong-Q8_0.gguf`), or
+    /// audio.cpp's self-contained package.
+    pub fn sheetsage2(id: &str, gguf: &Path) -> ModelEntry {
+        ModelEntry::new(id, "sheetsage2", gguf, "midi", Mode::Offline)
+    }
 }
 
 /// The whole config. `port` is chosen by [`crate::Server::start`].
@@ -179,6 +198,9 @@ mod tests {
                 ModelEntry::parakeet_tdt("parakeet", Path::new("m/asr-gguf-parakeet-v3/parakeet-tdt-0.6b-v3-Q8_0.gguf")),
                 ModelEntry::crisperwhisper("crisperwhisper", Path::new("m/crisperwhisper2-turbo")),
                 ModelEntry::nemotron_asr("nemotron", Path::new("m/asr-gguf-nemotron/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf")),
+                ModelEntry::htdemucs("htdemucs", Path::new("m/HTDemucs-6stems-GGUF/htdemucs-6stems-f16.gguf")),
+                ModelEntry::muscriptor("muscriptor", Path::new("m/muscriptor")),
+                ModelEntry::sheetsage2("sheetsage2", Path::new("m/sheetsage/SheetSage2-Q8_0.gguf")),
             ],
             data_dir: PathBuf::from("d"),
             log: false,
@@ -195,5 +217,8 @@ mod tests {
         assert_eq!(m[2]["default_request_options"]["return_timestamps"], true);
         assert!(m[1].get("default_request_options").is_none());
         assert_eq!((m[3]["family"].as_str(), m[3]["task"].as_str(), m[3]["mode"].as_str()), (Some("nemotron_asr"), Some("asr"), Some("offline")));
+        assert_eq!((m[4]["family"].as_str(), m[4]["task"].as_str(), m[4]["mode"].as_str()), (Some("htdemucs_6stems"), Some("sep"), Some("offline")));
+        assert_eq!((m[5]["family"].as_str(), m[5]["task"].as_str()), (Some("muscriptor"), Some("midi")));
+        assert_eq!((m[6]["family"].as_str(), m[6]["task"].as_str()), (Some("sheetsage2"), Some("midi")));
     }
 }

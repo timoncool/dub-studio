@@ -16,7 +16,9 @@ mod process;
 mod registry;
 mod speech;
 mod sse;
+mod tasks;
 
+pub use tasks::{task_artifact, task_artifacts, task_audio, TaskArtifact, TaskAudio};
 pub use asr::{TranscribeRequest, Transcript, TranscriptSpan, TranscriptWord};
 pub use config::{Backend, Mode, ModelEntry, ServerConfig};
 pub use diar::SpeakerTurn;
