@@ -2204,6 +2204,10 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         // выровнять тайминги импортированных субтитров по речи (полный прогон ASR ради слов).
         align_subs: import_subs.is_some() && qget("align_subs", "0") == "1",
     };
+    if args.mode != "transcribe" && !args.import_translated {
+        llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)
+            .map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
+    }
     let post = post_analyze::PostAnalyze::from_query(&q)
         .map_err(|e| Box::new((StatusCode::BAD_REQUEST, e).into_response()))?;
     let voices_dir = st.voices_dir.clone();
@@ -2613,6 +2617,10 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
         }
     };
 
+    if !translated {
+        llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)
+            .map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
+    }
     let llama_bin = st.llama_bin.clone();
     // Квант Gemma — выбранный сейчас (models::resolve_mt), а не найденный при старте сервера.
     let (mt_model, _) = models::resolve_mt(&st.models_root, &models::load_selection(&st.models_root));
@@ -2767,6 +2775,8 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
         ));
     }
 
+    llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)
+        .map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
     let llama_bin = st.llama_bin.clone();
     // Квант Gemma — выбранный сейчас (models::resolve_mt), а не найденный при старте сервера.
     let (mt_model, _) = models::resolve_mt(&st.models_root, &models::load_selection(&st.models_root));
