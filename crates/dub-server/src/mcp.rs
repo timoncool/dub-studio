@@ -1217,7 +1217,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "engine_presets_get",
-                description: "The hardware presets (by graphics card, a weak card with the cloud, the cloud alone), this computer's card, video memory and RAM, and the preset recommended for it.",
+                description: "The hardware presets (by graphics card, a weak card with the cloud, the cloud alone), this computer's card, video memory and RAM, the preset recommended for it, and the preset the settings are on now (custom when none gives them).",
                 schema: nothing,
                 call: |_| get("/engine/presets".into()),
             },

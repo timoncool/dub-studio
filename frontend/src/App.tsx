@@ -57,7 +57,7 @@ import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
-import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
+import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, settingsChangedHere, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
 import { named } from "./lib/a11y";
 import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
@@ -176,7 +176,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   useEffect(() => { loadCap(); }, []);
   const selv = (k: string) => slot(cap?.selection, k) ?? "";
   const hasOrKey = cap?.selection?.or_key_set === true;
-  const setSel = (k: string, v: string) => api.setSelection(k, v).then(loadCap).catch(() => {});
+  const setSel = (k: string, v: string) => api.setSelection(k, v).then(settingsChangedHere).catch(() => {});
   // Видеопамять Drama 3 из списка: сохранения по очереди, при быстрой смене последним на сервер приходит последнее значение.
   const [dramaVram, setDramaVram] = useState<string | null>(null);
   const dramaSaves = useRef<Promise<unknown>>(Promise.resolve());
@@ -546,16 +546,20 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
 function PresetsSection({ onApplied }: { onApplied?: () => void }) {
   const { t } = useTranslation();
   const [data, setData] = useState<Awaited<ReturnType<typeof api.hwPresets>> | null>(null);
-  const [applied, setApplied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api.hwPresets().then(setData).catch(() => {}); }, []);
+  // «custom» writes nothing, so the settings still hold the preset they were on
+  const [custom, setCustom] = useState(false);
+  const load = () => { api.hwPresets().then(setData).catch(() => {}); };
+  useEffect(() => { load(); }, []);
+  useChanged(SETTINGS_CHANGED, load);
   const apply = async (id: string) => {
     setBusy(true);
-    try { await api.applyPreset(id); setApplied(id); onApplied?.(); } catch { /* ignore */ }
+    setCustom(id === "custom");
+    try { await api.applyPreset(id); settingsChangedHere(); onApplied?.(); } catch { /* ignore */ }
     setBusy(false);
   };
   const hw = data?.hardware;
-  const cur = applied ?? hw?.recommended ?? "";
+  const cur = custom ? "custom" : data?.current ?? "";
   const curP = data?.presets.find((p) => p.id === cur);
   return (
     <div className="mb-4 pb-3 border-b border-[var(--color-border)]">
