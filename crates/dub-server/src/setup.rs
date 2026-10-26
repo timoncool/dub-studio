@@ -4314,4 +4314,70 @@ mod tests {
         assert_eq!(std::fs::read(&dest).unwrap(), b"pinned build");
         assert!(!with_suffix(&dest, ".import").exists());
     }
+
+    /// Vendor libraries the studio downloads whose AVX-512 the vendor picks at run time (they run on every x86-64
+    /// processor their vendor supports) and that carry no symbols: NVIDIA's CUDA libraries, Microsoft's VC++ runtime and
+    /// ONNX Runtime (MLAS picks its kernels by the processor), denoland's deno (V8 and simdutf do the same).
+    const VENDOR_DISPATCHED: &[&str] = &[
+        "cublas64_", "cublaslt64_", "cufft64_", "cufftw64_", "cudnn", "cudart64_", "nvblas64_", "vcruntime140", "msvcp140", "vcomp140",
+        "onnxruntime", "libonnxruntime", "deno",
+    ];
+    /// What a package brings that the studio never loads: ONNX Runtime's TensorRT provider (the studio takes its CUDA
+    /// one), which imports TensorRT.
+    const NEVER_LOADED: &[&str] = &["onnxruntime_providers_tensorrt.dll", "libonnxruntime_providers_tensorrt.so"];
+
+    /// Every binary of a program folder (DUB_COMPAT_ROOT: a dev root or an installed or unpacked release, read only)
+    /// against the release checks of dub_core::compat: AVX-512 outside CPUID dispatchers, the Ubuntu 22.04 limits and
+    /// RUNPATH of Linux libraries, imports Windows cannot resolve (the folders the studio puts on PATH count), and the
+    /// execute bit of the components' programs. DUB_COMPAT_MAPS: link maps of stripped binaries, `name=path` joined by
+    /// `;` (`Dub-Studio.exe=D:/…/Dub-Studio.map`).
+    #[test]
+    #[ignore]
+    fn a_program_folder_passes_the_release_checks() {
+        let Ok(root) = std::env::var("DUB_COMPAT_ROOT") else { return };
+        let root = PathBuf::from(root);
+        let mut maps = std::collections::BTreeMap::new();
+        for pair in std::env::var("DUB_COMPAT_MAPS").unwrap_or_default().split(';').filter(|p| !p.is_empty()) {
+            let (name, path) = pair.split_once('=').expect("name=path");
+            let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            maps.insert(name.to_string(), dub_core::compat::Functions::from_link_map(&text));
+        }
+        // the VC++ runtime the studio takes from the system folder when it is there instead of downloading it
+        let system = system_dir();
+        let from_system: Vec<String> = manifest()
+            .into_iter()
+            .filter(|c| FOUND_IN_SYSTEM_DIR.contains(&c.id))
+            .flat_map(|c| c.markers)
+            .filter(|m| !root.join(m.rel).is_file())
+            .filter_map(|m| Path::new(m.rel).file_name().map(|n| n.to_string_lossy().into_owned()))
+            .filter(|name| system.as_ref().is_some_and(|dir| dir.join(name).is_file()))
+            .collect();
+        let provided: Vec<&str> = from_system.iter().map(String::as_str).collect();
+        let how = dub_core::compat::Tree {
+            path_folders: &["tools/ffmpeg", "tools/llama", "models/cuda12-runtime", "models/higgs-engine"],
+            provided: &provided,
+            maps,
+            vendor_dispatched: VENDOR_DISPATCHED,
+            unused: NEVER_LOADED,
+        };
+        let found = dub_core::compat::check_tree(&root, &how).unwrap();
+        let mut lines: Vec<String> = Vec::new();
+        for (path, problems) in &found {
+            let rel = path.strip_prefix(&root).unwrap_or(path).display().to_string();
+            lines.extend(problems.iter().map(|p| format!("{rel}: {p}")));
+        }
+        for c in manifest() {
+            for m in c.markers.iter().filter(|m| is_program_marker(m.rel)) {
+                let path = root.join(m.rel);
+                if path.is_file() && !dub_core::compat::executable(&path).unwrap() {
+                    lines.push(format!("{}: {}", m.rel, dub_core::compat::Problem::NotExecutable));
+                }
+            }
+        }
+        for line in &lines {
+            println!("[ERROR] {line}");
+        }
+        assert!(lines.is_empty(), "{} problems in {}", lines.len(), root.display());
+        println!("[OK] {}", root.display());
+    }
 }

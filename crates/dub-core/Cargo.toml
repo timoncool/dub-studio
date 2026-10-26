@@ -8,6 +8,13 @@ description = "Типы Project и EngineOpts — зеркало Pydantic-кон
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+# compat: the release checks of built and downloaded binaries (PE and ELF headers, AVX-512 instructions).
+object = { version = "0.40", default-features = false, features = ["read_core", "elf", "pe", "std"] }
+iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "instr_info"] }
+
+[dev-dependencies]
+# compat's tests write the stand-in binaries they check.
+object = { version = "0.40", default-features = false, features = ["read_core", "elf", "pe", "std", "write"] }
 
 # PR_SET_PDEATHSIG: дети не переживают студию на Linux (proc::dies_with_parent).
 [target.'cfg(target_os = "linux")'.dependencies]
