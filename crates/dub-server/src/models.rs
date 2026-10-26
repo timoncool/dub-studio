@@ -651,6 +651,27 @@ pub fn resolve_asr_choice(repo_root: &Path, mroot: &Path, sel: &Value) -> AsrCho
     AsrChoice::Ggml { models_root: mroot.to_path_buf(), build: tcpp_build(mroot), model }
 }
 
+/// CrisperWhisper as this job's recogniser, whatever the settings chose.
+pub fn crisperwhisper_choice(repo_root: &Path, mroot: &Path) -> AsrChoice {
+    AsrChoice::CrisperWhisper {
+        repo_root: repo_root.to_path_buf(),
+        models_root: mroot.to_path_buf(),
+        backend: stage_backend(mroot, "asr_backend"),
+        build: tcpp_build(mroot),
+    }
+}
+
+/// The components CrisperWhisper runs on here: its weights, the language id with the transcribe.cpp build it runs
+/// on, and audiocpp_server with the CUDA runtime of its build (none when DUB_STUDIO_AUDIOCPP_SERVER names a program).
+pub fn crisperwhisper_components(mroot: &Path) -> Vec<&'static str> {
+    let mut ids = vec!["crisperwhisper-turbo", "langid", tcpp_build(mroot).dir()];
+    if std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_none() {
+        ids.push("higgs-engine");
+        ids.push(if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" });
+    }
+    ids
+}
+
 /// Распознаватель transcribe.cpp задачи: модель из кэша процесса выгружается, когда задача отпускает движок, чтобы
 /// видеопамять досталась озвучке и переводу.
 struct Unloading(dub_asr::tcpp::TcppEngine);

@@ -1068,6 +1068,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     let cached_transcript =
         stage_load::<TranscriptOut>(&cache, &paths.work_dir, "asr", &asr_key, TRANSCRIPT_FILE, progress);
     let resumed_asr = cached_transcript.is_some();
+    let mut by_crisperwhisper = matches!(paths.asr, crate::models::AsrChoice::CrisperWhisper { .. });
     let (mut segments, n_spk): (Vec<Segment>, usize) = if let Some(t) = cached_transcript {
         crate::jobs::emit_resumed(progress, "asr", &t!("analyze-transcript-cached", segments = t.segments.len()));
         (t.segments, t.n_spk)
@@ -1158,10 +1159,25 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     } else {
         // Движок выбран настройкой (Parakeet/Whisper) — analyze не знает деталей (build_engine).
         bench.stage("asr");
-        let parakeet = matches!(paths.asr, crate::models::AsrChoice::Ggml { .. });
-        if args.src_lang != "auto" && !paths.asr.knows(&args.src_lang) {
-            return Err(t!("analyze-asr-language", lang = args.src_lang.clone()));
+        // Parakeet knows 25 European languages: a source language outside them, chosen or heard by the language id
+        // under «auto», goes to CrisperWhisper before recognition starts, with a line in the journal.
+        let mut asr_choice = paths.asr.clone();
+        if let crate::models::AsrChoice::Ggml { models_root, build, .. } = &paths.asr {
+            let lang = if args.src_lang == "auto" {
+                crate::fetch_missing(&paths.repo_root, &["langid"], progress)?;
+                let langid = dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID);
+                dub_asr::acpp::heard_language(&dub_asr::tcpp::engine_dir(models_root, *build), &langid, &asr_wav).map_err(|e| e.localize())?
+            } else {
+                args.src_lang.clone()
+            };
+            if !paths.asr.knows(&lang) {
+                emit(progress, "asr", &t!("analyze-asr-to-crisperwhisper", lang = lang.clone()));
+                crate::fetch_missing(&paths.repo_root, &crate::models::crisperwhisper_components(&paths.models_root), progress)?;
+                asr_choice = crate::models::crisperwhisper_choice(&paths.repo_root, &paths.models_root);
+                by_crisperwhisper = true;
+            }
         }
+        let parakeet = matches!(asr_choice, crate::models::AsrChoice::Ggml { .. });
         // Backend локального ASR (Parakeet onnx CUDA-EP/CPU, Whisper cuda/cpu) — до создания движка/сессии.
         std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
         // Термины глоссария проекта (с прошлого анализа) — подсказка распознавателю, как их писать.
@@ -1169,7 +1185,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             .ok()
             .and_then(|text| Project::from_json(&text).ok())
             .and_then(|p| crate::glossary_api::asr_hint(&p.glossary));
-        let mut asr = crate::models::build_engine_hinted(&paths.asr, hint)?;
+        let mut asr = crate::models::build_engine_hinted(&asr_choice, hint)?;
         let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);
         let nsp = diar.as_ref().map(|d| d.n_speakers).unwrap_or(1).max(1);
         emit(
@@ -1227,9 +1243,10 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // находит кандидатов, звук на интервале (отделённый вокал, реплики диаризации или сырой микс) решает
     // «скрыть» или «только пометить». Импорт субтитров — текст пользователя, его не трогаем.
     if paths.import_subs.is_none() {
-        let rules = match (&paths.asr, crate::models::openrouter_asr_on(&paths.models_root)) {
-            (crate::models::AsrChoice::CrisperWhisper { .. }, false) => dub_asr::HallucinationRules::Whisper,
-            _ => dub_asr::HallucinationRules::CaseAware,
+        let rules = if by_crisperwhisper && !crate::models::openrouter_asr_on(&paths.models_root) {
+            dub_asr::HallucinationRules::Whisper
+        } else {
+            dub_asr::HallucinationRules::CaseAware
         };
         let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
         let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);

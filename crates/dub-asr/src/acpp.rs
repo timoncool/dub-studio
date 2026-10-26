@@ -73,6 +73,15 @@ impl AcppAsr {
     }
 }
 
+/// The language VoxLingua107 (`langid` on the transcribe.cpp build in `engine_dir`) hears in a 16 kHz mono recording,
+/// as Whisper names it; an error names a language Whisper does not know or a recording too short to tell.
+pub fn heard_language(engine_dir: &Path, langid: &Path, wav: &Path) -> Result<String, AsrError> {
+    let (pcm, _) = crate::load_wav_16k_mono(wav)?;
+    acpp_server::language::heard_language(engine_dir, langid, &pcm)
+        .map(str::to_string)
+        .map_err(|e| AsrError::Parakeet(e.to_string()))
+}
+
 /// A chosen language as the model is told it; none for «auto» or no choice.
 fn told(chosen: &str) -> Option<String> {
     let chosen = chosen.trim();

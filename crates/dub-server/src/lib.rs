@@ -998,6 +998,23 @@ pub(crate) struct JobNeeds {
     pub translating: bool,
 }
 
+/// Downloads those of `ids` this computer lacks, with the job's progress; nothing to fetch returns at once.
+pub(crate) fn fetch_missing(repo_root: &Path, ids: &[&str], progress: &setup::ProgressCb) -> Result<(), String> {
+    let manifest = setup::manifest();
+    let need: Vec<String> = ids
+        .iter()
+        .filter(|id| manifest.iter().find(|c| c.id == **id).is_some_and(|c| !setup::component_status(repo_root, c).installed))
+        .map(|id| id.to_string())
+        .collect();
+    if need.is_empty() {
+        return Ok(());
+    }
+    progress(json!({ "stage": "download", "msg": t!("setup-fetching-missing") }));
+    let ctl = jobs::current();
+    let cancel = move || ctl.as_ref().is_some_and(|c| c.is_cancelled());
+    setup::download_components(repo_root, &need, &cancel, progress).map(|_| ()).map_err(|e| e.detail)
+}
+
 /// GET /hw/snapshot — снимок GPU/VRAM/темп/мощность + RAM для монитора ресурсов.
 async fn hw_snapshot() -> Json<hw::HardwareSnapshot> {
     Json(tokio::task::spawn_blocking(hw::snapshot).await.unwrap_or_default(),
