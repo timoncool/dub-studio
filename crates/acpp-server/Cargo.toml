@@ -12,11 +12,12 @@ serde_json = { workspace = true }
 base64 = "0.23"
 hound = "3"
 thiserror = { workspace = true }
-# The language CrisperWhisper hears for «auto»: VoxLingua107 on transcribe.cpp.
-dub-tcpp = { path = "../dub-tcpp", optional = true }
+# The processor floor the server is built for, and with `langid` the language CrisperWhisper hears for «auto»
+# (VoxLingua107 on transcribe.cpp).
+dub-tcpp = { path = "../dub-tcpp" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
 [features]
-langid = ["dep:dub-tcpp"]
+langid = []

@@ -76,6 +76,7 @@ impl Server {
     /// children join; Linux: the parent-death signal). `prepare` adds what else the studio puts on its processes; the
     /// server's output goes to [`ServerConfig::output_path`].
     pub fn start(config: &ServerConfig, ready_within: Duration, prepare: &dyn Fn(&mut Command)) -> Result<Server, AcppError> {
+        dub_tcpp::cpu_floor("audio.cpp").map_err(|error| AcppError::Spawn { exe: config.exe.display().to_string(), error })?;
         let io = |p: &Path, e: std::io::Error| AcppError::Io(format!("{}: {e}", p.display()));
         std::fs::create_dir_all(&config.data_dir).map_err(|e| io(&config.data_dir, e))?;
         let port = free_port()?;
