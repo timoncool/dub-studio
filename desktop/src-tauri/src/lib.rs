@@ -379,7 +379,11 @@ pub fn run() {
                 let app = app.clone();
                 std::thread::spawn(move || confirm_close(&app));
             }
-            tauri::RunEvent::Exit => dub_server::flush_hub_on_exit(),
+            tauri::RunEvent::Exit => {
+                dub_server::flush_hub_on_exit();
+                // the servers and engines the studio started end with it, also where no job object ends them (macOS)
+                dub_server::process_group::terminate_group_members();
+            }
             _ => {}
         });
 }

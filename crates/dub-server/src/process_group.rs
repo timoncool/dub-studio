@@ -55,7 +55,15 @@ pub fn bind_children_to_this_process() -> bool {
     }
 }
 
-#[cfg(not(windows))]
+/// Unix: the studio leads a process group of its own, which every child inherits, so the group can be ended with it
+/// (`terminate_group_members`); macOS has nothing like Linux's PR_SET_PDEATHSIG to end children with their parent. A
+/// process started from a terminal keeps the terminal's group, so Ctrl+C still reaches it.
+#[cfg(unix)]
+pub fn bind_children_to_this_process() -> bool {
+    unsafe { libc::isatty(0) == 0 && libc::setpgid(0, 0) == 0 }
+}
+
+#[cfg(not(any(windows, unix)))]
 pub fn bind_children_to_this_process() -> bool {
     false
 }
@@ -146,7 +154,19 @@ pub fn release_children() -> bool {
     false
 }
 
-#[cfg(not(windows))]
+/// Unix: ends every process of the studio's own group (the servers and engines it started); the studio ignores the
+/// signal itself, as it is exiting anyway. Nothing when the group is not the studio's own.
+#[cfg(unix)]
+pub fn terminate_group_members() {
+    unsafe {
+        if libc::getpgrp() == libc::getpid() {
+            libc::signal(libc::SIGTERM, libc::SIG_IGN);
+            libc::killpg(libc::getpgrp(), libc::SIGTERM);
+        }
+    }
+}
+
+#[cfg(not(any(windows, unix)))]
 pub fn terminate_group_members() {}
 
 /// Запускаемое наружу для пользователя (системный плеер, окно проводника) не должно закрываться
