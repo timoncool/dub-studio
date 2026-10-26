@@ -23,6 +23,7 @@ name = "acpp-server"
 version = "2.0.0"
 dependencies = [
  "base64 0.23.1",
+ "dub-core",
  "dub-tcpp",
  "flate2",
  "hound",

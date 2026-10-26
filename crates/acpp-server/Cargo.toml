@@ -15,6 +15,8 @@ thiserror = { workspace = true }
 # The processor floor the server is built for, and with `langid` the language CrisperWhisper hears for «auto»
 # (VoxLingua107 on transcribe.cpp).
 dub-tcpp = { path = "../dub-tcpp" }
+# The speaking pace of a language (dub_core::fit::table_cps), which the runaway length of a Higgs phrase follows.
+dub-core = { path = "../dub-core" }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

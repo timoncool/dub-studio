@@ -676,9 +676,7 @@ impl HiggsServer {
                 crate::acpp::stop();
                 Err(crate::acpp::localize(&e))
             }
-            Err(acpp_server::AcppError::Server { message, .. }) if message.contains("reached max_tokens") => {
-                Err(format!("{TOKEN_CAP}: {message}"))
-            }
+            Err(e) if acpp_server::higgs::is_token_cap(&e) => Err(format!("{TOKEN_CAP}: {e}")),
             Err(e) if samples.is_empty() && !self.spoke.load(Ordering::SeqCst) => {
                 Err(format!("{ENGINE_FAILED}: {}", t!("render-higgs-engine-failed", error = crate::acpp::localize(&e))))
             }
@@ -954,10 +952,12 @@ const HIGGS_TOKENS_PER_SEC: f64 = 25.0;
 /// How much longer than its slot a phrase may run before its attempt is cut.
 const HIGGS_CAP_MARGIN: f64 = 2.0;
 
-/// The `max_tokens` of a Higgs attempt for a slot of `secs`; reaching it before the end is an error of the attempt,
-/// and the ladder goes on to the next one.
-fn higgs_token_cap(secs: f64) -> u32 {
-    (((secs * HIGGS_TOKENS_PER_SEC * HIGGS_CAP_MARGIN).ceil() as u32) + 32).clamp(64, 2048)
+/// The `max_tokens` of a Higgs attempt of `text` in `lang` for a slot of `secs`: the cap of the slot or, when the phrase
+/// is longer than its slot, the studios' cap of the phrase itself (`acpp_server::higgs::token_cap`). Reaching it before
+/// the end is a runaway take, and the ladder goes on to the next attempt.
+fn higgs_token_cap(secs: f64, text: &str, lang: &str) -> u32 {
+    let by_slot = (((secs * HIGGS_TOKENS_PER_SEC * HIGGS_CAP_MARGIN).ceil() as u32) + 32).clamp(64, 2048);
+    by_slot.max(acpp_server::higgs::token_cap(acpp_server::higgs::spoken_chars(text), acpp_server::higgs::pace_lang(text, lang)))
 }
 
 /// The seconds an attempt's `max_tokens` allows, for the engines with other frame rates.
@@ -2203,7 +2203,7 @@ fn build_dub_pass(
             let tgt_chars = tgt.chars().filter(|c| c.is_alphanumeric()).count();
             // Потолок токенов по длительности слота (issue #151): без него короткая фраза может уйти в долгий гул.
             let expected_dur = (s.end - s.start).max(0.6);
-            let tok_cap = higgs_token_cap(expected_dur);
+            let tok_cap = higgs_token_cap(expected_dur, tgt, &proj.tgt_lang);
             
             // Динамическая адаптация темпа (Speech Rate): если текст плотный (>14 знаков/сек), понижаем
             // температуру и зажимаем повторы, выговаривая текст собранно; если редкий — повышаем.
@@ -2412,7 +2412,7 @@ fn build_dub_pass(
                 Some(emo) => emo,
                 None => (ref_of(s), reftext_of(s)),
             };
-            let tok_cap = higgs_token_cap((s.end - s.start).max(0.6));
+            let tok_cap = higgs_token_cap((s.end - s.start).max(0.6), tgt, &proj.tgt_lang);
             for take_i in 1..=2u64 {
                 crate::jobs::check_cancelled()?;
                 let take_path = wd.join(format!("seg_{sid}_take{take_i}.wav"));
@@ -2640,7 +2640,7 @@ fn build_dub_pass(
                 // до 3 свежих попыток (низкая temperature по ENGINES_FINDINGS §1.3 + кап токенов §1.1):
                 // альт-реф 0.3 → альт-реф 0.15+RAS1 → основной 0.10 с новым seed
                 let e_dur = (s.end - s.start).max(0.6);
-                let cap = higgs_token_cap(e_dur);
+                let cap = higgs_token_cap(e_dur, s.tgt_text.trim(), &proj.tgt_lang);
                 let base = format!("\"top_k\":50,\"max_tokens\":{cap}");
                 let mut fixed = false;
                 for (k, (rw, rt, opts)) in {

@@ -10,6 +10,7 @@ mod asr;
 pub mod asset;
 mod config;
 mod diar;
+pub mod higgs;
 pub mod language;
 mod process;
 mod registry;
