@@ -539,7 +539,7 @@ fn box_bg_colour(
     t: f64,
 ) -> Option<(String, f64)> {
     let ffmpeg = dub_core::proc::ffmpeg();
-    let out = std::process::Command::new(ffmpeg)
+    let out = dub_core::proc::host_command(ffmpeg)
         .args(["-v", "error", "-ss", &format!("{t:.3}")])
         .arg("-i")
         .arg(video)

@@ -4,7 +4,6 @@
 use serde_json::Value;
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
-use std::process::Command;
 
 /// Сводка probe: длительность/размер/fps/кодек первого видеопотока. Зеркало api._meta().
 #[derive(Debug, Clone, Default)]
@@ -35,7 +34,7 @@ fn parse_fps(r: &str) -> f64 {
 
 /// ffprobe -show_format -show_streams (json) -> MediaMeta. Ошибка если нет видеопотока/длительности.
 pub fn probe(input: &Path) -> Result<MediaMeta, String> {
-    let out = Command::new(dub_core::proc::ffprobe())
+    let out = dub_core::proc::host_command(dub_core::proc::ffprobe())
         .args([
             "-v",
             "error",
@@ -131,7 +130,7 @@ fn extract_wav_16k_mono_args(input: &Path, out_wav: &Path) -> Vec<OsString> {
 /// ffmpeg вернёт ошибку, которую пробрасываем.
 pub fn extract_wav_16k_mono(input: &Path, out_wav: &Path) -> Result<(), String> {
     dub_core::atomic::write_with(out_wav, |tmp| {
-        let mut cmd = Command::new(dub_core::proc::ffmpeg());
+        let mut cmd = dub_core::proc::host_command(dub_core::proc::ffmpeg());
         cmd.args(extract_wav_16k_mono_args(input, tmp));
         let status = dub_core::proc::output(&mut cmd).map_err(|e| t!("common-ffmpeg-start", error = e.to_string()))?;
         if !status.status.success() {
@@ -151,7 +150,7 @@ pub fn extract_wav_16k_mono(input: &Path, out_wav: &Path) -> Result<(), String> 
 // ─── Рендер-хелперы (порт media.py: extract_audio/duration/time_stretch/mix/mux/trim) ─────────
 
 fn run_ff(args: &[&std::ffi::OsStr]) -> Result<(), String> {
-    let out = dub_core::proc::output(Command::new(dub_core::proc::ffmpeg()).args(args)).map_err(|e| t!("common-ffmpeg-start", error = e.to_string()))?;
+    let out = dub_core::proc::output(dub_core::proc::host_command(dub_core::proc::ffmpeg()).args(args)).map_err(|e| t!("common-ffmpeg-start", error = e.to_string()))?;
     if !out.status.success() {
         let err = String::from_utf8_lossy(&out.stderr);
         let tail: String = err.chars().rev().take(1500).collect::<String>().chars().rev().collect();
@@ -166,7 +165,7 @@ fn run_ff(args: &[&std::ffi::OsStr]) -> Result<(), String> {
 fn run_ff_timeout(args: &[&std::ffi::OsStr], secs: u64) -> Result<(), String> {
     use std::io::Read;
     use std::process::Stdio;
-    let mut child = Command::new(dub_core::proc::ffmpeg())
+    let mut child = dub_core::proc::host_command(dub_core::proc::ffmpeg())
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -245,7 +244,7 @@ pub fn duration(path: &Path) -> Result<f64, String> {
             return Ok(reader.duration() as f64 / spec.sample_rate as f64);
         }
     }
-    let out = Command::new(dub_core::proc::ffprobe())
+    let out = dub_core::proc::host_command(dub_core::proc::ffprobe())
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1"])
         .arg(path)
         .output()
@@ -613,7 +612,7 @@ pub fn remux_playable_mp4(mkv: &Path, out_mp4: &Path) -> Result<(), String> {
 /// Есть ли в файле аудиопоток (ffprobe). Для мультитрек-mux: нет аудио в источнике -> вторую дорожку
 /// не добавляем (иначе -disposition:a:1 по несуществующему потоку валит ffmpeg). Ошибка probe -> false.
 pub fn has_audio(input: &Path) -> bool {
-    Command::new(dub_core::proc::ffprobe())
+    dub_core::proc::host_command(dub_core::proc::ffprobe())
         .args(["-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0"])
         .arg(input)
         .output()
@@ -715,7 +714,7 @@ fn trim_ref_args(src: &Path, dst: &Path, start: f64, end: f64, rate: Option<u32>
 
 /// Частота первого звукового потока файла (ffprobe).
 pub fn audio_rate(src: &Path) -> Result<u32, String> {
-    let out = Command::new(dub_core::proc::ffprobe())
+    let out = dub_core::proc::host_command(dub_core::proc::ffprobe())
         .args(["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=sample_rate", "-of", "csv=p=0"])
         .arg(src)
         .output()

@@ -5,7 +5,6 @@
 use crate::FacesError;
 use image::RgbImage;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Частота семплинга кадров кастинга по умолчанию (кадр/с). Лиц достаточно и на 1.5 fps; выше — лишний
 /// счёт SCRFD/LVFace. Env DUB_FACES_FPS.
@@ -32,7 +31,7 @@ fn extract_frames(video: &Path, out_dir: &Path, fps: f64) -> Result<f64, FacesEr
     std::fs::create_dir_all(out_dir).map_err(|e| FacesError::Io(format!("frames dir {}: {e}", out_dir.display())))?;
     let fps = if fps > 0.0 { fps } else { DEFAULT_FPS };
     let pattern = out_dir.join("frame_%06d.png");
-    let out = Command::new(dub_core::proc::ffmpeg())
+    let out = dub_core::proc::host_command(dub_core::proc::ffmpeg())
         .arg("-y")
         .arg("-i")
         .arg(video)

@@ -1110,7 +1110,7 @@ mod tests {
 
     /// A short real audio file, so a made project probes it as a user's download would be.
     fn audio_file(path: &Path) {
-        let ok = std::process::Command::new(dub_core::proc::ffmpeg())
+        let ok = dub_core::proc::host_command(dub_core::proc::ffmpeg())
             .args(["-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "aac"])
             .arg(path)
             .status()

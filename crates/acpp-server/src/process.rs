@@ -45,6 +45,7 @@ fn platform_defaults(cmd: &mut Command, exe_dir: Option<&Path>) {
                 cmd.env("LD_LIBRARY_PATH", joined);
             }
         }
+        dub_core::proc::outside_appimage(cmd);
     }
     #[cfg(target_os = "linux")]
     {

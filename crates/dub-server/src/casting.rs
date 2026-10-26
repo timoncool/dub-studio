@@ -817,7 +817,7 @@ pub fn models_fingerprint(models_root: &Path, anime: bool) -> String {
 
 /// Извлечь один кадр видео в момент t (сек) -> RgbImage. Быстрый seek (-ss ПЕРЕД -i).
 fn extract_frame(video: &Path, t: f64, out: &Path) -> Result<image::RgbImage, String> {
-    let res = std::process::Command::new(dub_core::proc::ffmpeg())
+    let res = dub_core::proc::host_command(dub_core::proc::ffmpeg())
         .args(["-y", "-ss"])
         .arg(format!("{:.3}", t.max(0.0)))
         .arg("-i")

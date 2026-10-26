@@ -453,7 +453,7 @@ fn fetch_verified(client: &reqwest::blocking::Client, url: &str, dest: &Path, wa
 }
 
 fn run_version(exe: &Path) -> Result<String, String> {
-    let mut cmd = Command::new(exe);
+    let mut cmd = dub_core::proc::host_command(exe);
     cmd.arg("--version");
     let out = run_captured(cmd, &|| false, Some(Duration::from_secs(120))).map_err(|e| e.detail)?;
     if !out.success {
@@ -520,7 +520,7 @@ impl Tool {
     /// PYTHONIOENCODING/PYTHONUTF8 и пишет в канал в кодовой странице системы. `work` — папка этого вызова:
     /// прокси с паролем ложится туда файлом (proxy_args).
     pub fn command(&self, url: &str, work: &Path) -> Result<Command, UrlError> {
-        let mut cmd = Command::new(&self.exe);
+        let mut cmd = dub_core::proc::host_command(&self.exe);
         cmd.args(base_args(&self.deno, &self.ffmpeg, &self.cache))
             .args(proxy_args(dub_llm::net::proxy_url_for(url), work)?)
             .stdin(Stdio::null());

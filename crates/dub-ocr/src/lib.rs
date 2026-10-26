@@ -63,7 +63,6 @@ use ort_engine::OnnxModel;
 use rec::recognize_batch;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// Одна per-frame детекция строки: (text, x, y, w, h, t) — сырой поток для frame-accurate блюра.
 #[derive(Clone, Debug)]
@@ -123,7 +122,7 @@ fn extract_frames(video: &Path, out_dir: &Path, fps: i32) -> Result<Vec<PathBuf>
     std::fs::create_dir_all(out_dir).map_err(|e| OcrError::Io(format!("{}: {e}", out_dir.display())))?;
     let vf = format!("fps={fps}");
     let pat = out_dir.join("f_%05d.png");
-    let out = Command::new(dub_core::proc::ffmpeg())
+    let out = dub_core::proc::host_command(dub_core::proc::ffmpeg())
         .arg("-y")
         .arg("-i")
         .arg(video)

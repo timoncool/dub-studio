@@ -846,7 +846,7 @@ fn open_folder(dir: &Path) -> std::io::Result<()> {
     let cmd = "open";
     #[cfg(all(not(windows), not(target_os = "macos")))]
     let cmd = "xdg-open";
-    std::process::Command::new(cmd).arg(dir).spawn().map(|_| ())
+    dub_core::proc::host_command(cmd).arg(dir).spawn().map(|_| ())
 }
 
 /// POST /setup/open-models — открыть папку моделей в проводнике: {path}.
@@ -3092,7 +3092,7 @@ async fn open_output(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
         }
         #[cfg(not(windows))]
         {
-            let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+            let _ = dub_core::proc::host_command("xdg-open").arg(&path).spawn();
         }
     })
     .await;
@@ -3117,7 +3117,7 @@ fn reveal_in_explorer(path: String) {
         {
             // freedesktop FileManager1.ShowItems выделяет файл (Dolphin, Nautilus, Nemo, Thunar); без него — каталог
             let path = std::path::Path::new(&path);
-            let shown = std::process::Command::new("dbus-send")
+            let shown = dub_core::proc::host_command("dbus-send")
                 .args(["--session", "--print-reply", "--reply-timeout=3000", "--dest=org.freedesktop.FileManager1", "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems"])
                 .arg(format!("array:string:{}", file_uri(path)))
                 .arg("string:")
@@ -3127,7 +3127,7 @@ fn reveal_in_explorer(path: String) {
                 .is_ok_and(|status| status.success());
             if !shown {
                 let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| std::path::PathBuf::from("."));
-                let _ = std::process::Command::new("xdg-open").arg(parent).spawn();
+                let _ = dub_core::proc::host_command("xdg-open").arg(parent).spawn();
             }
         }
     });

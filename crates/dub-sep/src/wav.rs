@@ -369,7 +369,7 @@ mod tests {
         let frames = (secs * 44_100.0) as u64;
         for (name, rf64) in [("mix-rf64.wav", true), ("mix-ffff.wav", false)] {
             let p = dir.join(name);
-            let mut cmd = std::process::Command::new(dub_core::proc::ffmpeg());
+            let mut cmd = dub_core::proc::host_command(dub_core::proc::ffmpeg());
             cmd.args(["-y", "-v", "error", "-f", "lavfi", "-i", &format!("sine=frequency=440:sample_rate=44100:duration={secs}"), "-ac", "2"]);
             if rf64 {
                 cmd.args(["-rf64", "auto"]);
@@ -395,7 +395,7 @@ mod tests {
         let (_, _, dur) = probe(&stem).unwrap();
         assert_eq!(dur, n as f64);
         assert_eq!(read_f32_range(&stem, ((n - 1) * 44_100) as u32, 44_100).unwrap().data, second);
-        let out = std::process::Command::new(dub_core::proc::ffprobe())
+        let out = dub_core::proc::host_command(dub_core::proc::ffprobe())
             .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
             .arg(&stem)
             .output()

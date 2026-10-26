@@ -1430,7 +1430,7 @@ pub(crate) fn ffmpeg_on_path() -> bool {
         if found.len() != names.len() {
             return false;
         }
-        let help = dub_core::proc::output(std::process::Command::new(&found[0]).args(["-hide_banner", "-h", "filter=amix"]));
+        let help = dub_core::proc::output(dub_core::proc::host_command(&found[0]).args(["-hide_banner", "-h", "filter=amix"]));
         let mixes = help.is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("normalize"));
         if !mixes {
             tracing::warn!("{} is too old for the studio (its amix has no normalize): the studio's own ffmpeg is needed", found[0].display());

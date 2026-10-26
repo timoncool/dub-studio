@@ -88,7 +88,7 @@ pub fn preview_frame(
 /// api.source_frame: ffmpeg input-seek extract одного кадра, без моделей.
 pub fn source_frame(input: &Path, work_dir: &Path, t: f64) -> Result<Vec<u8>, String> {
     let png = work_dir.join("_original.png");
-    let out = std::process::Command::new(dub_core::proc::ffmpeg())
+    let out = dub_core::proc::host_command(dub_core::proc::ffmpeg())
         .arg("-y")
         .arg("-ss")
         .arg(format!("{:.2}", t.max(0.0)))

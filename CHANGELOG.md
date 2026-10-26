@@ -20,6 +20,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Linux: the system's ffmpeg and other programs of the computer start from the AppImage**: they no longer load the image's own libraries (on systems newer than Ubuntu 22.04 ffmpeg stopped with «undefined symbol vaMapBuffer2»); yt-dlp, the file manager and the browser start the same way.
 - **Settings → Models keep their place**: the list no longer jumps back up after a choice, and its buttons are no longer rebuilt every few seconds.
 - **The status line names the translator the studio really uses**: Gemma's file, the OpenRouter or local server model, or the agent (MCP); it showed Gemma whatever was chosen, and it now follows a preset or a change in Settings at once instead of after a restart.
 - **A hardware preset moves every stage and stays shown**: «CPU + cloud» left recognition, separation and diarization on the card when they had a device of their own, and Settings → Models showed the recommended preset again once reopened; now a preset sets the device of each stage, and the list shows the preset the settings are on, or Custom.

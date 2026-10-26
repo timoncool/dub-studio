@@ -3,7 +3,6 @@
 //! капшены. Промпты VP/SP перенесены ДОСЛОВНО (выверены на стенде). Кадры дёргаем ffmpeg'ом (square-pad).
 
 use std::path::Path;
-use std::process::Command;
 
 use base64::Engine;
 use regex::Regex;
@@ -63,7 +62,7 @@ fn vis_json(s: &str) -> Value {
 /// _frame_b64 — square-pad кадр (SigLIP резайзит всё в 896x896; квадрат сохраняет геометрию букв) и base64.
 fn frame_b64(video: &Path, t: f64, tmp: &Path) -> Result<String, TranslateError> {
     let _ = std::fs::remove_file(tmp); // сбросить прошлый кадр, чтобы не прочитать несвежий при сбое
-    let out = Command::new(dub_core::proc::ffmpeg())
+    let out = dub_core::proc::host_command(dub_core::proc::ffmpeg())
         .args(["-y", "-ss"])
         .arg(format!("{t:.1}"))
         .arg("-i")

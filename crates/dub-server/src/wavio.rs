@@ -72,7 +72,7 @@ fn peaks_args(video: &Path) -> Vec<std::ffi::OsString> {
 /// N бакетов, в каждом max(|amp|)/max_amp, округление до 3 знаков. CPU, вне GPU-воркера. Сбой ffmpeg
 /// или тишина -> пустой список (как питон — не отравляем кэш).
 pub fn waveform_peaks(video: &Path, n: usize) -> Vec<f64> {
-    let out = std::process::Command::new(dub_core::proc::ffmpeg()).args(peaks_args(video)).output();
+    let out = dub_core::proc::host_command(dub_core::proc::ffmpeg()).args(peaks_args(video)).output();
     let bytes = match out {
         Ok(o) if o.status.success() => o.stdout,
         _ => return Vec::new(),

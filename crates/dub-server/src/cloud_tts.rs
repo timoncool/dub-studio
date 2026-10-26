@@ -5,7 +5,6 @@
 //! настроек юзера (or_tts_model/or_tts_voice), без хардкода.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::AtomicU64;
 
 use dub_llm::openrouter::{OpenRouter, SpeechAudio};
@@ -103,7 +102,7 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let tmp = std::env::temp_dir().join(format!("dub_cloud_tts_{}_{}.bin", std::process::id(), uid));
     let wav_tmp = tmp.with_extension("wav");
     std::fs::write(&tmp, bytes).map_err(|e| t!("cloud-tts-failed", error = format!("{mime}: {e}")))?;
-    let out = dub_core::proc::output(Command::new(dub_core::proc::ffmpeg()).args([
+    let out = dub_core::proc::output(dub_core::proc::host_command(dub_core::proc::ffmpeg()).args([
         "-v", "error", "-i", &tmp.to_string_lossy(), "-ar", &SEG_RATE.to_string(), "-ac", "1", "-c:a", "pcm_s16le", "-y", &wav_tmp.to_string_lossy(),
     ]));
     let _ = std::fs::remove_file(&tmp);

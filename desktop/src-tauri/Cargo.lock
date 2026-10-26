@@ -1570,6 +1570,7 @@ dependencies = [
 name = "dub-studio-desktop"
 version = "4.2.2"
 dependencies = [
+ "dub-core",
  "dub-server",
  "rfd 0.17.2",
  "serde",
