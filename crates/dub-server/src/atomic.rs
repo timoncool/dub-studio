@@ -240,7 +240,7 @@ fn separation(dir: PathBuf, input: PathBuf, cli: PathBuf, model: PathBuf, repo_r
         }
         media::drop_stale_separation(&dir)?;
         let cb = |ev: Value| progress(ev);
-        crate::ensure_job_components(&repo_root, &models_root, false, false, &cb)?;
+        crate::ensure_job_components(&repo_root, &models_root, crate::JobNeeds::default(), &cb)?;
         jobs::check_cancelled()?;
         if let Some(why) = models::sep_unavailable(&models_root) {
             return Err(why);

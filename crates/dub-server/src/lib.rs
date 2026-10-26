@@ -863,10 +863,10 @@ fn job_asr(repo_root: &Path, models_root: &Path) -> models::AsrChoice {
 fn ensure_job_components(
     repo_root: &Path,
     models_root: &Path,
-    casting: bool,
-    diarization: bool,
+    needs: JobNeeds,
     progress: &setup::ProgressCb,
 ) -> Result<(), String> {
+    let JobNeeds { casting, diarization, voicing, translating } = needs;
     let manifest = setup::manifest();
     let missing = |id: &str| -> bool {
         manifest
@@ -900,14 +900,13 @@ fn ensure_job_components(
     } else if models::stage_backend(models_root, "asr_backend") == "gpu" && missing("cuda-runtime") {
         need.push("cuda-runtime".to_string());
     }
-    // Диаризация на процессоре → onnxruntime (CPU): без него ort падает при первом касании, а на GPU его ставит блок выше.
-    if diarization && models::stage_backend(models_root, "diar_backend") == "cpu" && missing("onnxruntime") && missing("onnxruntime-gpu") {
+    // ONNX Runtime serves diarization, casting, text detection, Supertonic and RUAccent: without either build the
+    // first session would end the job in a panic of ort's loader (4.4 on processors).
+    if missing("onnxruntime") && missing("onnxruntime-gpu") && !need.iter().any(|n| n == "onnxruntime-gpu") {
         need.push("onnxruntime".to_string());
     }
-    let asr_whisper = models::load_selection(models_root)
-        .get("asr_engine")
-        .and_then(|v| v.as_str())
-        == Some("whisper");
+    let sel = models::load_selection(models_root);
+    let asr_whisper = sel.get("asr_engine").and_then(|v| v.as_str()) == Some("whisper");
     // CrisperWhisper chosen → its weights, and the language id (VoxLingua107) with the transcribe.cpp build it runs on
     // for a source language left on «auto»; downloaded on first use as Parakeet's are.
     if asr_whisper && !models::openrouter_asr_on(models_root) {
@@ -916,21 +915,47 @@ fn ensure_job_components(
                 need.push(id.to_string());
             }
         }
-        // audiocpp_server and the CUDA libraries of its build; a program named by DUB_STUDIO_AUDIOCPP_SERVER is taken
-        // as it is.
-        if std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_none() {
-            let runtime = if acpp::build() == hw::CudaBuild::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
-            for id in ["higgs-engine", runtime] {
-                if missing(id) && !need.iter().any(|n| n == id) {
-                    need.push(id.to_string());
-                }
+    }
+    // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs voice of a render (an
+    // install updated from 4.4 has the former Higgs library, not the server); a program named by
+    // DUB_STUDIO_AUDIOCPP_SERVER is taken as it is.
+    let tts = models::resolve_tts(models_root, &sel).1;
+    let higgs_voice = voicing
+        && !models::cloud_tts_on(models_root)
+        && tts != models::DRAMA_TTS
+        && tts != models::SUPERTONIC_TTS
+        && models::qwen_quant(&tts).is_none();
+    if ((asr_whisper && !models::openrouter_asr_on(models_root)) || higgs_voice) && std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_none() {
+        let runtime = if acpp::build() == hw::CudaBuild::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
+        for id in ["higgs-engine", runtime] {
+            if missing(id) && !need.iter().any(|n| n == id) {
+                need.push(id.to_string());
+            }
+        }
+    }
+    // The chosen Higgs quant itself: its GGUF with config.json and tokenizer.json beside it, which the server reads.
+    if higgs_voice {
+        let id = if tts == "q8_0" { "higgs".to_string() } else { format!("higgs-{tts}") };
+        if missing(&id) {
+            need.push(id);
+        }
+    }
+    // The studio's own Gemma for translation or frames: llama-server and the chosen quant (a transcript made with
+    // the cloud or without translation did not need them, and a mode switch from it does).
+    let local_llm = ["llm", "vision"].iter().any(|stage| models::llm_backend(models_root, stage) == models::LlmBackend::Local);
+    if translating && local_llm {
+        let quant = sel.get("mt").and_then(|v| v.as_str()).unwrap_or("q4_0");
+        let gemma = if quant == "q4_0" { "gemma".to_string() } else { format!("gemma-{quant}") };
+        for id in ["llama".to_string(), gemma] {
+            if missing(&id) {
+                need.push(id);
             }
         }
     }
     // Parakeet → its chosen variant and the transcribe.cpp build of the recognition backend (CUDA or CPU), which the
     // settings may have changed after the first run.
     if !asr_whisper && !models::openrouter_asr_on(models_root) {
-        if let models::AsrChoice::Ggml { build, model, .. } = models::resolve_asr_choice(repo_root, models_root, &models::load_selection(models_root)) {
+        if let models::AsrChoice::Ggml { build, model, .. } = models::resolve_asr_choice(repo_root, models_root, &sel) {
             for id in [build.dir(), model.component] {
                 if missing(id) {
                     need.push(id.to_string());
@@ -960,6 +985,17 @@ fn ensure_job_components(
         }
     }
     Ok(())
+}
+
+/// What a job uses beyond recognition, for [`ensure_job_components`].
+#[derive(Clone, Copy, Default)]
+pub(crate) struct JobNeeds {
+    pub casting: bool,
+    pub diarization: bool,
+    /// The render's voice (Higgs on audiocpp_server).
+    pub voicing: bool,
+    /// Translation or frames on the studio's own Gemma.
+    pub translating: bool,
 }
 
 /// GET /hw/snapshot — снимок GPU/VRAM/темп/мощность + RAM для монитора ресурсов.
@@ -2207,7 +2243,13 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         let cb = |ev: Value| progress(ev);
         // On-demand: если для этой функции (кастинг) или backend (GPU) не хватает моделей — тянем их СЕЙЧАС,
         // до анализа. Иначе кастинг «не видел» бы лиц, а GPU-стадии падали бы с ошибкой CUDA.
-        ensure_job_components(&paths.repo_root, &paths.models_root, args.casting, analyze::wants_diarization(&args), &cb,
+        let needs = JobNeeds {
+            casting: args.casting,
+            diarization: analyze::wants_diarization(&args),
+            voicing: false,
+            translating: args.mode != "transcribe",
+        };
+        ensure_job_components(&paths.repo_root, &paths.models_root, needs, &cb,
         )?;
         // the recogniser named at enqueue may have been downloaded just now
         let mut paths = paths;
@@ -2447,7 +2489,7 @@ async fn render_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response
         clean_partials(&dir_for_job);
         let cb = |ev: Value| progress(ev);
         // On-demand: GPU-стадии рендера (Higgs TTS / сепарация на CUDA) без CUDA-стека -> догрузить сейчас.
-        ensure_job_components(&repo_root_for_job, &paths.models_root, false, false, &cb)?;
+        ensure_job_components(&repo_root_for_job, &paths.models_root, JobNeeds { voicing: true, ..JobNeeds::default() }, &cb)?;
         let mut paths = paths;
         paths.asr = job_asr(&repo_root_for_job, &paths.models_root);
         jobs::check_cancelled()?;
@@ -2580,9 +2622,12 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
     let lang_c = lang.clone();
     let new_pid_res = pid.to_string();
     let out_res = paths.output.clone();
+    let repo_root_xl = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         use dub_translate::{flat_run_with, FlatOpts, Seg};
         clean_partials(&dst_for_job);
+        let needs = JobNeeds { voicing: true, translating: !translated, ..JobNeeds::default() };
+        ensure_job_components(&repo_root_xl, &models_root_xl, needs, &|ev| progress(ev))?;
         let pj = dst_for_job.join("project.json");
         let text = std::fs::read_to_string(&pj).map_err(|e| e.to_string())?;
         let mut p = Project::from_json(&text).map_err(|e| e.to_string())?;
@@ -2729,8 +2774,10 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
     let dir_for_job = dir.clone();
     let pid_res = pid.to_string();
     let lang_c = lang.clone();
+    let repo_root_xl = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         use dub_translate::{flat_run_with, FlatOpts, Seg};
+        ensure_job_components(&repo_root_xl, &models_root_xl, JobNeeds { translating: true, ..JobNeeds::default() }, &|ev| progress(ev))?;
         let pj = dir_for_job.join("project.json");
         let read = |path: &Path| -> Result<Project, String> {
             let text = std::fs::read_to_string(path).map_err(|e| t!("common-read", path = path.display().to_string(), error = e.to_string()))?;
@@ -3358,7 +3405,7 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
             .map(|f| dir_for_job.join(f))
             .find(|p| p.is_file())
             .ok_or_else(|| t!("align-no-vocals"))?;
-        ensure_job_components(&repo_root, &models_root, false, false, &|ev| progress(ev))?;
+        ensure_job_components(&repo_root, &models_root, JobNeeds::default(), &|ev| progress(ev))?;
         let asr = job_asr(&repo_root, &models_root);
         progress(json!({ "stage": "asr", "msg": t!("align-recognizing") }));
         std::env::set_var("DUB_ASR_BACKEND", &backend);
