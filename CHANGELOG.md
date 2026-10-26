@@ -20,6 +20,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Settings → Models keep their place**: the list no longer jumps back up after a choice, and its buttons are no longer rebuilt every few seconds.
 - **The status line names the translator the studio really uses**: Gemma's file, the OpenRouter or local server model, or the agent (MCP); it showed Gemma whatever was chosen, and it now follows a preset or a change in Settings at once instead of after a restart.
 - **A hardware preset moves every stage and stays shown**: «CPU + cloud» left recognition, separation and diarization on the card when they had a device of their own, and Settings → Models showed the recommended preset again once reopened; now a preset sets the device of each stage, and the list shows the preset the settings are on, or Custom.
 - **A Higgs line longer than its slot is no longer cut as a runaway**: the token cap of a line is the larger of its slot's and its own text's (the cap the studios share, by the line's length and script, so Chinese, Japanese and Korean get the time their syllables take), and a line that runs to the cap is retried as a runaway take instead of stopping the voicing as an engine error.

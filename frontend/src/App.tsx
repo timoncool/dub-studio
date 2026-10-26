@@ -224,7 +224,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
       if (r.errors.length > 0) setErr(`${t("downloads.importErrors")} · ${r.errors.join("; ")}`);
     } catch (e) { setupErr(e); }
   };
-  const BrowseBtn = ({ id }: { id: string }) => (
+  const browseBtn = (id: string) => (
     <button onClick={() => browseId(id)} disabled={!!prog} title={t("settings.browseFolder")}
       className="shrink-0 inline-flex items-center px-1.5 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] disabled:opacity-40">
       <FolderDown size={12} />
@@ -258,7 +258,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const get = (id: string) => byId[id] as SetupComponent | undefined;
 
   // строка одного компонента (кнопка скачать/докачать + прогресс)
-  const Row = (c: SetupComponent) => {
+  const rowView = (c: SetupComponent) => {
     const pct = partPct(c.id);
     const active = pct != null;
     return (
@@ -276,7 +276,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         ) : (
           <div className="flex items-center gap-1.5 shrink-0">
             <RemoveComponent c={c} disabled={!!prog} onDone={(s) => { adopt(s); loadCap(); }} onError={setErr} />
-            <BrowseBtn id={c.id} />
+            {browseBtn(c.id)}
             {c.fitsVram === false && !c.installed
               ? <span className="text-[11px] text-[var(--color-warn)]">{t("setup.noVramShort")}</span>
               : <button onClick={() => dl([c.id])} disabled={!!prog} aria-label={`${c.installed ? t("settings.redownload") : t("setup.downloadOne")}: ${c.name}`}
@@ -292,7 +292,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   // модель с выбором кванта: дропдаун вариантов + скачать выбранный. КОНТРОЛИРУЕМЫЙ — выбранное значение
   // берётся из поднятого picks / активного выбора (active.json), НЕ из внутреннего useState (иначе ре-рендер
   // секции сбрасывал бы дропдаун на дефолт). При смене — пишем picks и активируем на бэке (если установлен).
-  const VariantPicker = ({ base, ids, i18n }: { base: string; ids: string[]; i18n?: VariantI18n }) => {
+  const variantPicker = (base: string, ids: string[], i18n?: VariantI18n) => {
     const variants = ids.map(get).filter(Boolean) as SetupComponent[];
     const installed = variants.find((v) => v.installed);
     const sel = cap?.selection ?? {};
@@ -327,7 +327,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           ) : (
             <>
               <RemoveComponent c={c} disabled={!!prog} onDone={(s) => { adopt(s); loadCap(); }} onError={setErr} />
-              <BrowseBtn id={c.id} />
+              {browseBtn(c.id)}
               <button onClick={() => dl([c.id])} disabled={!!prog || (c.fitsVram === false && !c.installed)} title={c.fitsVram === false && !c.installed ? t("setup.noVram") : c.installed ? t("settings.redownload") : t("setup.downloadOne")}
                 className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12px] border border-[var(--color-border)] text-[var(--color-accent-2)] hover:border-[var(--color-accent)] disabled:opacity-40">
                 {c.installed ? <RefreshCw size={12} /> : <Download size={12} />}
@@ -339,20 +339,20 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
     );
   };
 
-  const Group = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  const group = (label: string, children: React.ReactNode) => (
     <div className="mb-3">
       <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)] mb-1.5">{label}</div>
       <div className="space-y-1.5">{children}</div>
     </div>
   );
 
-  const rowOf = (id: string) => { const c = get(id); return c ? <Row key={id} {...c} /> : null; };
+  const rowOf = (id: string) => { const c = get(id); return c ? rowView(c) : null; };
 
   // Тумблер движка «локально | OpenRouter» — тот же вид, что переключатель Parakeet|Whisper в группе ASR.
   const orRowCls = "px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]";
   // На чём считать стадию (устройство): Авто / GPU (CUDA) / CPU — свои табы в каждом разделе, по
   // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
-  const BackendTabs = ({ k }: { k: string }) => {
+  const backendTabs = (k: string) => {
     const cur = selv(k) || "auto";
     const gpuOff = !status.gpu.cuda13Ok;
     return (
@@ -402,7 +402,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <button onClick={() => setErr(null)} className="shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={12} /></button>
         </div>
       )}
-      <Group label={t("settings.roleTts")}>
+      {group(t("settings.roleTts"), <>
         <div className="flex gap-1 mb-2">
           {(["local", "openrouter", "google"] as const).map(provider => <button key={provider} onClick={() => api.setSelection("tts_provider",provider).then(loadCap).catch(e=>setErr(String(e)))}
             className={`flex-1 px-2 py-1.5 rounded-md border text-[12px] ${ttsProvider === provider ? "border-[var(--color-accent)]" : "border-[var(--color-border)]"}`}>{t(`google.provider_${provider}`)}</button>)}
@@ -430,7 +430,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </div>
         ) : (
           <>
-            <VariantPicker base={ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3"} ids={TTS_IDS} i18n={TTS_VARIANT_I18N} />
+            {variantPicker(ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3", TTS_IDS, TTS_VARIANT_I18N)}
             {ttsPick === "drama3" && (
               <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
                 <div className="flex items-center gap-2">
@@ -455,8 +455,8 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             {(isQwenTts(ttsPick) || ttsPick === "supertonic3") && rowOf("ruaccent-omograph-big")}
           </>
         )}
-      </Group>
-      <Group label={t("settings.roleAsr")}>
+      </>)}
+      {group(t("settings.roleAsr"), <>
         {/* Движок ASR: Parakeet-TDT (GPU, дефолт) / Whisper (локально, CPU) / OpenRouter (облако). */}
         <div className="flex gap-1 mb-1.5">
           {[{ id: "parakeet", label: "Parakeet-TDT", cloud: false }, { id: "whisper", label: "CrisperWhisper", cloud: false }, { id: "openrouter", label: "OpenRouter", cloud: true }].map((e) => {
@@ -472,7 +472,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             );
           })}
         </div>
-        {selv("or_asr_on") !== "1" && <BackendTabs k="asr_backend" />}
+        {selv("or_asr_on") !== "1" && backendTabs("asr_backend")}
         {selv("or_asr_on") === "1" ? (
           <div className={`${orRowCls} space-y-2`}>
             {orModelSelect("asr", "or_asr", t("providers.pickAsrModel"))}
@@ -481,7 +481,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         ) : asrEngine === "parakeet" ? (
           <>
             {get("transcribe-engine-cpu")?.requirement === "required" ? rowOf("transcribe-engine-cpu") : rowOf("transcribe-engine")}
-            <VariantPicker base="Parakeet-TDT 0.6B v3" ids={["parakeet", "parakeet-ultra"]} i18n={ASR_VARIANT_I18N} />
+            {variantPicker("Parakeet-TDT 0.6B v3", ["parakeet", "parakeet-ultra"], ASR_VARIANT_I18N)}
           </>
         ) : (
           <>
@@ -490,32 +490,32 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             {rowOf("higgs-engine")}
           </>
         )}
-      </Group>
-      <Group label={t("settings.roleMt")}>
+      </>)}
+      {group(t("settings.roleMt"), <>
         {/* Перевод и vision — каждый своим провайдером: своя Gemma, локальный сервер или OpenRouter. */}
         <LlmProviders selection={cap?.selection} hasOrKey={hasOrKey} onChanged={loadCap} />
         {needsGemma && (
           <>
-            <VariantPicker base="Gemma-4 12B QAT + vision" ids={["gemma", "gemma-q5_0", "gemma-q6_k", "gemma-q8_0"]} />
+            {variantPicker("Gemma-4 12B QAT + vision", ["gemma", "gemma-q5_0", "gemma-q6_k", "gemma-q8_0"])}
             {rowOf("llama")}
           </>
         )}
-      </Group>
-      <Group label={t("settings.roleSep")}>
+      </>)}
+      {group(t("settings.roleSep"), <>
         {/* На чём считать сепарацию — свои табы (GPU CUDA-сборка / CPU-сборка BSRoformer). */}
-        <BackendTabs k="sep_backend" />
-        <VariantPicker base="Mel-Band Roformer voc_fv6" ids={["roformer", "roformer-q5", "roformer-q4"]} />
+        {backendTabs("sep_backend")}
+        {variantPicker("Mel-Band Roformer voc_fv6", ["roformer", "roformer-q5", "roformer-q4"])}
         {selv("sep_backend") === "cpu" ? rowOf("bsroformer-engine-cpu") : rowOf("bsroformer-engine")}
-      </Group>
-      <Group label={t("settings.roleDiar")}>
+      </>)}
+      {group(t("settings.roleDiar"), <>
         {/* На чём считать диаризацию — свои табы (Nemotron 3 Diarization onnx: CUDA-EP / CPU-провайдер). */}
-        <BackendTabs k="diar_backend" />
+        {backendTabs("diar_backend")}
         {rowOf("sortformer")}
-      </Group>
-      <Group label={t("settings.roleRuntime")}>{rowOf("onnxruntime")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("onnxruntime-gpu")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("cuda12-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</Group>
+      </>)}
+      {group(t("settings.roleRuntime"), <>{rowOf("onnxruntime")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("onnxruntime-gpu")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("cuda12-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</>)}
       <YtDlpTool installed={!!get("ytdlp")?.installed} row={rowOf("ytdlp")} />
       {/* Производительность / экономия RAM — ВИДИМЫЕ контролы (не авто-магия): против OOM на слабой памяти. */}
-      <Group label={t("settings.perfTitle")}>
+      {group(t("settings.perfTitle"), <>
         {[
           { key: "llama_ubatch", label: t("settings.llamaUbatch"), hint: t("settings.llamaUbatchHint"), opts: cap?.llama_ubatches ?? ["0", "512", "256", "128"], def: "0", fmt: (v: string) => (v === "0" ? t("settings.auto") : v) },
           { key: "higgs_ref_secs", label: t("settings.higgsRef"), hint: t("settings.higgsRefHint"), opts: cap?.higgs_ref_secs_opts ?? ["12", "8", "6", "4"], def: "12", fmt: (v: string) => `${v}${t("settings.sec")}` },
@@ -537,7 +537,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             </div>
           );
         })}
-      </Group>
+      </>)}
     </div>
   );
 }
