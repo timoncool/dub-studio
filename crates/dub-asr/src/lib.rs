@@ -82,13 +82,13 @@ pub use segment::{join_text, segment_words, split_at_speaker_turns, Segment, Wor
 /// Целевая частота parakeet-rs.
 pub const TARGET_SR: u32 = 16_000;
 
-/// Гарантировать, что ort (load-dynamic) грузит ПРАВИЛЬНУЮ onnxruntime.dll (1.28.2, под которую собран
-/// ort rc.13 с api-28). Без явного ORT_DYLIB_PATH ort ищет DLL по системному PATH и цепляет
+/// Гарантировать, что ort (load-dynamic) грузит ПРАВИЛЬНУЮ onnxruntime.dll (закреплённую 1.31.0; ort rc.13 берёт у неё
+/// OrtApi 28). Без явного ORT_DYLIB_PATH ort ищет DLL по системному PATH и цепляет
 /// C:\Windows\System32\onnxruntime.dll (1.17, поставляется с Windows) — рассинхрон OrtApi даёт ДЕДЛОК
 /// при создании сессии (процесс висит с 0% CPU, ни модель, ни диск не грузятся). Поэтому если
-/// ORT_DYLIB_PATH не задан пользователем, выставляем его на встроенную 1.28.2-DLL до первого касания ort.
+/// ORT_DYLIB_PATH не задан пользователем, выставляем его на встроенную 1.31.0-DLL до первого касания ort.
 ///
-/// Поиск (первый существующий): env DUB_ASR_ORT_DYLIB -> <models_root>/runtime/onnxruntime-win-x64-1.28.2/
+/// Поиск (первый существующий): env DUB_ASR_ORT_DYLIB -> <models_root>/runtime/onnxruntime-win-x64-1.31.0/
 /// lib/onnxruntime.dll -> та же DLL рядом с бинарём (портативная раскладка). models_root: env
 /// DUBENGINE_MODELS_ROOT, иначе <exe_dir>/models или <exe_dir>/../../models (dev-раскладка target/…).
 fn ensure_ort_dylib() {

@@ -105,8 +105,8 @@ pub const ENTRY_POINTS: &[(&str, &str)] = &[
     ("llama", "tools/llama/ggml-cuda.dll"),
     ("higgs-engine", "tools/audiocpp/audiocpp_server.exe"),
     ("drama3", "models/drama-engine/drama_engine.dll"),
-    ("onnxruntime", "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll"),
-    ("onnxruntime-gpu", "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime_providers_cuda.dll"),
+    ("onnxruntime", "models/runtime/onnxruntime-win-x64-1.31.0/lib/onnxruntime.dll"),
+    ("onnxruntime-gpu", "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib/onnxruntime_providers_cuda.dll"),
     ("cudnn", "models/higgs-engine/cudnn64_9.dll"),
     ("cudnn", "models/higgs-engine/cudnn_graph64_9.dll"),
     ("cudnn", "models/higgs-engine/cudnn_ops64_9.dll"),
@@ -237,6 +237,7 @@ mod tests {
         ("bsroformer-engine", "cublasLt64_13.dll", "cuda-runtime", false),
         ("onnxruntime-gpu", "cublas64_13.dll", "cuda-runtime", false),
         ("onnxruntime-gpu", "cublasLt64_13.dll", "cuda-runtime", false),
+        ("onnxruntime-gpu", "MSVCP140_ATOMIC_WAIT.dll", "vcruntime", false),
         ("onnxruntime-gpu", "cufft64_12.dll", "cuda-runtime", true),
         ("onnxruntime-gpu", "cudnn64_9.dll", "cudnn", true),
     ];

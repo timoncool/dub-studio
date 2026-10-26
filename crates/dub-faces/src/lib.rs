@@ -6,7 +6,7 @@
 //! + опц. LR-ASD speaking-скор; argmax) -> аватарка (самый фронтальный/чёткий кадр) -> casting.json.
 //!
 //! Стек ЗАПЕРТ: SCRFD-10G-KPS, LVFace-L (ICCV 2025), LR-ASD (IJCV 2025). Модели через ort (load-dynamic,
-//! onnxruntime.dll 1.28.2 в рантайме — как dub-asr/dub-ocr). LR-ASD ОПЦИОНАЛЕН: без экспортированного
+//! onnxruntime.dll 1.31.0 в рантайме — как dub-asr/dub-ocr). LR-ASD ОПЦИОНАЛЕН: без экспортированного
 //! ONNX связка работает только на со-встречаемости (см. asd.rs, документированный фолбэк).
 
 mod anime_detect;

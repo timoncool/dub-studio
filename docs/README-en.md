@@ -81,7 +81,7 @@ Transcript mode — a diarized transcript laid out by speaker, with clean voices
 **Everything else the app downloads and offers to install with buttons** — no more installing CUDA Toolkit, Visual C++ Redistributable, ffmpeg, or fetching weights by hand:
 
 - **Models** — Higgs Audio v3 (TTS), Gemma-4 12B + vision (translation), Parakeet-TDT or Parakeet Ultra (ASR), Nemotron 3 Diarization (diarization), Mel-Band Roformer (separation) — direct files from Hugging Face.
-- **Sidecar engines** — the Higgs engine (`audiocpp_engine.dll`), llama.cpp (CUDA 13.4), BSRoformer.cpp, ONNX Runtime 1.28.2, ffmpeg (NVENC) — GitHub zip releases.
+- **Sidecar engines** — the Higgs engine (`audiocpp_engine.dll`), llama.cpp (CUDA 13.4), BSRoformer.cpp, ONNX Runtime 1.31.0, ffmpeg (NVENC) — GitHub zip releases.
 - **CUDA runtime** (`cudart64_13` / `cublas64_13` / `cublasLt64_13`) — from NVIDIA's official redistributable [PyPI wheels](https://pypi.org/project/nvidia-cublas/) (redistribution permitted by the [CUDA Toolkit EULA](https://docs.nvidia.com/cuda/eula/index.html), Attachment A).
 - **VC++ runtime** and **OCR models** ship **bundled** next to the `.exe` — nothing to download.
 

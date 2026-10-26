@@ -1,4 +1,4 @@
-//! ONNX-движки кастинга через ort (load-dynamic, та же 1.28.2, что dub-asr/dub-ocr). SCRFD (детект лиц,
+//! ONNX-движки кастинга через ort (load-dynamic, та же 1.31.0, что dub-asr/dub-ocr). SCRFD (детект лиц,
 //! 9 выходов) + LVFace-L (эмбеддинг лица, [1,512]). ensure_ort_dylib() — копия паттерна dub-ocr: без
 //! явного ORT_DYLIB_PATH ort цепляет чужую system32\onnxruntime.dll (1.17) -> ДЕДЛОК при создании сессии.
 
@@ -9,7 +9,7 @@ use ort::value::TensorRef;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
 
-/// Гарантировать правильную onnxruntime.dll (1.28.2). Порт dub_ocr::ensure_ort_dylib (тот же поиск).
+/// Гарантировать правильную onnxruntime.dll (1.31.0). Порт dub_ocr::ensure_ort_dylib (тот же поиск).
 pub fn ensure_ort_dylib() {
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
