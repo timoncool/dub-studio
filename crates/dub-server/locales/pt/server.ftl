@@ -43,6 +43,7 @@ compose-taglines-failed = slogans: a tradução falhou; só desfoque
 downloads-interrupted = o download parou junto com o aplicativo; o que foi baixado está salvo em .part e continuará dali
 downloads-nothing-to-download = nenhum dos ids escolhidos é um componente baixável
 downloads-busy = já há um download em andamento
+downloads-panicked = o download parou num erro interno: { $error }
 downloads-thread-failed = a thread de download não iniciou: { $error }
 timing-words-not-recognized = os tempos por palavra da dublagem não foram reconhecidos em { $count } { $count ->
     [one] fala

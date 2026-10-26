@@ -46,6 +46,7 @@ compose-taglines-failed = таглайны: перевод не удался; т
 downloads-interrupted = закачка оборвалась вместе с приложением; скачанное сохранено в .part и докачается с места
 downloads-nothing-to-download = нет скачиваемых компонентов среди выбранных id
 downloads-busy = закачка уже идёт
+downloads-panicked = закачка остановилась на внутренней ошибке: { $error }
 downloads-thread-failed = поток закачки не запустился: { $error }
 timing-words-not-recognized = пословные тайминги дубляжа не распознаны для { $count } { $count ->
     [one] фразы

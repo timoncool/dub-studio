@@ -34,6 +34,7 @@ compose-taglines-failed = 标语：翻译失败；仅模糊
 downloads-interrupted = 下载随应用关闭而中断；已下载部分保存在 .part 中，将从断点继续
 downloads-nothing-to-download = 所选 id 中没有可下载的组件
 downloads-busy = 已有下载正在进行
+downloads-panicked = 下载因内部错误而停止：{ $error }
 downloads-thread-failed = 下载线程未能启动：{ $error }
 timing-words-not-recognized = { $count } 句配音的逐词时间未能识别（{ $examples }）——这些句子按长度高亮单词
 openrouter-catalog-failed = OpenRouter 目录：{ $error }

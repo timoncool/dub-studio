@@ -43,6 +43,7 @@ compose-taglines-failed = taglines: the translation failed; blur only
 downloads-interrupted = the download stopped when the app closed; what was fetched is kept in .part and resumes from there
 downloads-nothing-to-download = none of the selected ids is a downloadable component
 downloads-busy = a download is already running
+downloads-panicked = the download stopped on an internal error: { $error }
 downloads-thread-failed = the download thread did not start: { $error }
 timing-words-not-recognized = word timings of the dub were not recognized for { $count } { $count ->
     [one] line

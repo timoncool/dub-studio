@@ -204,8 +204,16 @@ impl Downloads {
         let stop = move || pause.load(Ordering::SeqCst);
         let on_progress = |ev: Value| self.apply_progress(id, &ev);
         // what another program has is taken first, by copy too when it sits on another drive: still faster than the network
-        setup::import_from_neighbors(&self.inner.repo_root, &crate::hub::neighbors(), true, Some(&ids));
-        let res = setup::download_components(&self.inner.repo_root, &ids, &stop, &on_progress);
+        // a panic in the download must end the job as failed: a thread gone silently leaves it «downloading» for good
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            setup::import_from_neighbors(&self.inner.repo_root, &crate::hub::neighbors(), true, Some(&ids));
+            setup::download_components(&self.inner.repo_root, &ids, &stop, &on_progress)
+        }))
+        .unwrap_or_else(|panic| {
+            let why = panic.downcast_ref::<String>().cloned().or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default();
+            tracing::error!("[ERROR] the download thread panicked: {why}");
+            Err(setup::DlError::new("panic", t!("downloads-panicked", error = why)))
+        });
         let mut state = lock(&self.inner.state);
         // Закачку уже сменила следующая — итог этой никому не нужен.
         if let Some(job) = state.active.as_mut().filter(|j| j.id == id) {
