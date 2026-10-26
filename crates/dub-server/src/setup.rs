@@ -1724,6 +1724,15 @@ pub fn import_from_dir(repo_root: &Path, src_dir: &Path, only: Option<&str>, cop
             let Some(src) = src else { continue };
             match adopt_file(src, &dest, copy) {
                 Ok(()) => {
+                    // the record of the build the file replaced would keep it uninstalled; without one the file is
+                    // hashed once and recorded as what it is
+                    if is_program(f) {
+                        if let Err(e) = std::fs::remove_file(record_path(repo_root, f)) {
+                            if e.kind() != std::io::ErrorKind::NotFound {
+                                report.errors.push(format!("{}: {e}", record_path(repo_root, f).display()));
+                            }
+                        }
+                    }
                     let part = part_path(repo_root, f);
                     let _ = std::fs::remove_file(done_manifest_path(&part));
                     let _ = std::fs::remove_file(&part);
@@ -4313,6 +4322,27 @@ mod tests {
         adopt_file(&src, &dest, false).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"pinned build");
         assert!(!with_suffix(&dest, ".import").exists());
+    }
+
+    /// A program taken from another folder replaces one of another build: the record of that build goes with it, so
+    /// the new file is hashed and recorded as what it is instead of counting as the old build for good.
+    #[test]
+    fn a_program_taken_from_a_neighbour_drops_the_record_of_the_build_it_replaced() {
+        let c = manifest().into_iter().find(|c| c.id == "transcribe-engine-cpu").unwrap();
+        let f = &c.files[0];
+        let root = tempfile::tempdir().unwrap();
+        let dest = root.path().join(f.dest_rel);
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::File::create(&dest).unwrap().set_len(f.size - 2048).unwrap();
+        write_record_of(root.path(), f, "stale", &[dest.clone()]).unwrap();
+        let neighbour = tempfile::tempdir().unwrap();
+        let src = neighbour.path().join(Path::new(f.dest_rel).file_name().unwrap());
+        std::fs::write(&src, vec![7u8; f.size as usize]).unwrap();
+        let report = import_from_dir(root.path(), neighbour.path(), Some(c.id), true, false);
+        assert_eq!(report.files, 1, "{:?}", report.errors);
+        assert!(!component_status(root.path(), &c).installed, "not the pinned build");
+        let record = read_record(root.path(), f).expect("recorded again");
+        assert_ne!(record.sha256, "stale", "the record names the file now in place");
     }
 
     /// Vendor libraries the studio downloads whose AVX-512 the vendor picks at run time (they run on every x86-64
