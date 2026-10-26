@@ -19,5 +19,17 @@ dub-tcpp = { path = "../dub-tcpp" }
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
 
+# tests/package.rs: the published package downloaded, checked and unpacked as a studio does it.
+[dev-dependencies]
+ureq = "3"
+sha2 = "0.11"
+
+[target.'cfg(windows)'.dev-dependencies]
+zip = { version = "8", default-features = false, features = ["deflate"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+tar = "0.4"
+flate2 = "1"
+
 [features]
 langid = []
