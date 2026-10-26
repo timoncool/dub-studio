@@ -753,6 +753,7 @@ drama-needs-vram = Drama 3 需要 6 GB 及以上显存的显卡，这张显卡�
 drama-needs-ram = 在显存不足 24 GB 的显卡上，Drama 3 把专家（18 GB）放在内存中：需要 32 GB 内存，这台电脑只有 { $gb } GB。请选择 Higgs。
 render-drama-missing = 已选择 Drama 3，但尚未完整下载：请在“模型”（配音）中下载，或选择 Higgs。
 render-drama-load-failed = 加载 Drama 3：{ $error }
+render-drama-oom = Drama 3 显存不足（{ $error }）：请关闭占用显卡的其他程序，或在设置的「Drama 3 的显存」中设定更小的值
 render-loading-drama = 正在加载 Drama 3
 qwen-needs-cuda = Qwen3-TTS 配音需要支持 CUDA 的 NVIDIA 显卡，但未找到（{ $card }）。请选择 Higgs。
 cpu-floor-missing = { $engine } 需要支持 AVX2、FMA、F16C 和 BMI2 的处理器（Intel 2013 年起，AMD 2017 年起），而此处理器缺少 { $missing }

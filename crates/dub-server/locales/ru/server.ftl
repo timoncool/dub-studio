@@ -985,6 +985,7 @@ drama-needs-vram = Drama 3 нужна видеокарта от 6 ГБ, а у э
 drama-needs-ram = На видеокарте меньше 24 ГБ Drama 3 держит эксперты (18 ГБ) в оперативной памяти: её нужно 32 ГБ, а здесь { $gb } ГБ. Выберите Higgs.
 render-drama-missing = Drama 3 выбрана, но не скачана целиком: скачайте её в «Модели» (озвучка) или выберите Higgs.
 render-drama-load-failed = загрузка Drama 3: { $error }
+render-drama-oom = Drama 3 не хватило видеопамяти ({ $error }): закройте другие программы, занимающие видеокарту, или задайте меньший объём в «Видеопамять для Drama 3» в настройках
 render-loading-drama = загрузка Drama 3
 qwen-needs-cuda = Голосу Qwen3-TTS нужна видеокарта NVIDIA с CUDA, а её не нашлось ({ $card }). Выберите Higgs.
 cpu-floor-missing = { $engine } нужен процессор с AVX2, FMA, F16C и BMI2 (Intel с 2013 года, AMD с 2017), а у этого нет { $missing }

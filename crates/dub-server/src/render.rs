@@ -712,7 +712,14 @@ fn load_drama(paths: &RenderPaths) -> Result<drama::DramaEngine, String> {
         return Err(t!("render-drama-missing"));
     }
     drama::DramaEngine::load_limited(&dll, &[], &paths.higgs_model_root, DRAMA_MAX_LEN, crate::models::drama_vram_limit_mb(&paths.models_root))
-        .map_err(|e| t!("render-drama-load-failed", error = e.to_string()))
+        .map_err(|e| {
+            let error = e.to_string();
+            if error.contains("out of memory") {
+                t!("render-drama-oom", error = error)
+            } else {
+                t!("render-drama-load-failed", error = error)
+            }
+        })
 }
 
 /// Строк промпта Drama 3 на одну фразу: реф (~22 кадра на секунду) + текст + сгенерированное.

@@ -957,6 +957,7 @@ drama-needs-vram = Drama 3 necesita una tarjeta gráfica de 6 GB o más, y esta 
 drama-needs-ram = En una tarjeta de menos de 24 GB, Drama 3 guarda sus expertos (18 GB) en la RAM: necesita 32 GB de RAM, y este equipo tiene { $gb } GB. Elige Higgs.
 render-drama-missing = Drama 3 está elegida pero no descargada por completo: descárgala en Modelos (voz) o elige Higgs.
 render-drama-load-failed = cargando Drama 3: { $error }
+render-drama-oom = Drama 3 se quedó sin memoria de vídeo ({ $error }): cierra otros programas que usan la tarjeta gráfica o pon una cantidad menor en «VRAM para Drama 3» en los ajustes
 render-loading-drama = cargando Drama 3
 qwen-needs-cuda = La voz Qwen3-TTS necesita una tarjeta NVIDIA con CUDA y no se encontró ninguna ({ $card }). Elige Higgs.
 cpu-floor-missing = { $engine } necesita un procesador con AVX2, FMA, F16C y BMI2 (Intel desde 2013, AMD desde 2017), y a este le falta { $missing }
