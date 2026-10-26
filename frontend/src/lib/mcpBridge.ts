@@ -535,12 +535,6 @@ const EVENTS: Record<string, string[]> = {
 };
 const EVERYTHING = [PROJECT_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, CASTING_CHANGED, JOURNAL_CHANGED];
 
-/** Tells the window's own sections that it changed the settings: the studio's notice of that change skips the window
- *  that made it. */
-export function settingsChangedHere(): void {
-  window.dispatchEvent(new CustomEvent<ChangeNotice>(SETTINGS_CHANGED, { detail: { changed: "settings", by: `window:${WINDOW_ID}` } }));
-}
-
 function changed(notice: ChangeNotice): void {
   // a job this window started is followed by the window itself; its own list and settings changes it already shows
   if (isMine(notice) && notice.changed !== "project") return;

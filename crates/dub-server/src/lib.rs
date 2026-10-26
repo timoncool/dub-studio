@@ -698,6 +698,13 @@ async fn capabilities(State(st): State<AppState>) -> Json<Value> {
     let sel = models::public_selection(&st.models_root);
     // Языки контента = полный набор Whisper (99). Единый источник — dub_translate::WHISPER_LANGS.
     let langs: Vec<&str> = dub_translate::WHISPER_LANGS.iter().map(|(c, _)| *c).collect();
+    let llm_provider = models::llm_backend(&st.models_root, "llm");
+    let llm = match llm_provider {
+        models::LlmBackend::Local => models::resolve_mt(&st.models_root, &models::load_selection(&st.models_root)).0.to_string_lossy().into_owned(),
+        models::LlmBackend::Server => models::server_model(&st.models_root, "llm"),
+        models::LlmBackend::OpenRouter => models::openrouter_model(&st.models_root, "llm"),
+        models::LlmBackend::Agent => String::new(),
+    };
     // Тот же JSON-контракт, что в app.py.capabilities(), плюс поля выбора ASR-движка.
     Json(json!({
         "device": o.device,
@@ -706,10 +713,12 @@ async fn capabilities(State(st): State<AppState>) -> Json<Value> {
         "asr_label": models::resolve_asr_choice(&st.repo_root, &st.models_root, &models::load_selection(&st.models_root)).label(),
         "models": {
             "asr": o.asr_model,
-            "llm": o.mt_model_path.to_string_lossy(),
+            "llm": llm,
             "vision": o.mmproj_path.to_string_lossy(),
             "tts": o.tts_model,
         },
+        // the translator's model is `models.llm`: a Gemma file, the server's or OpenRouter's model id, none for the agent
+        "llm_provider": llm_provider.as_str(),
         "ffmpeg": ffmpeg,
         "languages": langs,
         "voice_modes": ["clone","autocast","auto","voice"],

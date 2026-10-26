@@ -17,7 +17,7 @@ import { motion } from "motion/react";
 import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star, Music, Move, Minimize2, FileText, Users, Mic2, AlignLeft, AlignCenter, AlignRight, ChevronFirst, ChevronLast, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, GripVertical, ScrollText, Clock, Keyboard, Save, ZoomIn, ZoomOut, Sliders, Merge, Scissors, Bot, History, Pin } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useFloatable, dockSlot } from "./lib/useFloatable";
-import { api, llmProviderOf, slot, ApiError, SetupError, JobCancelledError, type Selection, type AnalyzePost, type AnalyzeResult, type JobKind, type Project, type Capabilities, type SetupStatus, type SetupComponent, type ProjectListing, type LaunchDefaults, type Character, type DownloadJob, type UrlFetch, type ShortenResult } from "./lib/api";
+import { api, llmProviderOf, slot, SELECTION_CHANGED, ApiError, SetupError, JobCancelledError, type Selection, type AnalyzePost, type AnalyzeResult, type JobKind, type Project, type Capabilities, type SetupStatus, type SetupComponent, type ProjectListing, type LaunchDefaults, type Character, type DownloadJob, type UrlFetch, type ShortenResult } from "./lib/api";
 import { LANGS, DUB_LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore, type Activity } from "./store";
 import en from "./locales/en.json";
@@ -57,7 +57,7 @@ import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
-import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, settingsChangedHere, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
+import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
 import { named } from "./lib/a11y";
 import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
@@ -176,7 +176,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   useEffect(() => { loadCap(); }, []);
   const selv = (k: string) => slot(cap?.selection, k) ?? "";
   const hasOrKey = cap?.selection?.or_key_set === true;
-  const setSel = (k: string, v: string) => api.setSelection(k, v).then(settingsChangedHere).catch(() => {});
+  const setSel = (k: string, v: string) => api.setSelection(k, v).catch(() => {});
   // Видеопамять Drama 3 из списка: сохранения по очереди, при быстрой смене последним на сервер приходит последнее значение.
   const [dramaVram, setDramaVram] = useState<string | null>(null);
   const dramaSaves = useRef<Promise<unknown>>(Promise.resolve());
@@ -215,6 +215,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   };
   const pause = () => { api.setupCancel().then(() => refreshStatus()).catch(setupErr); };
   useChanged(SETTINGS_CHANGED, () => { loadCap(); refreshStatus().catch(setupErr); });
+  useChanged(SELECTION_CHANGED, () => { loadCap(); refreshStatus().catch(setupErr); });
   const browseId = async (id: string) => {
     if (prog) return;
     try {
@@ -552,10 +553,11 @@ function PresetsSection({ onApplied }: { onApplied?: () => void }) {
   const load = () => { api.hwPresets().then(setData).catch(() => {}); };
   useEffect(() => { load(); }, []);
   useChanged(SETTINGS_CHANGED, load);
+  useChanged(SELECTION_CHANGED, load);
   const apply = async (id: string) => {
     setBusy(true);
     setCustom(id === "custom");
-    try { await api.applyPreset(id); settingsChangedHere(); onApplied?.(); } catch { /* ignore */ }
+    try { await api.applyPreset(id); onApplied?.(); } catch { /* ignore */ }
     setBusy(false);
   };
   const hw = data?.hardware;
@@ -4918,18 +4920,31 @@ export default function App() {
   const pid = useStore((s) => s.pid);
   const [cap, setCap] = useState("");
   const [capOffline, setCapOffline] = useState(false);
-  useEffect(() => { api.capabilities().then((c) => {
+  useEffect(() => { const load = () => api.capabilities().then((c) => {
     const base = (p?: string) => p ? (p.split(/[\\/]/).pop() || p).replace(/\.(gguf|onnx|bin|pt|safetensors)$/i, "") : "";
     // ASR в футере — из ФАКТИЧЕСКОГО выбора (active.json), не из статичного имени Parakeet-модели:
     // юзер переключил движок в «Моделях» -> строка обязана показать то, чем реально пойдёт прогон.
     const sel = (c as { selection?: Record<string, string> }).selection ?? {};
     const parts = [c.device, `ASR ${c.asr_label}`];
-    if (c.models?.llm) parts.push(`MT+vision ${base(c.models.llm)}`);
+    const llm = base(c.models?.llm);
+    if (c.llm_provider === "agent") parts.push(`MT ${t("providers.agent")}`);
+    else if (c.llm_provider === "openrouter") parts.push(`MT ${llm ? `${llm} (OpenRouter)` : "OpenRouter"}`);
+    else if (c.llm_provider === "server") parts.push(`MT ${llm ? `${llm} (${t("providers.server")})` : t("providers.server")}`);
+    else if (llm) parts.push(`MT+vision ${llm}`);
     const ttsQuant = sel.tts || c.tts_quant;
     if (c.models?.tts) parts.push(sel.tts === "drama3" ? "TTS Fish Audio Drama 3 q4" : sel.tts === "supertonic3" ? "TTS Supertonic 3 int8" : isQwenTts(sel.tts) ? `TTS Qwen3-TTS 1.7B ${sel.tts === "qwen3-tts" ? "Q4_K_M" : "Q8_0"}` : `TTS ${c.models.tts}${ttsQuant ? ` ${ttsQuant}` : ""}`);
     parts.push("sep BSRoformer", "diar Nemotron 3", "OCR PP-OCR");   // фикс-движки пайплайна
     setCap(parts.join(" · "));
-  }).catch(() => setCapOffline(true)); }, []);
+    setCapOffline(false);
+  }).catch(() => setCapOffline(true));
+    load();
+    window.addEventListener(SELECTION_CHANGED, load);
+    window.addEventListener(SETTINGS_CHANGED, load);
+    return () => {
+      window.removeEventListener(SELECTION_CHANGED, load);
+      window.removeEventListener(SETTINGS_CHANGED, load);
+    };
+  }, [t]);
   // boot: resume ?pid=… project, else gate on /setup/status — missing required components -> «first run».
   // Сетевая ошибка (fetch отклонён TypeError) = сервиса нет на порту -> экран «сервер не отвечает»; HTTP-ошибка
   // значит, что сервис ответил, и ведёт на главный экран.

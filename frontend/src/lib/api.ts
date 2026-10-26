@@ -168,7 +168,7 @@ export const slot = (sel: Selection | undefined, key: string): string | undefine
 };
 export type Capabilities = {
   device: string; tts_quant: string; asr_model: string; asr_label: string; ffmpeg: boolean;
-  languages: string[]; voice_modes: string[]; models?: ModelStack;
+  languages: string[]; voice_modes: string[]; models?: ModelStack; llm_provider?: LlmProviderKind;
   // Выбор ASR-движка (active.json): движок parakeet|whisper + модель/квант Whisper.
   selection?: Selection;
   asr_engines?: string[];
@@ -380,6 +380,13 @@ export const llmProviderOf = (sel: Selection | undefined, stage: "llm" | "vision
   return v === "server" || v === "openrouter" || v === "agent" ? v : "local";
 };
 
+/** Fired after the server took a new engine, model or device choice. */
+export const SELECTION_CHANGED = "dub:selection-changed";
+const selectionChanged = <T,>(answer: T): T => {
+  window.dispatchEvent(new Event(SELECTION_CHANGED));
+  return answer;
+};
+
 export const api = {
   capabilities: () => getJson<Capabilities>("/engine/capabilities"),
   setupStatus: () => getPolled<SetupStatus>("/setup/status"),
@@ -393,9 +400,9 @@ export const api = {
   setOpts: (edit: Partial<ModelStack>) =>
     fetch(`${BASE}/engine/opts`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(edit) }).then(j<{ models: ModelStack }>),
   // Сделать вариант модели (квант) активным: id компонента настроек -> пишет models/active.json на бэке.
-  selectModel: (id: string) => postJson<Selection>("/engine/select", { id }),
+  selectModel: (id: string) => postJson<Selection>("/engine/select", { id }).then(selectionChanged),
   // Прямая установка слота выбора (движок/модель/квант ASR) без скачивания: {key,value} -> active.json.
-  setSelection: (key: string, value: string) => postJson<Selection>("/engine/select", { key, value }),
+  setSelection: (key: string, value: string) => postJson<Selection>("/engine/select", { key, value }).then(selectionChanged),
   // Облачные модели (OpenRouter): проверка ключа + фильтрованный каталог по модальности (llm/vision/tts).
   openrouterVerify: (key: string) => postJson<{ ok: boolean; data?: { label?: string; limit?: number; usage?: number }; error?: unknown }>("/engine/openrouter/verify", { key }),
   // Ключ OpenRouter: сервер отдаёт только «задан ли» и источник; PUT сначала проверяет ключ в OpenRouter.
@@ -425,7 +432,7 @@ export const api = {
   proxyTest: (form: { mode: ProxyMode; kind: ProxyKind; url: string; password?: string }) => postJson<ProxyProbe>("/engine/proxy/test", form),
   // Пресеты железа: список + детект GPU/VRAM + рекомендация; применение пишет кванты/облако в active.json.
   hwPresets: () => getJson<{ presets: { id: string; title: string; subtitle: string }[]; hardware: { gpuName: string; totalVramGb: number; totalRamGb: number; hasGpu: boolean; recommended: string; reason: string }; current: string }>("/engine/presets"),
-  applyPreset: (id: string) => postJson<{ ok: boolean; id: string; applied: { key: string; value: string }[] }>("/engine/preset", { id }),
+  applyPreset: (id: string) => postJson<{ ok: boolean; id: string; applied: { key: string; value: string }[] }>("/engine/preset", { id }).then(selectionChanged),
   voices: () => getJson<{ voices: string[] }>("/voices"),
   // Дефолты запуска дубляжа (форма стартового экрана) хранит сервис: одни на все окна и агента.
   launchDefaults: () => getJson<LaunchDefaultsState>("/settings/launch"),
