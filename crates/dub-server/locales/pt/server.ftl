@@ -1,4 +1,4 @@
-asr-windowed = transcrição por janelas na GPU ({ $speakers } { $speakers ->
+asr-windowed = transcrição por janelas ({ $speakers } { $speakers ->
     [one] falante
    *[other] falantes
 })

@@ -1,4 +1,4 @@
-asr-windowed = 在 GPU 上分窗转写（{ $speakers } 位说话人）
+asr-windowed = 分窗转写（{ $speakers } 位说话人）
 
 ## Separation, OCR, benchmark, casting library, cloud ASR and TTS
 

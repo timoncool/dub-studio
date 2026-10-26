@@ -1,4 +1,4 @@
-asr-windowed = транскрипция по окнам на GPU ({ $speakers } { $speakers ->
+asr-windowed = транскрипция по окнам ({ $speakers } { $speakers ->
     [one] спикер
     [few] спикера
    *[many] спикеров
