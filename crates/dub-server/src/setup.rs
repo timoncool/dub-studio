@@ -1671,7 +1671,7 @@ pub fn import_from_neighbors(repo_root: &Path, neighbors: &[(String, PathBuf)], 
 // ── Место на диске ───────────────────────────────────────────────────────────
 
 /// Свободное место на томе пути (для пользователя, с учётом квот), байт. Путь может ещё не существовать —
-/// берём ближайший существующий каталог. None — ОС не ответила (или не Windows): место тогда не проверяем.
+/// берём ближайший существующий каталог. None — ОС не ответила: место тогда не проверяем.
 #[cfg(windows)]
 pub fn free_bytes(path: &Path) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
@@ -1691,8 +1691,13 @@ extern "system" {
 }
 
 #[cfg(not(windows))]
-pub fn free_bytes(_path: &Path) -> Option<u64> {
-    None
+pub fn free_bytes(path: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = path.ancestors().find(|p| p.is_dir())?;
+    let c_path = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let ok = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) } == 0;
+    ok.then(|| stat.f_bavail as u64 * stat.f_frsize as u64)
 }
 
 /// Отказ, если на томе моделей меньше места, чем нужно под докачку `need` байт.
@@ -3723,6 +3728,14 @@ mod tests {
         }
         assert!(!st.ready);
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn the_free_space_of_a_folder_not_yet_made_is_read_from_its_volume() {
+        let root = temp_root("free");
+        let free = free_bytes(&root.join("models").join("not-yet"));
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(free.is_some_and(|b| b > 0), "{free:?}");
     }
 
     #[test]
