@@ -303,6 +303,16 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
     }
 }
 
+/// ONNX Runtime with its telemetry off: Microsoft's builds send usage telemetry unless the environment turns it off.
+/// Called at start, before any session is made; the library itself is still bound at its first use.
+pub fn ort_without_telemetry() -> Result<(), String> {
+    if ort::init().with_telemetry(false).commit() {
+        Ok(())
+    } else {
+        Err("ONNX Runtime was set up before the studio could turn its telemetry off".into())
+    }
+}
+
 /// ORT_DYLIB_PATH поставила студия, а не пользователь: только такой путь переставляется после закачки.
 static ORT_PATH_OURS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
