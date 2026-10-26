@@ -20,6 +20,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **An engine or program counts as installed only as the pinned build**: a file of the right size but another build (an older engine, one another program left) is hashed once, and the studio downloads the pinned one in its place.
 - **Downloads trust the system's certificates**: behind a proxy or an antivirus that checks HTTPS with its own certificate installed in the system, models and engines download instead of failing on the certificate; the check of a large download now moves the bar instead of standing at 100 %.
 - **Linux and macOS know the free space of the models folder**: First run said the free space is unknown, and a download too big for the disk was not stopped before it began.
 - **Linux: the system's ffmpeg and other programs of the computer start from the AppImage**: they no longer load the image's own libraries (on systems newer than Ubuntu 22.04 ffmpeg stopped with «undefined symbol vaMapBuffer2»); yt-dlp, the file manager and the browser start the same way.

@@ -1394,14 +1394,55 @@ fn archive_installed(repo_root: &Path, f: &FileSpec) -> bool {
     })
 }
 
+/// A program in one file (engine, CLI): builds with other flags can match in size, only sha256 tells them apart.
+fn is_program(f: &FileSpec) -> bool {
+    f.extract == Extract::None && (f.dest_rel.starts_with("tools/") || [".dll", ".so", ".dylib", ".exe"].iter().any(|ext| f.dest_rel.ends_with(ext)))
+}
+
+/// A program counts when it has the pinned size and its record names the pinned sha256. A file without a record
+/// (laid down before records or taken from a neighbouring program) is hashed once and the record keeps its real
+/// sha256, so a foreign build stays not installed and is not hashed again.
+fn program_installed(repo_root: &Path, f: &FileSpec) -> bool {
+    let dest = repo_root.join(f.dest_rel);
+    if !file_ok(&dest, f.size) {
+        return false;
+    }
+    if let Some(r) = read_record(repo_root, f) {
+        return r.sha256 == f.sha256;
+    }
+    match sha256_file(&dest, &|| false) {
+        Ok(Some(h)) => {
+            if h != f.sha256 {
+                tracing::warn!("{} is not the pinned build (sha256 {h}, pinned {}); it counts as not installed", f.dest_rel, f.sha256);
+            }
+            if let Err(e) = write_record_of(repo_root, f, &h, &[dest]) {
+                tracing::error!("[ERROR] the install record of {}: {e}", f.dest_rel);
+                return false;
+            }
+            h == f.sha256
+        }
+        Ok(None) => false,
+        Err(e) => {
+            tracing::error!("[ERROR] {}: {e}", f.dest_rel);
+            false
+        }
+    }
+}
+
 fn file_installed(repo_root: &Path, f: &FileSpec) -> bool {
     match f.extract {
+        Extract::None if is_program(f) => program_installed(repo_root, f),
         Extract::None => file_ok(&repo_root.join(f.dest_rel), f.size),
         _ => archive_installed(repo_root, f),
     }
 }
 
 fn write_record(repo_root: &Path, f: &FileSpec, written: &[PathBuf]) -> Result<(), DlError> {
+    write_record_of(repo_root, f, f.sha256, written)
+}
+
+/// The record with the sha256 the file on disk has, which is the pinned one unless the file is another build.
+fn write_record_of(repo_root: &Path, f: &FileSpec, sha256: &str, written: &[PathBuf]) -> Result<(), DlError> {
     let files = written
         .iter()
         .map(|p| RecordedFile {
@@ -1409,7 +1450,7 @@ fn write_record(repo_root: &Path, f: &FileSpec, written: &[PathBuf]) -> Result<(
             size: file_len(p),
         })
         .collect();
-    let rec = ArchiveRecord { sha256: f.sha256.to_string(), url: f.url.to_string(), files,
+    let rec = ArchiveRecord { sha256: sha256.to_string(), url: f.url.to_string(), files,
     };
     let path = record_path(repo_root, f);
     let tmp = with_suffix(&path, ".tmp");
@@ -1980,6 +2021,7 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
             drop_file(&done_manifest_path(&part), &mut report);
             if f.extract == Extract::None {
                 drop_file(&repo_root.join(f.dest_rel), &mut report);
+                drop_file(&record_path(repo_root, f), &mut report);
             } else {
                 if let Some(rec) = read_record(repo_root, f) {
                     for x in &rec.files {
@@ -2659,6 +2701,9 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
                 })?;
             }
             let _ = std::fs::remove_file(done_manifest_path(part));
+            if is_program(f) {
+                write_record(repo_root, f, &[dest])?;
+            }
             return Ok(());
         }
         extract => extract_archive(part, f.dest_rel, extract, dir),
@@ -3806,6 +3851,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert!(hash.is_some());
         assert_eq!(*seen.lock().unwrap(), vec![64 << 20, 70 << 20], "every 64 MiB and at the end");
+    }
+
+    #[test]
+    fn a_program_counts_only_as_the_pinned_build() {
+        const ENGINE: FileSpec = FileSpec { url: "https://example.invalid/e.dll", dest_rel: "models/eng/e.dll", size: 3, sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", extract: Extract::None };
+        assert!(is_program(&ENGINE));
+        let root = temp_root("program");
+        let dll = root.join(ENGINE.dest_rel);
+        std::fs::create_dir_all(dll.parent().unwrap()).unwrap();
+
+        std::fs::write(&dll, b"abd").unwrap();
+        assert!(!file_installed(&root, &ENGINE), "другая сборка того же размера");
+        assert_eq!(read_record(&root, &ENGINE).unwrap().sha256, "a52d159f262b2c6ddb724a61840befc36eb30c88877a4030b65cbe86298449c9");
+        assert!(!file_installed(&root, &ENGINE), "запись о другой сборке, без повторного хэша");
+
+        std::fs::write(&dll, b"abc").unwrap();
+        std::fs::remove_file(record_path(&root, &ENGINE)).unwrap();
+        assert!(file_installed(&root, &ENGINE), "файл без записи хэшируется один раз");
+        assert_eq!(read_record(&root, &ENGINE).unwrap().sha256, ENGINE.sha256);
+
+        std::fs::write(&dll, b"ab").unwrap();
+        assert!(!file_installed(&root, &ENGINE), "не тот размер");
+        std::fs::remove_dir_all(&root).ok();
     }
 
     #[test]
