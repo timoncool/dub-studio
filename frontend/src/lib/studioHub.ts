@@ -1,9 +1,14 @@
 // Studio Hub в окне: анонимная статистика (выбор и что уходит) и новости хаба поверх вшитых.
 import { useEffect, useState } from "react";
 import { BASE } from "./api";
+import { openSettings } from "./settingsNav";
 
-export interface HubButton { label: string; action: "url" | "dismiss" | "open"; url?: string; style: "primary" | "secondary" }
+/** Where an `open` button leads: the studio's news, settings, models or update screen. */
+export type HubTarget = "news" | "settings" | "models" | "update";
+export interface HubButton { label: string; action: "url" | "dismiss" | "open"; url?: string; target?: HubTarget; style: "primary" | "secondary" }
 export interface HubContent { title: string; body: string; buttons: HubButton[] }
+/** The sections a notice may show in; every studio maps its own screens to them. */
+export type HubView = "create" | "library" | "news" | "tools" | "settings";
 export interface HubItem {
   id: string;
   kind: "news" | "bar" | "popup";
@@ -13,7 +18,9 @@ export interface HubItem {
   eligible: boolean;
   dismissible: boolean;
   theme: HubTheme | null;
-  rules: { delay_s: number };
+  image: string | null;
+  ad: { label: boolean; erid?: string } | null;
+  rules: { delay_s: number; views: HubView[] | null };
 }
 export type HubTheme = "sunset" | "orchid" | "lime" | "graphite";
 export interface HubState {
@@ -67,12 +74,39 @@ export function useHubState(lang: string): HubState | null {
       shared = { lang, state: null, timer: window.setInterval(() => load(lang), 60_000) };
       load(lang);
     } else if (shared.state) {
-      setState(shared.state);
+      const current = shared.state;
+      void Promise.resolve().then(() => setState(current));
     }
     listeners.add(setState);
     return () => { listeners.delete(setState); };
   }, [lang]);
   return state;
+}
+
+/** A strip or a popup shows now: the hub allows it in this launch, its delay from the window being ready has passed and
+ * the window is in one of its sections (none named: anywhere). */
+export function showsNow(item: HubItem, elapsed: number, view: HubView): boolean {
+  return item.eligible && elapsed >= (item.rules?.delay_s ?? 0) && (!item.rules?.views || item.rules.views.includes(view));
+}
+
+/** A notice's picture: a hub media key, served by the studio, or a full address. */
+export function hubMediaUrl(image: string): string {
+  return /^https?:\/\//.test(image) ? image : `${BASE}/v1/hub/media/${encodeURIComponent(image)}`;
+}
+
+const OPEN_NEWS = "dub:open-news";
+/** Opens the news list from anywhere in the window (a hub button's `open: news`). */
+export const openNews = (): void => { window.dispatchEvent(new Event(OPEN_NEWS)); };
+export const onOpenNews = (open: () => void): (() => void) => {
+  window.addEventListener(OPEN_NEWS, open);
+  return () => window.removeEventListener(OPEN_NEWS, open);
+};
+
+/** An `open` button's screen: the news list, the settings (their first section, as the gear opens them), the models,
+ * or «About», where the version and its releases are. */
+export function openHubTarget(target: HubTarget): void {
+  if (target === "news") openNews();
+  else openSettings(target === "update" ? "about" : "models");
 }
 
 export function hubText(item: HubItem, lang: string): HubContent | undefined {

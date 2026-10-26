@@ -1444,7 +1444,9 @@
     "feedNever": "尚未获取服务器新闻：工作室显示其版本自带的新闻。",
     "refresh": "立即检查",
     "notices": "通知",
-    "close": "关闭"
+    "close": "关闭",
+    "ad": "广告",
+    "adErid": "广告 · erid {{erid}}"
   },
   "undoDelete": {
     "deleted": "「{{video}}」已移到回收站",

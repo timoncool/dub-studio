@@ -62,8 +62,9 @@ import { named } from "./lib/a11y";
 import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
 import { SourceText, TtsIgnoredNote, TtsSkipNote } from "./components/SegmentText";
-import { hubChanged, setTelemetry, useHubState } from "./lib/studioHub";
+import { hubChanged, setTelemetry, showsNow, useHubState, type HubView } from "./lib/studioHub";
 import { HubBars } from "./components/HubBars";
+import HubPopup from "./components/HubPopup";
 import HubTelemetryPreview from "./components/HubTelemetryPreview";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -735,6 +736,9 @@ function TopBar() {
   // Открытые настройки: цель «раздел[:часть]» и номер запроса — повторный запрос той же цели снова ведёт к ней.
   const [settings, setSettings] = useState<{ target: string; request: number } | null>(null);
   const [help, setHelp] = useState(false);
+  const setOverlay = useStore((s) => s.setOverlay);
+  const settingsOpen = settings !== null;
+  useEffect(() => { setOverlay(settingsOpen ? "settings" : null); }, [settingsOpen, setOverlay]);
   const openSettingsAt = (target: string) => setSettings(settingsRequest(target));
   useEffect(() => {
     const open = (e: Event) => setSettings(settingsRequest((e as CustomEvent<string>).detail));
@@ -4933,9 +4937,31 @@ export default function App() {
       .then((s) => setStage(s.ready ? "empty" : "setup"))
       .catch((e: unknown) => setStage(unreachable(e) ? "offline" : "empty"));   // older server without /setup -> fall through to hero
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // the hub's sections: a dub is made from the start screen to the editor, a transcript is a tool, the open window names its own
+  const overlay = useStore((s) => s.overlay);
+  const view: HubView = overlay ?? (stage === "editor" && projMode === "transcribe" ? "tools" : "create");
+  const busy = useStore((s) => s.stage === "analyzing" || s.currentJob !== null || s.rendering || s.localJobs.length > 0 || s.exports.some((e) => e.status === "rendering"));
+  const ready = stage !== "boot" && stage !== "offline" && stage !== "setup";
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!ready) return;
+    const readyAt = Date.now();
+    const tick = window.setInterval(() => setElapsed(Math.floor((Date.now() - readyAt) / 1000)), 1000);
+    return () => window.clearInterval(tick);
+  }, [ready]);
+  const [popupClosed, setPopupClosed] = useState<Set<string>>(() => new Set());
+  // a popup waits while something is being made: an analysis, a render, an editor job or an export
+  const popup = ready && hub && !busy
+    ? hub.items.find((item) => item.kind === "popup" && !popupClosed.has(item.id) && showsNow(item, elapsed, view))
+    : undefined;
+  const closePopup = (id: string) => {
+    setPopupClosed((previous) => new Set(previous).add(id));
+    hubChanged();
+  };
   return (
     <div className="h-full flex flex-col">
-      {hub && stage !== "setup" && <HubBars items={hub.items} />}
+      {hub && stage !== "setup" && <HubBars items={hub.items} view={view} />}
+      {popup && <HubPopup item={popup} onClose={() => closePopup(popup.id)} />}
       <TopBar />
       {stage === "boot" && <div className="flex-1 grid place-items-center"><Loader2 size={22} className="animate-spin text-[var(--color-muted)]" /></div>}
       {stage === "offline" && <ServerOffline />}

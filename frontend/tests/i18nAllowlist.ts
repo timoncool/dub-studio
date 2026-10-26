@@ -4,7 +4,7 @@ export const ALLOW: Allow = {
   tokens: new Set<string>([
     "OpenRouter", "GitHub", "Telegram", "Claude Code", "Nerual Dreming", "ArtGeneration.me", "Нейро-Софт",
     "Parakeet-TDT", "Higgs Audio v3", "Fish Audio Drama 3", "OCR PP-OCR", "Supertonic 3",
-    "YuE2 Studio", "MiniMax Music3 Studio", "ACE-Step Studio", "Dub Studio", "Dungeon Ultimate", "Bulka", "Hugging Face", "HTTP", "HTTPS", "SOCKS5", "SOCKS4", "Whisper", "Montserrat", "GPU", "VRAM", "RAM", "VRAM ·",
+    "YuE2 Studio", "MiniMax Music3 Studio", "ACE-Step Studio", "Dub Studio", "Dungeon Ultimate", "Bulka", "Hugging Face", "HTTP", "HTTPS", "SOCKS5", "SOCKS4", "CrisperWhisper", "Montserrat", "GPU", "VRAM", "RAM", "VRAM ·",
     "SPK", "AA", "v", "dB", "px", "px/s", "(Ctrl+Z)", "(Ctrl+Shift+Z)",
     
     "Content-Type",

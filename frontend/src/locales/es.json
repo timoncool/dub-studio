@@ -1480,7 +1480,9 @@
     "feedNever": "Aún no se han recibido noticias del servidor: el estudio muestra las de su versión.",
     "refresh": "Comprobar ahora",
     "notices": "Avisos",
-    "close": "Cerrar"
+    "close": "Cerrar",
+    "ad": "Publicidad",
+    "adErid": "Publicidad · erid {{erid}}"
   },
   "undoDelete": {
     "deleted": "«{{video}}» se movió a la papelera",

@@ -267,6 +267,10 @@ export const editsSettled = (): Promise<void> => _patchChain.then(() => undefine
 
 // Общие обёртки: GET/POST c JSON-телом -> j<T>. Убирают повтор fetch+headers+JSON.stringify.
 const getJson = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`).then(j<T>);
+/** A read the window makes by itself to keep a screen current (statuses, levels, hardware, queues): the hub counts it
+ * as no feature, so a feature count means a person or an agent asked for it. */
+const POLLED = { "x-hub-skip": "1" };
+const getPolled = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`, { headers: POLLED }).then(j<T>);
 const postJson = <T>(path: string, body: unknown): Promise<T> =>
   fetch(`${BASE}${path}`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }).then(j<T>);
 // POST маршрутов /setup/*: отказ приходит {code, detail} -> SetupError (тело не JSON — код по HTTP-статусу).
@@ -316,6 +320,8 @@ async function coded<T>(r: Response): Promise<T> {
 const sendCoded = <T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> =>
   fetch(`${BASE}${path}`, body === undefined ? { method } : { method, headers: JSON_HEADERS, body: JSON.stringify(body) }).then(coded<T>);
 const getCoded = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`).then(coded<T>);
+/** `getCoded` for a read the window makes by itself (see `POLLED`). */
+const getCodedPolled = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`, { headers: POLLED }).then(coded<T>);
 const postCoded = <T>(path: string, body: unknown): Promise<T> =>
   fetch(`${BASE}${path}`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }).then(coded<T>);
 
@@ -346,11 +352,11 @@ export const urlApi = {
   probe: (url: string, cookiesText: string | null) => postCoded<UrlProbe>("/url/probe", { url, cookies_text: cookiesText }),
   start: (req: { url: string; quality: UrlQuality; subs_lang: string | null; cookies_text: string | null }) => postCoded<{ fetch: UrlFetch }>("/projects/from_url", req),
   list: () => getCoded<{ fetches: UrlFetch[] }>("/url/fetches"),
-  get: (id: string) => getCoded<UrlFetch>(`/url/fetches/${encodeURIComponent(id)}`),
+  get: (id: string) => getCodedPolled<UrlFetch>(`/url/fetches/${encodeURIComponent(id)}`),
   cancel: (id: string) => postCoded<{ fetch: UrlFetch }>(`/url/fetches/${encodeURIComponent(id)}/cancel`, {}),
   resume: (id: string) => postCoded<{ fetch: UrlFetch }>(`/url/fetches/${encodeURIComponent(id)}/resume`, {}),
   forget: (id: string) => sendCoded<{ ok: boolean }>("DELETE", `/url/fetches/${encodeURIComponent(id)}`),
-  tool: () => getCoded<UrlTool>("/url/tool"),
+  tool: () => getCodedPolled<UrlTool>("/url/tool"),
   updateTool: () => postCoded<{ started: boolean; tool: UrlTool }>("/url/tool/update", {}),
 };
 
@@ -376,12 +382,12 @@ export const llmProviderOf = (sel: Selection | undefined, stage: "llm" | "vision
 
 export const api = {
   capabilities: () => getJson<Capabilities>("/engine/capabilities"),
-  setupStatus: () => getJson<SetupStatus>("/setup/status"),
+  setupStatus: () => getPolled<SetupStatus>("/setup/status"),
   setupDownload: (ids: string[]) => setupPost<{ download: DownloadJob }>("/setup/download", { ids }),
   setupCancel: () => setupPost<{ paused: boolean }>("/setup/cancel", {}),   // пауза: скачанное остаётся, «Продолжить» докачивает
   setupRemove: (ids: string[]) => setupPost<{ removed: string[]; freedBytes: number; errors: string[]; status: SetupStatus }>("/setup/remove", { ids }),
   setupOpenModels: () => setupPost<{ path: string }>("/setup/open-models", {}),
-  hwSnapshot: () => getJson<HwSnapshot>("/hw/snapshot"),
+  hwSnapshot: () => getPolled<HwSnapshot>("/hw/snapshot"),
   setupBrowse: (id?: string) => setupPost<ImportResult & { picked: boolean }>("/setup/browse", id ? { id } : {}),
   fonts: () => getJson<{ fonts: Record<string, string> }>("/fonts"),
   setOpts: (edit: Partial<ModelStack>) =>
@@ -432,7 +438,7 @@ export const api = {
     throw e;
   }),
   recordDevices: () => getJson<{ devices: string[] }>("/record/devices"),
-  recordLevel: () => getJson<{ level: number }>("/record/level"),
+  recordLevel: () => getPolled<{ level: number }>("/record/level"),
   recordStart: (name: string, device?: string) => postJson<{ ok: boolean; name?: string; error?: string }>("/record/start", { name, device }),
   recordStop: () => fetch(`${BASE}/record/stop`, { method: "POST" }).then(j<{ name: string | null; voices: string[] }>),
   voicesDownloadPack: () => fetch(`${BASE}/voices/download-pack`, { method: "POST" }).then(j<{ job_id: string }>),
@@ -522,7 +528,7 @@ export const api = {
   resumeProject: (pid: string) => fetch(`${BASE}/projects/${pid}/resume`, { method: "POST" }).then(j<{ job_id: string; kind: string; project_id: string }>),
   // MCP-сервер студии: адрес для подключения агента и его статус для раздела настроек «Агент (MCP)».
   mcpUrl: () => `${BASE || window.location.origin}/mcp`,
-  mcpStatus: () => getJson<McpStatus>("/mcp/status"),
+  mcpStatus: () => getPolled<McpStatus>("/mcp/status"),
   // SSE job progress -> onEvent per message; resolves on done, rejects on error
   // signal: the watcher went away (unmount, project switch) — the stream closes, the promise rejects with AbortError.
   watchJob: (jobId: string, onEvent: (e: JobEvent) => void, signal?: AbortSignal) =>

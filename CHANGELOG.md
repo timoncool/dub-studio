@@ -13,6 +13,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Added
 
+- **News and notices of the studios' service in full**: a notice can now open as a window over the studio, which waits until nothing is being made (analysis, voicing, export); notices show in the sections they are meant for, carry their picture, buttons and the ad label where there is one, and a button can lead to the news, the settings, the models or «About».
 - **The project's glossary helps CrisperWhisper spell its terms**: the source terms of the glossary go to recognition as words to expect, so names and terms come out as the glossary writes them.
 - **The emotion of the original, per project** ([#44](https://github.com/timoncool/dub-studio/issues/44)): with the cloned voice, the editor's voice section chooses it for this project: in every line (each line is cloned from its own piece of the original, so shouting and whispering carry over, but the timbre can shift from line to line), one voice per speaker (every line from the speaker's one reference, a steady voice for a narrator or a lecture), or as Settings - Quality says. Agents set it with `voice_emotion_set`.
 

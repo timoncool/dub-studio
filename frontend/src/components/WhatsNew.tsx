@@ -1,13 +1,25 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X, ExternalLink } from "lucide-react";
 import newsData from "../data/news.json";
-import { reportNotice, useHubState, type HubState } from "../lib/studioHub";
+import { HUB_GRADIENTS, HUB_TEXT, hubMediaUrl, hubText, onOpenNews, openHubTarget, reportNotice, useHubState, type HubButton, type HubState } from "../lib/studioHub";
+import { useStore } from "../store";
 import changelogRaw from "../../../CHANGELOG.md?raw";
+import { useEscapeLayer } from "../lib/escape";
 
 type Localized = Record<string, string>;
-interface NewsItem { id: string; date: string; release?: string; releaseButton?: string; title: Localized; body: Localized }
+interface NewsItem {
+  id: string;
+  date: string;
+  release?: string;
+  title: Localized;
+  body: Localized;
+  /** A hub item's: its picture, its buttons in the window's language and its ad label. */
+  image?: string | null;
+  buttons?: HubButton[];
+  ad?: { label: boolean; erid?: string } | null;
+}
 interface ChangelogSection { key: string; title: string; items: string[] }
 interface ChangelogRelease { heading: string; unreleased: boolean; version: string; date: string; sections: ChangelogSection[] }
 
@@ -17,19 +29,16 @@ const BUNDLED = newsData as NewsItem[];
 function useNews(lang: string): NewsItem[] {
   const hub: HubState | null = useHubState(lang);
   const fromHub: NewsItem[] = (hub?.items ?? [])
-    .filter((item) => item.kind === "news")
-    .map((item) => {
-      const local = item.content[lang] ?? item.content.en ?? Object.values(item.content)[0];
-      const index = local?.buttons.findIndex((b) => b.action === "url" && b.url) ?? -1;
-      return {
-        id: `hub:${item.id}`,
-        date: item.date ?? "",
-        release: index >= 0 ? local?.buttons[index].url : undefined,
-        releaseButton: index >= 0 ? `b${index}` : undefined,
-        title: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.title])),
-        body: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.body])),
-      };
-    })
+    .filter((item) => item.kind === "news" && item.eligible)
+    .map((item) => ({
+      id: `hub:${item.id}`,
+      date: item.date ?? "",
+      title: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.title])),
+      body: Object.fromEntries(Object.entries(item.content).map(([l, c]) => [l, c.body])),
+      image: item.image,
+      buttons: hubText(item, lang)?.buttons ?? [],
+      ad: item.ad,
+    }))
     .filter((n) => !BUNDLED.some((b) => b.id === n.id.slice(4)))
     .sort((a, b) => b.date.localeCompare(a.date));
   return [...fromHub, ...BUNDLED];
@@ -88,7 +97,7 @@ function inline(text: string, key: string): ReactNode[] {
   });
 }
 
-function NewsBody({ text }: { text: string }) {
+export function NewsBody({ text }: { text: string }) {
   return (
     <div className="mt-2 space-y-2.5 text-[13px] leading-relaxed text-[var(--color-muted)]">
       {text.split(/\n\s*\n/).map((block, i) => {
@@ -106,7 +115,7 @@ function NewsBody({ text }: { text: string }) {
   );
 }
 
-function NewsTab({ lang, news: NEWS }: { lang: string; news: NewsItem[] }) {
+function NewsTab({ lang, news: NEWS, onLeave }: { lang: string; news: NewsItem[]; onLeave: () => void }) {
   const { t } = useTranslation();
   // the hub's news count as its notices do: seen once a launch, clicks by button or link
   const hubIds = NEWS.filter((n) => n.id.startsWith("hub:")).map((n) => n.id.slice(4)).join(",");
@@ -114,21 +123,42 @@ function NewsTab({ lang, news: NEWS }: { lang: string; news: NewsItem[] }) {
     for (const id of hubIds ? hubIds.split(",") : []) reportNotice(id, "shown").catch((e: Error) => console.warn("[hub] news shown not recorded:", e.message));
   }, [hubIds]);
   if (NEWS.length === 0) return <p className="text-[13px] text-[var(--color-muted)] py-6 text-center">{t("news.empty")}</p>;
+  const press = (n: NewsItem, button: HubButton, index: number) => {
+    const id = n.id.slice(4);
+    reportNotice(id, button.action === "dismiss" ? "dismissed" : "clicked", button.action === "dismiss" ? undefined : `b${index}`)
+      .catch((err: Error) => console.warn("[hub] news button not recorded:", err.message));
+    if (button.action === "url" && button.url) window.open(button.url, "_blank", "noreferrer");
+    if (button.action === "open" && button.target) {
+      onLeave();
+      openHubTarget(button.target);
+    }
+  };
   return (
     <div className="space-y-3">
       {NEWS.map((n) => (
         <article key={n.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3.5"
           onClickCapture={(e) => {
-            const anchor = (e.target as HTMLElement).closest("a");
-            if (!anchor || !n.id.startsWith("hub:")) return;
-            const button = anchor.getAttribute("href") === n.release && n.releaseButton ? n.releaseButton : "link";
-            reportNotice(n.id.slice(4), "clicked", button).catch((err: Error) => console.warn("[hub] news click not recorded:", err.message));
+            if (!(e.target as HTMLElement).closest("a") || !n.id.startsWith("hub:")) return;
+            reportNotice(n.id.slice(4), "clicked", "link").catch((err: Error) => console.warn("[hub] news click not recorded:", err.message));
           }}>
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-[14px] font-semibold">{pick(n.title, lang)}</h3>
             {n.date && <time className="text-[11px] text-[var(--color-muted)] shrink-0 tabnum" dateTime={n.date}>{new Date(n.date).toLocaleDateString(lang)}</time>}
           </div>
+          {n.image && <img src={hubMediaUrl(n.image)} alt="" className="mt-2 max-h-56 w-full rounded-md object-cover" />}
           <NewsBody text={pick(n.body, lang)} />
+          {n.ad?.label && <p className="mt-2 text-[11px] text-[var(--color-muted)]">{n.ad.erid ? t("hub.adErid", { erid: n.ad.erid }) : t("hub.ad")}</p>}
+          {n.buttons && n.buttons.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {n.buttons.map((button, index) => (
+                <button key={index} type="button" onClick={() => press(n, button, index)}
+                  className={button.style === "primary" ? "px-3 py-1.5 rounded-lg text-[12px] font-semibold hover:opacity-90" : "px-3 py-1.5 rounded-lg text-[12px] border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-surface)]"}
+                  style={button.style === "primary" ? { background: HUB_GRADIENTS.sunset, color: HUB_TEXT.sunset } : undefined}>
+                  {button.label}
+                </button>
+              ))}
+            </div>
+          )}
           {n.release && (
             <a href={n.release} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-[12px] text-[var(--color-accent)] hover:underline">
               {t("news.releaseNotes")}<ExternalLink size={11} />
@@ -180,7 +210,8 @@ type Tab = "news" | "changelog";
 
 function WhatsNewModal({ onClose, news }: { onClose: () => void; news: NewsItem[] }) {
   const { t, i18n } = useTranslation();
-  const [tab, setTab] = useState<Tab>("news");
+  const [tab, setTab] = useState<Tab>(news.length ? "news" : "changelog");
+  useEscapeLayer(onClose);
   const tabCls = (on: boolean) =>
     `px-3 py-1.5 rounded-md text-[13px] transition-colors ${on ? "bg-[var(--color-surface-2)] text-[var(--color-text)] border border-[var(--color-border)]" : "text-[var(--color-muted)] hover:text-[var(--color-text)] border border-transparent"}`;
   return (
@@ -195,7 +226,7 @@ function WhatsNewModal({ onClose, news }: { onClose: () => void; news: NewsItem[
           <button onClick={() => setTab("news")} className={tabCls(tab === "news")}>{t("news.tabNews")}</button>
           <button onClick={() => setTab("changelog")} className={tabCls(tab === "changelog")}>{t("news.tabChangelog")}</button>
         </div>
-        {tab === "news" ? <NewsTab lang={i18n.language} news={news} /> : <ChangelogTab />}
+        {tab === "news" ? <NewsTab lang={i18n.language} news={news} onLeave={onClose} /> : <ChangelogTab />}
       </div>
     </div>
   );
@@ -208,10 +239,17 @@ export default function WhatsNew() {
   const [seen, setSeen] = useState<string | null>(readSeen);
   const [open, setOpen] = useState(false);
   const unseen = latest !== null && seen !== latest;
-  const show = () => {
+  const show = useCallback(() => {
     setOpen(true);
     if (latest) { writeSeen(latest); setSeen(latest); }
-  };
+  }, [latest]);
+  useEffect(() => onOpenNews(show), [show]);
+  const setOverlay = useStore((s) => s.setOverlay);
+  useEffect(() => {
+    if (!open) return;
+    setOverlay("news");
+    return () => setOverlay(null);
+  }, [open, setOverlay]);
   return (
     <>
       <button onClick={show} title={t("news.title")} aria-label={t("news.title")}

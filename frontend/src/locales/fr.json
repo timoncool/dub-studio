@@ -1480,7 +1480,9 @@
     "feedNever": "Les nouvelles du serveur ne sont pas encore arrivées : le studio montre celles de sa version.",
     "refresh": "Vérifier maintenant",
     "notices": "Annonces",
-    "close": "Fermer"
+    "close": "Fermer",
+    "ad": "Publicité",
+    "adErid": "Publicité · erid {{erid}}"
   },
   "undoDelete": {
     "deleted": "«{{video}}» est dans la corbeille",

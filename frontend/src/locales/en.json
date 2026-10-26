@@ -1462,7 +1462,9 @@
     "feedNever": "News have not been fetched from the server yet: the studio shows the news of its release.",
     "refresh": "Check now",
     "notices": "Notices",
-    "close": "Close"
+    "close": "Close",
+    "ad": "Ad",
+    "adErid": "Ad · erid {{erid}}"
   },
   "undoDelete": {
     "deleted": "«{{video}}» moved to the recycle bin",
