@@ -298,6 +298,7 @@ pub fn run() {
 
     let context = tauri::generate_context!();
     service::set_app_version(context.package_info().version.to_string());
+    dub_server::diagnostics::log_to_file(&repo_root);
 
     let mut builder = tauri::Builder::default();
     if single_instance_wanted() {

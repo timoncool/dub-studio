@@ -19,6 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let repo_root = std::env::var("DUB_STUDIO_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().expect("cwd"));
+    dub_server::diagnostics::log_to_file(&repo_root);
     dub_server::ensure_library_path(&repo_root);
 
     let port = service::listen_port().map_err(anyhow::Error::msg)?;
