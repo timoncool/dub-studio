@@ -1232,6 +1232,13 @@ fn check_voice_gender(work_dir: &Path, proj: &Project, voiced: &[(String, PathBu
     Ok(())
 }
 
+/// Why a take counted as a retry: the engine failed, or what it made has this defect.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum FailureCause {
+    Engine,
+    Defect(&'static str),
+}
+
 fn defect_name(kind: &str) -> String {
     match kind {
         "runaway" => t!("render-defect-runaway"),
@@ -1794,6 +1801,9 @@ fn build_dub_pass(
     let mut consec = 0usize;
     let mut total_retries = 0usize;
     let retry_budget = ((total / 10.0).ceil() as usize).max(20);
+    // What the counted retries were, for the stop message: engine errors and each defect apart.
+    let mut failures: std::collections::BTreeMap<FailureCause, usize> = std::collections::BTreeMap::new();
+    let mut last_failure = String::new();
     // Альтернативные рефы спикеров (ступени 4-5 лестницы ретраев) — из того же скоринга/REF-QC,
     // что и main-рефы (alt_refs построены выше в build_speaker_refs).
     // QC-список синтезированных в этом прогоне фраз: (fi, индекс в placed, raw-wav, tgt-текст, спикер,
@@ -2248,6 +2258,9 @@ fn build_dub_pass(
                     Err(e) => {
                         retried = true;
                         total_retries += 1;
+                        tracing::warn!("TTS line {fi}, attempt {attempt}/{MAX_TTS_ATTEMPTS}: the engine failed: {e}");
+                        *failures.entry(FailureCause::Engine).or_insert(0) += 1;
+                        last_failure = e.to_string();
                         if attempt >= MAX_TTS_ATTEMPTS {
                             if let Some((sm, r, rng)) = best_bad.take() {
                                 emit(progress, "tts", &t!(
@@ -2272,6 +2285,10 @@ fn build_dub_pass(
                     None => break (samples, sr), // дефектов не видно — берём
                     Some(kind) => {
                         let rng = hum_range_db(&samples, sr);
+                        tracing::warn!(
+                            "TTS line {fi}, attempt {attempt}/{MAX_TTS_ATTEMPTS}: {kind} ({:.1} s, loudness range {rng:.0} dB)",
+                            samples.len() as f64 / sr.max(1) as f64
+                        );
                         if best_bad.as_ref().map_or(true, |(_, _, b)| rng > *b) {
                             best_bad = Some((samples, sr, rng));
                         }
@@ -2296,6 +2313,8 @@ fn build_dub_pass(
                         if !crate::tts_audit::is_take_sign(kind) {
                             retried = true;
                             total_retries += 1;
+                            *failures.entry(FailureCause::Defect(kind)).or_insert(0) += 1;
+                            last_failure = defect_name(kind);
                         }
                         let via = if attempt >= 3 { t!("render-retry-alt-ref") } else { t!("render-retry-temperature") };
                         emit(progress, "tts", &t!("render-defect-regenerating", line = fi, defect = defect_name(kind), via = via, attempt = attempt + 1, attempts = MAX_TTS_ATTEMPTS));
@@ -2310,7 +2329,15 @@ fn build_dub_pass(
             if retried {
                 consec += 1;
                 if consec > CONSECUTIVE_ABORT || total_retries > retry_budget {
-                    return Err(t!("render-too-many-artifacts", in_a_row = consec, retries = total_retries, line = fi));
+                    let causes = failures
+                        .iter()
+                        .map(|(cause, n)| match cause {
+                            FailureCause::Engine => format!("{} ×{n}", t!("render-cause-engine")),
+                            FailureCause::Defect(kind) => format!("{} ×{n}", defect_name(kind)),
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    return Err(t!("render-too-many-artifacts", in_a_row = consec, retries = total_retries, line = fi, causes = causes, last = last_failure.clone()));
                 }
             } else {
                 consec = 0; // чистая фраза сбрасывает серию
