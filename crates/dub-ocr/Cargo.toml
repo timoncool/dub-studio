@@ -9,10 +9,10 @@ description = "Экранный OCR (PP-OCR ONNX: DBNet det + CRNN rec) для �
 dub-core = { path = "../dub-core" }
 # ort строго той же версии и с теми же фичами, что dub-asr (=2.0.0-rc.13, load-dynamic + api-28): ДВЕ
 # разные версии ort в одном бинаре = рассинхрон OrtApi -> дедлок (тот же трап, что чужая system32 DLL).
-# ensure_ort_dylib() тут повторяет паттерн dub-asr: ORT_DYLIB_PATH -> onnxruntime 1.31.0.
+# ensure_ort_dylib() тут повторяет паттерн dub-asr: ORT_DYLIB_PATH -> onnxruntime 1.28.2.
 # load-dynamic (disable-linking) — onnxruntime.dll грузится в рантайме через ORT_DYLIB_PATH (общая
-# 1.31.0, ensure_ort_dylib). БЕЗ download-binaries: он требует TLS-фичу (ureq) и тянет линкуемую
-# сборку EP. api-28: OrtApi 28, его дают onnxruntime 1.28 и новее. ndarray: TensorRef::from_array_view /
+# 1.28.2, ensure_ort_dylib). БЕЗ download-binaries: он требует TLS-фичу (ureq) и тянет линкуемую
+# сборку EP. api-28: OrtApi под onnxruntime 1.28.x. ndarray: TensorRef::from_array_view /
 # try_extract_tensor; версия ndarray = та, что у ort.
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "ndarray", "tracing", "api-28"] }
 ndarray = "0.17"

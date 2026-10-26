@@ -273,7 +273,7 @@ pub fn augment_path_for_tools(repo_root: &Path) {
     }
 }
 
-/// Прописать ORT_DYLIB_PATH (onnxruntime 1.31) в окружение процесса до старта сервера: ort грузит dylib лениво,
+/// Прописать ORT_DYLIB_PATH (onnxruntime 1.28) в окружение процесса до старта сервера: ort грузит dylib лениво,
 /// а по голому имени Windows нашла бы раньше PATH onnxruntime.dll другой версии из System32 (Windows AI).
 /// GPU-сборка (cuda13) приоритетнее — суперсет CPU+CUDA; `beside_exe` — копия рядом с exe (портатив).
 pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
@@ -297,7 +297,7 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
             // а закачка onnxruntime ставит его на скачанную (point_ort)
             let mut candidates = dub_core::runtime::ort_candidates(&repo_root.join("models"));
             let expected = if crate::hw::gpu_report().cuda13_ok { candidates.remove(0) } else { candidates.remove(candidates.len() - 1) };
-            eprintln!("[ERROR] onnxruntime 1.31 not found in {}: recognition and diarization will not start until the ONNX Runtime component is downloaded", rt.display());
+            eprintln!("[ERROR] onnxruntime 1.28 not found in {}: recognition and diarization will not start until the ONNX Runtime component is downloaded", rt.display());
             std::env::set_var("ORT_DYLIB_PATH", expected);
         }
     }

@@ -2,7 +2,7 @@
 //!
 //!   ocr --video in.mp4 --work <dir> --models <models_root> [--fps 4]
 //!
-//! Печатает JSON: regions (text/bbox/t0/t1), caption_boxes, sub_y. Требует ORT_DYLIB_PATH на 1.31.0
+//! Печатает JSON: regions (text/bbox/t0/t1), caption_boxes, sub_y. Требует ORT_DYLIB_PATH на 1.28.2
 //! (или авто-резолв через models/runtime, как в dub-asr).
 
 use dub_ocr::{analyze_layout, detect_regions, OcrPaths};

@@ -641,7 +641,7 @@ mod tests {
 mod live {
     use super::*;
 
-    /// Прогон на настоящих моделях: `STRESS_DIR` — папка RUAccent, `ORT_DYLIB_PATH` — onnxruntime 1.31.
+    /// Прогон на настоящих моделях: `STRESS_DIR` — папка RUAccent, `ORT_DYLIB_PATH` — onnxruntime 1.28.
     #[test]
     #[ignore]
     fn real_models_read_context_and_dictionary() {

@@ -15,11 +15,11 @@ tracing = { workspace = true }
 # Sortformer v2 (diar_streaming_sortformer_4spk-v2.onnx) эта версия не грузит.
 # default-features = false: дефолт parakeet-rs включает ort/default (download-binaries + TLS).
 parakeet-rs = { version = "=0.4.0", default-features = false, features = ["sortformer", "load-dynamic", "api-28"] }
-# ort через load-dynamic (disable-linking): onnxruntime.dll 1.31.0 грузится в рантайме через
+# ort через load-dynamic (disable-linking): onnxruntime.dll 1.28.2 грузится в рантайме через
 # ORT_DYLIB_PATH (ensure_ort_dylib), а не линкуется (статическая libort_sys собрана новее локального
-# MSVC STL и не слинкуется). rc.13 с api-28 просит у библиотеки OrtApi 28: его дают 1.28 и новее, а
-# старая (системная 1.17) вешает commit_from_file. БЕЗ download-binaries: он требует TLS-фичу (ureq) и
-# тянет линкуемую сборку EP. DLL лежит в models/runtime/. tracing: логи
+# MSVC STL и не слинкуется). Версия строго rc.13 — под onnxruntime 1.28.2; DLL с другим OrtApi
+# вешает commit_from_file. БЕЗ download-binaries: он требует TLS-фичу (ureq) и тянет линкуемую
+# сборку EP. DLL лежит в models/runtime/. api-28 фиксирует OrtApi под 1.28.x. tracing: логи
 # onnxruntime идут в tracing-подписчик сервера. ort нужен напрямую для
 # ExecutionConfig::with_custom_configure (уровень оптимизации графа).
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "tracing", "api-28"] }

@@ -16,7 +16,7 @@
 //!   • модели — прямые файлы HF (higgs-q8_0/*, gemma-4 + mmproj, parakeet-tdt int8, nemotron 3
 //!     diarization, roformer voc_fv6-Q8_0);
 //!   • сайдкары/движки — zip-релизы GitHub (BSRoformer.cpp v0.1.0, llama.cpp b11900 win-cuda-13.4,
-//!     onnxruntime 1.31.0, ffmpeg BtbN, deno 2.9.8) + audiocpp_engine.dll (своя сборка с sm_75, GitHub timoncool/Higgs-Ultimate) + yt-dlp.exe 2026.10.21;
+//!     onnxruntime 1.28.2, ffmpeg BtbN, deno 2.9.8) + audiocpp_engine.dll (своя сборка с sm_75, GitHub timoncool/Higgs-Ultimate) + yt-dlp.exe 2026.10.21;
 //!   • CUDA-runtime — PyPI-wheel'ы NVIDIA (cudart 13.4.92 / cublas 13.8.0.4 / cuDNN 9.27.0.42) + redist cuFFT
 //!     12.4.0.43, распаковка *.dll плоско;
 //!   • VC++ runtime + OCR-модели — БАНДЛ (кладутся в релиз рядом с exe, как VC++ в Higgs); не качаются,
@@ -163,16 +163,15 @@ mod platform {
     // ggml-cuda.dll импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
     const GH_LLAMA: &str =
         "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-cuda-13.4-x64.zip";
-    // GitHub: onnxruntime 1.31.0 win-x64 (microsoft/onnxruntime); ort rc.13 api-28 берёт у неё OrtApi 28. Системная
-    // 1.17 из system32 вместо неё вешает создание сессии.
+    // GitHub: onnxruntime 1.28.2 win-x64 (microsoft/onnxruntime) — строго 1.28.x (ort rc.13 api-28; иначе дедлок).
     const GH_ORT: &str =
-        "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip";
-    // GitHub: onnxruntime 1.31.0 GPU-сборка под CUDA 13 (gpu_cuda13) — CUDA-EP для Parakeet/Sortformer на
-    // GPU. onnxruntime_providers_cuda.dll импортирует cublas64_13/cublasLt64_13 (cuda-runtime) и
-    // MSVCP140_ATOMIC_WAIT.dll (vcruntime), во время работы грузит cudnn64_9 (WHEEL_CUDNN) и cufft64_12 (REDIST_CUFFT).
+        "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip";
+    // GitHub: onnxruntime 1.28.2 GPU-сборка под CUDA 13 (gpu_cuda13) — CUDA-EP для Parakeet/Sortformer на
+    // GPU. onnxruntime_providers_cuda.dll грузит cudart64_13/cublas64_13/cublasLt64_13 (cuda-runtime),
+    // cudnn64_9 (WHEEL_CUDNN) и cufft64_12 (REDIST_CUFFT).
     // Содержит onnxruntime.dll(GPU) + onnxruntime_providers_cuda.dll + onnxruntime_providers_shared.dll.
     const GH_ORT_GPU: &str =
-        "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-gpu_cuda13-1.31.0.zip";
+        "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-gpu_cuda13-1.28.2.zip";
     // GitHub: ffmpeg static win64 GPL (BtbN/FFmpeg-Builds), master-сборка последнего дня месяца: дневные
     // autobuild BtbN удаляет через пару недель, а сборки последнего дня месяца хранит, поэтому закреплена такая.
     const GH_FFMPEG: &str =
@@ -295,20 +294,20 @@ mod platform {
     };
 
     pub const ORT: Parts = Parts {
-        size: 82_887_349,
+        size: 78_620_837,
         files: &[
-            FileSpec { url: GH_ORT, dest_rel: "models/runtime/_ort.zip", size: 82_887_349, sha256: "3958d8a44984160692c1b4ffd0de3cb48f8c39f9d34bb31e433db06e30b82195", extract: Extract::Tree },
+            FileSpec { url: GH_ORT, dest_rel: "models/runtime/_ort.zip", size: 78_620_837, sha256: "c4eedd29489d5feca21866d054638416f3655bf6b18851b3b6b85c8313e95c35", extract: Extract::Tree },
         ],
         // dub-asr::ensure_ort_dylib ищет ровно этот путь под models/runtime.
-        markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-1.31.0/lib/onnxruntime.dll", expect: 0 }],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll", expect: 0 }],
     };
 
     pub const ORT_GPU: Parts = Parts {
-        size: 309_484_217,
+        size: 365_562_963,
         files: &[
-            FileSpec { url: GH_ORT_GPU, dest_rel: "models/runtime/_ort_gpu.zip", size: 309_484_217, sha256: "d332ccf84acb769a11364cddd4e8d2992a168d16be472d5ba70b279b644552f5", extract: Extract::Tree },
+            FileSpec { url: GH_ORT_GPU, dest_rel: "models/runtime/_ort_gpu.zip", size: 365_562_963, sha256: "4b7a2d01a3cc96b12d06c8266af2c8f42c96365c4a0100d45fd874c71b4a2e19", extract: Extract::Tree },
         ],
-        markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.31.0/lib/onnxruntime.dll", expect: 0 }],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime.dll", expect: 0 }],
     };
 
     pub const FFMPEG: Parts = Parts {
@@ -426,21 +425,21 @@ mod platform {
     };
 
     pub const ORT: Parts = Parts {
-        size: 11_408_003,
+        size: 9_128_991,
         files: &[
-            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-x64-1.31.0.tgz", dest_rel: "models/runtime/_ort.tgz", size: 11_408_003, sha256: "cc5c72baf5ae5c8238a6841f0897227be2d02826b9cf98eaf02fdefaeeb03a57", extract: Extract::Tree },
+            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-linux-x64-1.28.2.tgz", dest_rel: "models/runtime/_ort.tgz", size: 9_128_991, sha256: "d7209b8751b27b862b0c76332c2e20e203396edb5dab700ecf4bb485cf147415", extract: Extract::Tree },
         ],
-        markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-1.31.0/lib/libonnxruntime.so.1.31.0", expect: 0 }],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-1.28.2/lib/libonnxruntime.so.1.28.2", expect: 0 }],
     };
 
     // CUDA-провайдер на Linux связан с cuBLAS/cuBLASLt/cuRAND/cudart 13 (cuda-runtime) и без RUNPATH, cuDNN и
     // cuFFT грузит сам во время работы.
     pub const ORT_GPU: Parts = Parts {
-        size: 244_574_938,
+        size: 240_868_705,
         files: &[
-            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-linux-x64-gpu_cuda13-1.31.0.tgz", dest_rel: "models/runtime/_ort_gpu.tgz", size: 244_574_938, sha256: "2867dec99c6a4926e8142361b9d4d1518c16c85b854b4d41d28d65d3b2c81135", extract: Extract::Tree },
+            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-linux-x64-gpu_cuda13-1.28.2.tgz", dest_rel: "models/runtime/_ort_gpu.tgz", size: 240_868_705, sha256: "118ca8dbc4e4bb9b3b7fea137d796a89d957c9aa70e1dc3a5199a302cdd5bb32", extract: Extract::Tree },
         ],
-        markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.0/lib/libonnxruntime.so.1.31.0", expect: 0 }],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.2/lib/libonnxruntime.so.1.28.2", expect: 0 }],
     };
 
     // ffmpeg static linux64 GPL (BtbN), та же сборка последнего дня месяца, что на Windows.
@@ -1063,7 +1062,7 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "onnxruntime",
-            name: "ONNX Runtime 1.31.0".into(),
+            name: "ONNX Runtime 1.28.2".into(),
             purpose: t!("setup-comp-onnxruntime-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
@@ -1074,7 +1073,7 @@ pub fn manifest() -> Vec<Component> {
         },
         Component {
             id: "onnxruntime-gpu",
-            name: "ONNX Runtime 1.31.0 GPU (CUDA)".into(),
+            name: "ONNX Runtime 1.28.2 GPU (CUDA)".into(),
             purpose: t!("setup-comp-onnxruntime-gpu-purpose"),
             requirement: Requirement::Recommended,
             delivery: Delivery::Download,
@@ -1134,14 +1133,13 @@ pub fn manifest() -> Vec<Component> {
             purpose: t!("setup-comp-vcruntime-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Bundled,
-            size: 1_178_456,
+            size: 1_120_664,
             files: &[],
-            // MSVCP140_1.dll импортирует onnxruntime 1.31 (ASR/диаризация/OCR на CPU), MSVCP140_ATOMIC_WAIT.dll — её
-            // CUDA-провайдер: без них на машине без VC++ Redistributable рантайм не грузится (scripts/check-dll-imports.ps1).
+            // MSVCP140_1.dll импортирует onnxruntime 1.28 (ASR/диаризация/OCR на CPU) — без него на машине без
+            // VC++ Redistributable рантайм не грузится (scripts/check-dll-imports.ps1).
             markers: &[
                 Marker { rel: "models/higgs-engine/MSVCP140.dll", expect: 0 },
                 Marker { rel: "models/higgs-engine/MSVCP140_1.dll", expect: 0 },
-                Marker { rel: "models/higgs-engine/MSVCP140_ATOMIC_WAIT.dll", expect: 0 },
                 Marker { rel: "models/higgs-engine/VCRUNTIME140.dll", expect: 0 },
                 Marker { rel: "models/higgs-engine/VCRUNTIME140_1.dll", expect: 0 },
                 Marker { rel: "models/higgs-engine/VCOMP140.DLL", expect: 0 },
@@ -3156,17 +3154,13 @@ fn write_entry(entry: &mut impl Read, out: &Path, mode: Option<u32>) -> Result<(
 const RETIRED: &[&str] = &["tdt", "tdt-fp32", "tdt-ultra", "tdt-ultra-int8", "whisper"];
 
 /// Programs of a former version that nothing runs any more, under the program folder: the OpenRouter helper (Dub Studio
-/// 4.2 and earlier), the Higgs library (Higgs runs in audiocpp_server now) and ONNX Runtime 1.24.2 and 1.28.2 (before 1.31.0).
+/// 4.2 and earlier), the Higgs library (Higgs runs in audiocpp_server now) and ONNX Runtime 1.24.2 (before 1.28.2).
 const RETIRED_TOOLS: &[&str] = &[
     "tools/openrouter-helper",
     "models/higgs-engine/audiocpp_engine.dll",
     "models/higgs-engine/libaudiocpp_engine.so",
     "models/runtime/onnxruntime-win-x64-1.24.2",
     "models/runtime/onnxruntime-win-x64-gpu-1.24.2",
-    "models/runtime/onnxruntime-win-x64-1.28.2",
-    "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2",
-    "models/runtime/onnxruntime-linux-x64-1.28.2",
-    "models/runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.2",
 ];
 
 /// The studio's own downloads it no longer runs are deleted for good: hundreds of megabytes of runtimes have no place
@@ -3286,7 +3280,7 @@ mod tests {
             std::fs::create_dir_all(root.path().join(rel)).unwrap();
             std::fs::write(root.path().join(rel).join("x.dll"), b"x").unwrap();
         }
-        let current = root.path().join("models/runtime/onnxruntime-win-x64-1.31.0/lib/onnxruntime.dll");
+        let current = root.path().join("models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll");
         std::fs::create_dir_all(current.parent().unwrap()).unwrap();
         std::fs::write(&current, b"x").unwrap();
         retire(root.path(), RETIRED_TOOLS, &gone);

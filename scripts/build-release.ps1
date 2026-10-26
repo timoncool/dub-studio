@@ -63,7 +63,7 @@ $releaseDir = Join-Path $repoRoot "release\$Version"
 $targetRoot = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $tauriRoot 'target' }
 $bundleRoot = Join-Path $targetRoot 'release\bundle'
 
-$bundledRuntime = 'MSVCP140.dll', 'MSVCP140_1.dll', 'MSVCP140_ATOMIC_WAIT.dll', 'VCOMP140.DLL', 'VCRUNTIME140.dll', 'VCRUNTIME140_1.dll'
+$bundledRuntime = 'MSVCP140.dll', 'MSVCP140_1.dll', 'VCOMP140.DLL', 'VCRUNTIME140.dll', 'VCRUNTIME140_1.dll'
 $bundledOcr = 'det.onnx', 'cls.onnx', 'rec_cyrillic.onnx', 'rec_cyrillic.dict.txt', 'rec_ch.onnx', 'rec_ch.dict.txt'
 
 if ([string]::IsNullOrWhiteSpace($ModelsSource)) { $ModelsSource = $repoRoot }
