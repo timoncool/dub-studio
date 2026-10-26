@@ -580,6 +580,22 @@
     "help": "Show this help",
     "esc": "Close / exit fullscreen"
   },
+  "update": {
+    "kicker": "UPDATE",
+    "title": "What changed in this release",
+    "subtitle": "This version of the studio runs on newer engines and models. One button downloads them and then removes what is no longer needed; until then everything the studio has stays in place.",
+    "updated": "Updated",
+    "added": "New",
+    "retired": "No longer needed",
+    "apply": "Update",
+    "later": "Later",
+    "download": "download {{size}}",
+    "freed": "frees {{size}}",
+    "nothing": "Nothing to update in this release: everything is in place.",
+    "settingsEntry": "What changed in this release",
+    "settingsHint": "The engines and models this release updates, adds and no longer needs",
+    "done": "Update done: the new engines and models are in place, the old ones are removed"
+  },
   "setup": {
     "title": "First run",
     "subtitle": "Dub Studio needs a few components before the first dub. Everything needed is already checked — just click Download selected at the bottom.",

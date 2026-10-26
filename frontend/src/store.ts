@@ -7,7 +7,7 @@ import { journalApi, projectRev, type JobKind, type JournalLine, type Project } 
  */
 export type Snapshot = { project: Project; rev: number | undefined };
 
-type Stage = "boot" | "offline" | "setup" | "empty" | "analyzing" | "editor" | "batch" | "multilang";
+type Stage = "boot" | "offline" | "setup" | "update" | "empty" | "analyzing" | "editor" | "batch" | "multilang";
 export type ExportItem = { id: string; name: string; status: "rendering" | "done" | "error"; msg: string; url?: string; pid?: string };
 // строка журнала «что делает приложение»; agent — действие агента по MCP; verb/noun/target — изменение агента, словами окна
 export type Activity = { t: number; text: string; kind: "work" | "done" | "error" | "agent"; verb?: string; noun?: string; target?: string };

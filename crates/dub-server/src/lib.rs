@@ -70,6 +70,7 @@ mod supertonic;
 mod takes;
 mod translate;
 mod tts_audit;
+mod update_screen;
 mod tts_text;
 mod tts_trim;
 mod url_import;
@@ -385,9 +386,6 @@ impl AppState {
         }
         let web_root = spa::find_web_root(&repo_root);
         let mroot = models_root(&repo_root);
-        setup::remove_retired(&mroot);
-        setup::remove_retired_whisper(&repo_root);
-        setup::remove_retired_tools(&repo_root);
         match credentials::migrate_legacy_selection(&mroot) {
             Ok(moved) if moved.openrouter_key || moved.proxy_password => {
                 tracing::info!("secrets moved from active.json to the secret store: {moved:?}")
@@ -565,6 +563,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/setup/download", post(setup_download))
         .route("/setup/cancel", post(setup_cancel))
         .route("/setup/remove", post(setup_remove))
+        .route("/setup/update", get(setup_update))
+        .route("/setup/update/apply", post(setup_update_apply))
+        .route("/setup/update/seen", post(setup_update_seen))
         .route("/setup/open-models", post(setup_open_models))
         .route("/setup/browse", post(setup_browse))
         .route("/pick-folder", post(pick_folder))
@@ -836,6 +837,65 @@ async fn setup_remove(State(st): State<AppState>, Json(body): Json<Value>) -> Re
     };
     Json(json!({ "removed": report.removed, "freedBytes": report.freed_bytes, "errors": report.errors, "status": status }))
         .into_response()
+}
+
+async fn update_plan(st: &AppState) -> Result<update_screen::Plan, Response> {
+    let root = st.repo_root.clone();
+    tokio::task::spawn_blocking(move || update_screen::plan(&root, &models_root(&root), service::app_version()))
+        .await
+        .map_err(join_failure)
+}
+
+/// GET /setup/update — the update screen's plan of this release: {version, updated, added, retired, download, freed,
+/// show}. Reads only the disk.
+async fn setup_update(State(st): State<AppState>) -> Response {
+    match update_plan(&st).await {
+        Ok(plan) => Json(plan).into_response(),
+        Err(r) => r,
+    }
+}
+
+/// POST /setup/update/apply — the update screen's button: downloads what is updated and new in the background (as
+/// /setup/download) and removes the leftovers of former releases once it is all in place; with nothing to download it
+/// removes them at once. {download, plan}; the plan counts as shown.
+async fn setup_update_apply(State(st): State<AppState>) -> Response {
+    let plan = match update_plan(&st).await {
+        Ok(plan) => plan,
+        Err(r) => return r,
+    };
+    let (root, dl, ids) = (st.repo_root.clone(), st.downloads.clone(), plan.ids());
+    let started = tokio::task::spawn_blocking(move || {
+        let job = if ids.is_empty() {
+            setup::remove_leftovers(&root, &models_root(&root));
+            None
+        } else {
+            Some(dl.start_update(ids)?)
+        };
+        if let Err(e) = update_screen::mark_seen(&root, service::app_version()) {
+            tracing::error!("[ERROR] {e}");
+        }
+        Ok::<_, setup::DlError>(job)
+    })
+    .await;
+    let job = match started {
+        Ok(Ok(job)) => job,
+        Ok(Err(e)) => return dl_error_response(e),
+        Err(e) => return join_failure(e),
+    };
+    match update_plan(&st).await {
+        Ok(plan) => Json(json!({ "download": job, "plan": plan })).into_response(),
+        Err(r) => r,
+    }
+}
+
+/// POST /setup/update/seen — «Later»: this release's plan is not shown at start again (Settings → Models keeps it).
+async fn setup_update_seen(State(st): State<AppState>) -> Response {
+    let root = st.repo_root.clone();
+    match tokio::task::spawn_blocking(move || update_screen::mark_seen(&root, service::app_version())).await {
+        Ok(Ok(())) => Json(json!({ "seen": service::app_version() })).into_response(),
+        Ok(Err(e)) => internal_error(e),
+        Err(e) => join_failure(e),
+    }
 }
 
 /// Открыть каталог в проводнике (без выделения файла).

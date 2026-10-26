@@ -205,6 +205,7 @@ export type DownloadJob = {
   downloaded: number; total: number; speedBps: number; waitingS: number;
   parts: { id: string; done: number; total: number }[];
   errorCode?: string | null; error?: string | null; startedAt: number; updatedAt: number;
+  retireAfter?: boolean;   // the update screen's download: what former releases left goes once it completes
 };
 // Видеокарта против требований CUDA 13 (драйвер 580+, compute capability 7.5+).
 export type GpuReason = "no_nvidia" | "no_device" | "cuda_init" | "driver_old" | "gpu_old";
@@ -218,6 +219,13 @@ export type SetupStatus = {
   modelsDir: string; freeBytes: number | null; gpu: GpuReport; active: DownloadJob | null;
 };
 export type ImportResult = { imported: string[]; files: number; errors: string[]; status: SetupStatus };
+/** The update screen: what this release updates (from → to), adds and no longer needs, each with its reason. */
+export type UpdateRow = { id: string; name: string; from: string | null; to: string; download: number; reason: string };
+export type UpdateGone = { path: string; size: number; reason: string };
+export type UpdatePlan = {
+  version: string; updated: UpdateRow[]; added: UpdateRow[]; retired: UpdateGone[];
+  download: number; freed: number; show: boolean;
+};
 
 // Отказ маршрутов закачки/удаления: код для текста в UI + подробность для журнала.
 export class SetupError extends Error {
@@ -394,6 +402,10 @@ export const api = {
   setupCancel: () => setupPost<{ paused: boolean }>("/setup/cancel", {}),   // пауза: скачанное остаётся, «Продолжить» докачивает
   setupRemove: (ids: string[]) => setupPost<{ removed: string[]; freedBytes: number; errors: string[]; status: SetupStatus }>("/setup/remove", { ids }),
   setupOpenModels: () => setupPost<{ path: string }>("/setup/open-models", {}),
+  setupUpdate: () => getPolled<UpdatePlan>("/setup/update"),
+  // the update screen's button: downloads in the background, then removes what former releases left
+  setupUpdateApply: () => setupPost<{ download: DownloadJob | null; plan: UpdatePlan }>("/setup/update/apply", {}),
+  setupUpdateSeen: () => setupPost<{ seen: string }>("/setup/update/seen", {}),
   hwSnapshot: () => getPolled<HwSnapshot>("/hw/snapshot"),
   setupBrowse: (id?: string) => setupPost<ImportResult & { picked: boolean }>("/setup/browse", id ? { id } : {}),
   fonts: () => getJson<{ fonts: Record<string, string> }>("/fonts"),

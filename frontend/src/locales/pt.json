@@ -553,6 +553,22 @@
     "help": "Mostrar esta ajuda",
     "esc": "Fechar / sair da tela cheia"
   },
+  "update": {
+    "kicker": "ATUALIZAÇÃO",
+    "title": "O que mudou nesta versão",
+    "subtitle": "Esta versão do estúdio roda em motores e modelos mais novos. Um botão os baixa e depois remove o que não é mais necessário; até lá, tudo o que o estúdio tem fica no lugar.",
+    "updated": "Atualiza",
+    "added": "Novo",
+    "retired": "Não é mais necessário",
+    "apply": "Atualizar",
+    "later": "Mais tarde",
+    "download": "baixar {{size}}",
+    "freed": "libera {{size}}",
+    "nothing": "Nada a atualizar nesta versão: tudo está no lugar.",
+    "settingsEntry": "O que mudou nesta versão",
+    "settingsHint": "Os motores e modelos que esta versão atualiza, adiciona e não usa mais",
+    "done": "Atualização concluída: os novos motores e modelos estão no lugar, os antigos foram removidos"
+  },
   "setup": {
     "title": "Primeira execução",
     "subtitle": "O Dub Studio precisa de alguns componentes antes da primeira dublagem. Tudo o que é necessário já está marcado — basta clicar em “Baixar os marcados” abaixo.",

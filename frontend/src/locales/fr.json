@@ -553,6 +553,22 @@
     "help": "Afficher cette aide",
     "esc": "Fermer / quitter le plein écran"
   },
+  "update": {
+    "kicker": "MISE À JOUR",
+    "title": "Ce qui change dans cette version",
+    "subtitle": "Cette version du studio tourne sur des moteurs et des modèles plus récents. Un bouton les télécharge puis retire ce qui ne sert plus ; d’ici là, tout ce que le studio a reste en place.",
+    "updated": "Mis à jour",
+    "added": "Nouveau",
+    "retired": "Ne sert plus",
+    "apply": "Mettre à jour",
+    "later": "Plus tard",
+    "download": "télécharger {{size}}",
+    "freed": "libère {{size}}",
+    "nothing": "Rien à mettre à jour dans cette version : tout est en place.",
+    "settingsEntry": "Ce qui change dans cette version",
+    "settingsHint": "Les moteurs et modèles que cette version met à jour, ajoute et n’utilise plus",
+    "done": "Mise à jour faite : les nouveaux moteurs et modèles sont en place, les anciens sont retirés"
+  },
   "setup": {
     "title": "Premier lancement",
     "subtitle": "Dub Studio a besoin de quelques composants avant le premier doublage. Tout le nécessaire est déjà coché — il suffit d’appuyer sur « Télécharger la sélection » en bas.",

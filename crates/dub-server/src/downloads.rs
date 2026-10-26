@@ -55,6 +55,9 @@ pub struct DownloadJob {
     pub error: Option<String>,
     pub started_at: u64,
     pub updated_at: u64,
+    /// The update screen's download: once every component is in place, the leftovers of former releases go.
+    #[serde(default)]
+    pub retire_after: bool,
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -97,6 +100,16 @@ fn recover_interrupted(state: &mut PersistentState) -> bool {
     job.speed_bps = 0;
     job.waiting_s = 0;
     true
+}
+
+/// A download of `ids` continues a stopped update-screen download of the same components.
+fn continues_update(previous: Option<&DownloadJob>, ids: &[String]) -> bool {
+    let sorted = |v: &[String]| {
+        let mut v = v.to_vec();
+        v.sort();
+        v
+    };
+    previous.is_some_and(|j| j.retire_after && j.status != DownloadStatus::Completed && j.status != DownloadStatus::Downloading && sorted(&j.ids) == sorted(ids))
 }
 
 fn persist(path: &Path, state: &PersistentState) -> std::io::Result<()> {
@@ -148,6 +161,16 @@ impl Downloads {
     /// Запустить закачку компонентов своим потоком. Вторая, пока идёт первая, — отказ «busy»; нехватка места
     /// на томе моделей — отказ «disk_space» до первого байта.
     pub fn start(&self, ids: Vec<String>) -> Result<DownloadJob, DlError> {
+        self.start_job(ids, false)
+    }
+
+    /// The update screen's download: the same, and once it completes the leftovers of former releases are removed.
+    pub fn start_update(&self, ids: Vec<String>) -> Result<DownloadJob, DlError> {
+        self.start_job(ids, true)
+    }
+
+    /// A stopped update-screen download continued by its own components (the progress panel's «Continue») stays one.
+    fn start_job(&self, ids: Vec<String>, retire_after: bool) -> Result<DownloadJob, DlError> {
         let known: Vec<String> = setup::manifest()
             .iter()
             .filter(|c| c.delivery == setup::Delivery::Download && ids.iter().any(|x| x == c.id))
@@ -161,6 +184,7 @@ impl Downloads {
             return Err(DlError::new("busy", t!("downloads-busy")));
         }
         setup::check_space(&self.inner.repo_root, &known)?;
+        let retire_after = retire_after || continues_update(state.active.as_ref(), &known);
         let pause = Arc::new(AtomicBool::new(false));
         *lock(&self.inner.pause) = pause.clone();
         let now = now_s();
@@ -178,6 +202,7 @@ impl Downloads {
             error: None,
             started_at: now,
             updated_at: now,
+            retire_after,
         };
         state.active = Some(job.clone());
         self.save(&state);
@@ -186,7 +211,7 @@ impl Downloads {
         let id = job.id.clone();
         std::thread::Builder::new()
             .name("setup-download".into())
-            .spawn(move || me.run(&id, known, pause))
+            .spawn(move || me.run(&id, known, pause, retire_after))
             .map_err(|e| {
                 let mut state = lock(&self.inner.state);
                 if let Some(j) = state.active.as_mut() {
@@ -200,7 +225,7 @@ impl Downloads {
         Ok(job)
     }
 
-    fn run(&self, id: &str, ids: Vec<String>, pause: Arc<AtomicBool>) {
+    fn run(&self, id: &str, ids: Vec<String>, pause: Arc<AtomicBool>, retire_after: bool) {
         let stop = move || pause.load(Ordering::SeqCst);
         let on_progress = |ev: Value| self.apply_progress(id, &ev);
         // what another program has is taken first, by copy too when it sits on another drive: still faster than the network
@@ -214,6 +239,9 @@ impl Downloads {
             tracing::error!("[ERROR] the download thread panicked: {why}");
             Err(setup::DlError::new("panic", t!("downloads-panicked", error = why)))
         });
+        if res.is_ok() && retire_after {
+            setup::remove_leftovers(&self.inner.repo_root, &crate::models_root(&self.inner.repo_root));
+        }
         let mut state = lock(&self.inner.state);
         // Закачку уже сменила следующая — итог этой никому не нужен.
         if let Some(job) = state.active.as_mut().filter(|j| j.id == id) {
@@ -329,6 +357,7 @@ mod tests {
             error: None,
             started_at: 0,
             updated_at: 0,
+            retire_after: false,
         }
     }
 
@@ -379,6 +408,27 @@ mod tests {
         d.apply_progress("x", &serde_json::json!({ "downloaded": 9 }));
         assert_eq!(d.active().unwrap().downloaded, 5, "прогресс старой закачки не попадает в новую");
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_stopped_update_continued_by_its_components_still_removes_the_leftovers() {
+        let mut update = job(DownloadStatus::Interrupted);
+        update.retire_after = true;
+        update.ids = vec!["llama".into(), "ffmpeg".into()];
+        assert!(continues_update(Some(&update), &["ffmpeg".into(), "llama".into()]));
+        assert!(!continues_update(Some(&update), &["ffmpeg".into()]), "a part of it is another download");
+        update.status = DownloadStatus::Completed;
+        assert!(!continues_update(Some(&update), &["ffmpeg".into(), "llama".into()]));
+        let mut plain = job(DownloadStatus::Paused);
+        plain.ids = vec!["ffmpeg".into(), "llama".into()];
+        assert!(!continues_update(Some(&plain), &["ffmpeg".into(), "llama".into()]));
+        assert!(!continues_update(None, &["ffmpeg".into()]));
+        let old: DownloadJob = serde_json::from_value(serde_json::json!({
+            "id": "x", "ids": ["llama"], "status": "paused", "phase": "", "downloaded": 0, "total": 0, "speedBps": 0,
+            "waitingS": 0, "parts": [], "errorCode": null, "error": null, "startedAt": 0, "updatedAt": 0
+        }))
+        .unwrap();
+        assert!(!old.retire_after, "a state file of a former release reads as a plain download");
     }
 
     #[test]

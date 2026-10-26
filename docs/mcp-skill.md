@@ -385,7 +385,10 @@ without it they answer that the window is not open, and everything else still wo
 - **models**: `models_status`, `models_download` (runs in the background beside the jobs: wait with
   `studio_wait` `until: download`), `models_cancel_download` (a pause: the same ids continue it),
   `models_remove` (frees disk space), `models_import` (files already on disk), `models_select`
-  (a quantisation or a recogniser), `models_folder_open` (the folder in Explorer, for the user).
+  (a quantisation or a recogniser), `models_folder_open` (the folder in Explorer, for the user),
+  `models_update_plan` (what this release updates, adds and no longer needs, with the reasons: the update
+  screen), `models_update_apply` (its button: downloads, then removes what former releases left),
+  `models_update_later` (its «Later»).
 - **settings**: `settings_get`, `settings_set`, `engine_presets_get`,
   `engine_preset_apply`, `proxy_test`, `proxy_settings_get`, `proxy_settings_set`,
   `fonts_list`, `caption_presets_list`, `launch_defaults_get`, `launch_defaults_set` (what the start

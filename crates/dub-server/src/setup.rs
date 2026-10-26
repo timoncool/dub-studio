@@ -1379,9 +1379,9 @@ fn resumed_bytes(part: &Path, total: u64) -> u64 {
 // ── Запись об установке архива ───────────────────────────────────────────────
 
 #[derive(Serialize, serde::Deserialize)]
-struct ArchiveRecord {
-    sha256: String,
-    url: String,
+pub(crate) struct ArchiveRecord {
+    pub(crate) sha256: String,
+    pub(crate) url: String,
     files: Vec<RecordedFile>,
 }
 
@@ -1396,7 +1396,7 @@ fn record_path(repo_root: &Path, f: &FileSpec) -> PathBuf {
     with_suffix(&repo_root.join(f.dest_rel), ".json")
 }
 
-fn read_record(repo_root: &Path, f: &FileSpec) -> Option<ArchiveRecord> {
+pub(crate) fn read_record(repo_root: &Path, f: &FileSpec) -> Option<ArchiveRecord> {
     let p = record_path(repo_root, f);
     let text = std::fs::read_to_string(&p).ok()?;
     match serde_json::from_str(&text) {
@@ -1454,7 +1454,7 @@ fn program_installed(repo_root: &Path, f: &FileSpec) -> bool {
     }
 }
 
-fn file_installed(repo_root: &Path, f: &FileSpec) -> bool {
+pub(crate) fn file_installed(repo_root: &Path, f: &FileSpec) -> bool {
     match f.extract {
         Extract::None if is_program(f) => program_installed(repo_root, f),
         Extract::None => file_ok(&repo_root.join(f.dest_rel), f.size),
@@ -2765,6 +2765,7 @@ fn finish(repo_root: &Path, selected: &[&Component]) -> Value {
 }
 
 /// A marker naming a program: a file under tools/ without an extension, as Linux and macOS name programs.
+#[cfg(any(unix, test))]
 fn is_program_marker(rel: &str) -> bool {
     rel.starts_with("tools/") && Path::new(rel).extension().is_none()
 }
@@ -3315,15 +3316,51 @@ fn delete(path: &Path) -> Result<(), String> {
     if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) }.map_err(|e| e.to_string())
 }
 
-/// Removes the retired models, so they do not keep gigabytes that no row of the setup screen shows. A link (another
-/// program's folder linked in) loses only the link; a hard-linked file stays with the program that shares it.
-pub fn remove_retired(models_root: &Path) {
+/// Removes what former versions left (`leftovers`): the last step of the update screen, after the downloads that
+/// take their place. A link (another program's folder linked in) loses only the link; a hard-linked file stays with
+/// the program that shares it.
+pub fn remove_leftovers(repo_root: &Path, models_root: &Path) {
     retire(models_root, RETIRED, &delete);
+    retire_whisper(repo_root, &delete);
+    retire(repo_root, RETIRED_TOOLS, &delete);
 }
 
-/// Removes the retired programs (RETIRED_TOOLS) the same way.
-pub fn remove_retired_tools(repo_root: &Path) {
-    retire(repo_root, RETIRED_TOOLS, &delete);
+/// What former versions left on disk, each under the name the update screen's table of changes knows it by: a
+/// retired model folder (RETIRED, under the models folder), a retired program (RETIRED_TOOLS) and the former
+/// Whisper's files ("tools/whisper").
+pub(crate) fn leftovers(repo_root: &Path, models_root: &Path) -> Vec<(&'static str, Vec<PathBuf>)> {
+    let mut found = Vec::new();
+    for (root, retired) in [(models_root, RETIRED), (repo_root, RETIRED_TOOLS)] {
+        for rel in retired {
+            let path = root.join(rel);
+            if std::fs::symlink_metadata(&path).is_ok() {
+                found.push((*rel, vec![path]));
+            }
+        }
+    }
+    let whisper = whisper_leftovers(repo_root);
+    if !whisper.is_empty() {
+        found.push(("tools/whisper", whisper));
+    }
+    found
+}
+
+/// The bytes removing `path` frees: a link frees nothing, a folder what lies in it.
+pub(crate) fn tree_size(path: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return 0 };
+    if meta.file_type().is_symlink() {
+        return 0;
+    }
+    if !meta.is_dir() {
+        return meta.len();
+    }
+    match std::fs::read_dir(path) {
+        Ok(entries) => entries.flatten().map(|entry| tree_size(&entry.path())).sum(),
+        Err(e) => {
+            tracing::warn!("{} is not readable, its size is not counted: {e}", path.display());
+            0
+        }
+    }
 }
 
 fn retire(root: &Path, retired: &[&str], discard: &dyn Fn(&Path) -> Result<(), String>) {
@@ -3369,13 +3406,9 @@ const RETIRED_WHISPER_FILES: &[&str] = &[
     "cudnn_ops_train64_8.dll",
 ];
 
-/// Removes the former Whisper program and its CUDA 11 libraries: what their install records list, and an older
+/// The former Whisper program and its CUDA 11 libraries on disk: what their install records list, and an older
 /// install without records (the program and the cuBLAS and cuDNN libraries lying directly in tools/whisper).
-pub fn remove_retired_whisper(repo_root: &Path) {
-    retire_whisper(repo_root, &delete);
-}
-
-fn retire_whisper(repo_root: &Path, discard: &dyn Fn(&Path) -> Result<(), String>) {
+fn whisper_leftovers(repo_root: &Path) -> Vec<PathBuf> {
     let dir = repo_root.join("tools").join("whisper");
     let mut doomed: Vec<PathBuf> = Vec::new();
     for rel in RETIRED_WHISPER_RECORDS {
@@ -3390,7 +3423,12 @@ fn retire_whisper(repo_root: &Path, discard: &dyn Fn(&Path) -> Result<(), String
     doomed.extend(RETIRED_WHISPER_FILES.iter().map(|name| dir.join(name)));
     doomed.sort();
     doomed.dedup();
-    for path in doomed.into_iter().filter(|p| p.is_file()) {
+    doomed.retain(|p| p.is_file());
+    doomed
+}
+
+fn retire_whisper(repo_root: &Path, discard: &dyn Fn(&Path) -> Result<(), String>) {
+    for path in whisper_leftovers(repo_root) {
         match discard(&path) {
             Ok(()) => tracing::info!("removed the retired Whisper file {}", path.display()),
             Err(e) => tracing::error!("[ERROR] could not remove the retired Whisper file {}: {e}", path.display()),

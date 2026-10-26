@@ -1141,6 +1141,24 @@ fn tools() -> &'static [Tool] {
                 call: |args| post("/setup/remove".into(), json!({ "ids": args.get("ids").cloned().unwrap_or_default() })),
             },
             Tool {
+                name: "models_update_plan",
+                description: "The update screen's plan of this release: what is updated (from, to, bytes to download, reason), what is new, what former releases left that is no longer needed (path, bytes freed, reason), the totals, and show: whether the window shows the screen at start. models_update_apply carries it out.",
+                schema: nothing,
+                call: |_| get("/setup/update".into()),
+            },
+            Tool {
+                name: "models_update_apply",
+                description: "The update screen's button: downloads what the plan updates and adds in the background (studio_wait until download waits for it, models_status shows it) and removes what former releases left once all of it is in place; with nothing to download it removes them at once. Answers the download and the plan.",
+                schema: nothing,
+                call: |_| post("/setup/update/apply".into(), json!({})),
+            },
+            Tool {
+                name: "models_update_later",
+                description: "The update screen's «Later»: this release's plan is not shown at start again; models_update_plan and Settings › Models still have it.",
+                schema: nothing,
+                call: |_| post("/setup/update/seen".into(), json!({})),
+            },
+            Tool {
                 name: "models_folder_open",
                 description: "Open the models folder in Explorer, for the user (to put model files there by hand or see what takes the disk); answers its path.",
                 schema: nothing,

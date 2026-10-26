@@ -38,6 +38,7 @@ import ProjectJobBar from "./components/ProjectJobBar";
 import { ContinueJobButton, JobStateLabel } from "./components/RecentJobBadge";
 import AgentPanel from "./components/AgentPanel";
 import WhatsNew from "./components/WhatsNew";
+import UpdateScreen, { UpdatePlanView } from "./components/UpdateScreen";
 import DownloadProgress from "./components/DownloadProgress";
 import ModelsFolder from "./components/ModelsFolder";
 import GpuNotice from "./components/GpuNotice";
@@ -192,6 +193,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   }, [orTtsModel]);
   const setupErr = (e: unknown) => setErr(e instanceof SetupError ? `${errText(e.code)} · ${e.detail}` : e instanceof Error ? e.message : String(e));
   const [asking, setAsking] = useState<string[] | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const dl = (ids: string[]) => { if (!downloading) setAsking(ids); };
   const startDownload = async (ids: string[]) => {
     setAsking(null);
@@ -392,6 +394,13 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <DownloadProgress job={status.active} onPause={pause} onResume={(ids) => { void startDownload(ids); }} />
         )}
       </div>
+      <details className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2" onToggle={(e) => setUpdateOpen(e.currentTarget.open)}>
+        <summary className="cursor-pointer select-none">
+          <span className="text-[12px] font-medium">{t("update.settingsEntry")}</span>
+          <span className="block mono text-[10px] text-[var(--color-muted)]">{t("update.settingsHint")}</span>
+        </summary>
+        {updateOpen && <div className="mt-2"><UpdatePlanView progress={false} onDone={() => { loadCap(); refreshStatus().catch(setupErr); }} /></div>}
+      </details>
       <button onClick={browse} disabled={!!prog}
         className="mb-3 w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-[var(--color-border)] text-[12px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40">
         <FolderDown size={14} />{t("settings.browseFolder")}
@@ -4952,15 +4961,16 @@ export default function App() {
     const unreachable = (e: unknown) => e instanceof TypeError;
     const pid = new URLSearchParams(location.search).get("pid");
     if (pid) { api.getProject(pid).then((p) => { setPid(pid); setProject(p); setStage("editor"); }).catch((e: unknown) => setStage(unreachable(e) ? "offline" : "empty")); return; }
-    api.setupStatus()
-      .then((s) => setStage(s.ready ? "empty" : "setup"))
+    // a release that changed what the studio downloads shows its update screen once, before the setup screen
+    Promise.all([api.setupStatus(), api.setupUpdate()])
+      .then(([s, u]) => setStage(u.show ? "update" : s.ready ? "empty" : "setup"))
       .catch((e: unknown) => setStage(unreachable(e) ? "offline" : "empty"));   // older server without /setup -> fall through to hero
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   // the hub's sections: a dub is made from the start screen to the editor, a transcript is a tool, the open window names its own
   const overlay = useStore((s) => s.overlay);
   const view: HubView = overlay ?? (stage === "editor" && projMode === "transcribe" ? "tools" : "create");
   const busy = useStore((s) => s.stage === "analyzing" || s.currentJob !== null || s.rendering || s.localJobs.length > 0 || s.exports.some((e) => e.status === "rendering"));
-  const ready = stage !== "boot" && stage !== "offline" && stage !== "setup";
+  const ready = stage !== "boot" && stage !== "offline" && stage !== "setup" && stage !== "update";
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     if (!ready) return;
@@ -4979,12 +4989,13 @@ export default function App() {
   };
   return (
     <div className="h-full flex flex-col">
-      {hub && stage !== "setup" && <HubBars items={hub.items} view={view} />}
+      {hub && stage !== "setup" && stage !== "update" && <HubBars items={hub.items} view={view} />}
       {popup && <HubPopup item={popup} onClose={() => closePopup(popup.id)} />}
       <TopBar />
       {stage === "boot" && <div className="flex-1 grid place-items-center"><Loader2 size={22} className="animate-spin text-[var(--color-muted)]" /></div>}
       {stage === "offline" && <ServerOffline />}
       {stage === "setup" && <FirstRun />}
+      {stage === "update" && <UpdateScreen />}
       {stage === "empty" && <DropZone />}
       {stage === "analyzing" && <AnalyzeProgress />}
       {stage === "batch" && <BatchView />}
