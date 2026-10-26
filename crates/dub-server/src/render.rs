@@ -533,6 +533,8 @@ const ENGINE_STUCK: &str = "ENGINE_STUCK";
 /// not load, its server died): the attempts ladder stops with the engine's own error instead of retrying it as a bad
 /// take.
 const ENGINE_FAILED: &str = "ENGINE_FAILED";
+/// Prefix of «the phrase ran to its token cap without ending»: a runaway take, retried as one.
+const TOKEN_CAP: &str = "TOKEN_CAP";
 
 /// voice_clone с ЖЁСТКИМ таймаутом. Higgs (прекомпил-DLL) СТОХАСТИЧЕСКИ виснет на редких сегментах; in-process
 /// FFI не убить, но есть C-ABI `cancel()`. Гоним синтез в отдельном потоке с таймаутом. По таймауту: cancel()
@@ -673,6 +675,9 @@ impl HiggsServer {
             Err(e @ acpp_server::AcppError::Stalled { .. }) => {
                 crate::acpp::stop();
                 Err(crate::acpp::localize(&e))
+            }
+            Err(acpp_server::AcppError::Server { message, .. }) if message.contains("reached max_tokens") => {
+                Err(format!("{TOKEN_CAP}: {message}"))
             }
             Err(e) if samples.is_empty() && !self.spoke.load(Ordering::SeqCst) => {
                 Err(format!("{ENGINE_FAILED}: {}", t!("render-higgs-engine-failed", error = crate::acpp::localize(&e))))
@@ -2258,9 +2263,17 @@ fn build_dub_pass(
                     Err(e) => {
                         retried = true;
                         total_retries += 1;
-                        tracing::warn!("TTS line {fi}, attempt {attempt}/{MAX_TTS_ATTEMPTS}: the engine failed: {e}");
-                        *failures.entry(FailureCause::Engine).or_insert(0) += 1;
-                        last_failure = e.to_string();
+                        let cause = if e.starts_with(TOKEN_CAP) { FailureCause::Defect("runaway") } else { FailureCause::Engine };
+                        tracing::warn!("TTS line {fi}, attempt {attempt}/{MAX_TTS_ATTEMPTS}: {cause:?}: {e}");
+                        *failures.entry(cause).or_insert(0) += 1;
+                        last_failure = match cause {
+                            FailureCause::Defect(kind) => defect_name(kind),
+                            FailureCause::Engine => e.to_string(),
+                        };
+                        let e = match e.strip_prefix(TOKEN_CAP) {
+                            Some(rest) => format!("{}: {}", defect_name("runaway"), rest.trim_start_matches(':').trim()),
+                            None => e,
+                        };
                         if attempt >= MAX_TTS_ATTEMPTS {
                             if let Some((sm, r, rng)) = best_bad.take() {
                                 emit(progress, "tts", &t!(
