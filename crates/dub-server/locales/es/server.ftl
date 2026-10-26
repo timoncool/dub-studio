@@ -466,10 +466,7 @@ voices-not-in-dataset = la voz { $name } no está en el dataset { $dataset }
 voices-bad-size = { $name }: el tamaño del catálogo no es válido
 voices-no-sha = { $name }: no hay SHA-256 en el catálogo
 voices-pack-downloading = descargando el paquete de voces
-voices-pack-unpacking = descomprimiendo
-voices-open-zip = abriendo el zip: { $error }
-voices-create-file = creando { $name }: { $error }
-voices-unpack-file = descomprimiendo { $name }: { $error }
+voices-pack-folder = el paquete de voces va a la carpeta voices del programa, y las voces están ahora en { $path } (DUBENGINE_VOICES)
 voices-pack-taken = tomado de { $app }: { $count } { $count ->
     [one] archivo
    *[other] archivos

@@ -352,10 +352,7 @@ voices-not-in-dataset = 数据集 { $dataset } 中没有音色 { $name }
 voices-bad-size = { $name }：目录中的大小无效
 voices-no-sha = { $name }：目录中没有 SHA-256
 voices-pack-downloading = 正在下载音色包
-voices-pack-unpacking = 正在解压
-voices-open-zip = 打开 zip：{ $error }
-voices-create-file = 创建 { $name }：{ $error }
-voices-unpack-file = 解压 { $name }：{ $error }
+voices-pack-folder = 语音包会放入程序的 voices 文件夹，而语音现在位于 { $path }（DUBENGINE_VOICES）
 voices-pack-taken = 已从 { $app } 获取：{ $count } 个文件
 voices-pack-done = 完成：{ $count } 个文件
 

@@ -488,10 +488,7 @@ voices-not-in-dataset = голоса { $name } нет в датасете { $dat
 voices-bad-size = { $name }: размер в каталоге не годится
 voices-no-sha = { $name }: нет SHA-256 в каталоге
 voices-pack-downloading = скачивание пака голосов
-voices-pack-unpacking = распаковка
-voices-open-zip = открыть zip: { $error }
-voices-create-file = создать { $name }: { $error }
-voices-unpack-file = распаковка { $name }: { $error }
+voices-pack-folder = пак голосов ставится в папку voices программы, а голоса сейчас лежат в { $path } (DUBENGINE_VOICES)
 voices-pack-taken = взято у { $app }: { $count } { $count ->
     [one] файл
     [few] файла

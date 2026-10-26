@@ -1757,9 +1757,10 @@ async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> J
 /// POST /voices/download-pack — скачать пак голосов (VibeVoice) и распаковать в каталог голосов.
 async fn voices_download_pack(State(st): State<AppState>) -> Response {
     let dir = st.voices_dir.clone();
+    let repo_root = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         let cb = |ev: Value| progress(ev);
-        record::download_pack(&dir, &cb)
+        record::download_pack(&repo_root, &dir, &cb)
     });
     match st.jobs.enqueue(jobs::JobMeta::new(jobs::JobKind::VoicesPack, None), job).await {
         Ok(job_id) => Json(json!({ "job_id": job_id })).into_response(),

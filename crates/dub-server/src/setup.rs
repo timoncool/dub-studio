@@ -2690,6 +2690,21 @@ fn fetch_components(
         return Err(DlError::new("nothing_to_download", t!("downloads-nothing-to-download"),
         ));
     }
+    fetch_selected(repo_root, selected, cancel, progress)
+}
+
+/// Downloads a component that is not on the setup screen (the voice pack) with the same chunks, retries, resume and
+/// install record as the screen's components.
+pub fn download_extra(repo_root: &Path, c: &Component, cancel: &dyn Fn() -> bool, progress: &ProgressCb) -> Result<Value, DlError> {
+    fetch_selected(repo_root, vec![c], cancel, progress)
+}
+
+fn fetch_selected(
+    repo_root: &Path,
+    selected: Vec<&Component>,
+    cancel: &dyn Fn() -> bool,
+    progress: &ProgressCb,
+) -> Result<Value, DlError> {
     let selected_ids: Vec<String> = selected.iter().map(|c| c.id.to_string()).collect();
     let _claim = claim(&selected_ids, cancel, &|| {
         progress(json!({ "stage": "download", "phase": "waiting", "msg": t!("setup-waiting-other") }),
