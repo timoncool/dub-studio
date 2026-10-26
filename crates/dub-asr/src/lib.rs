@@ -77,7 +77,7 @@ fn exec_config() -> ExecutionConfig {
     })
 }
 
-pub use segment::{segment_words, split_at_speaker_turns, Segment, Word, SEG_MAX_GAP, SEG_MAX_DUR};
+pub use segment::{join_text, segment_words, split_at_speaker_turns, Segment, Word, SEG_MAX_GAP, SEG_MAX_DUR};
 
 /// Целевая частота parakeet-rs.
 pub const TARGET_SR: u32 = 16_000;
@@ -201,7 +201,7 @@ pub trait AsrEngine {
     fn transcribe_many(&mut self, files: &[std::path::PathBuf], lang: &str) -> Vec<Result<String, AsrError>> {
         files
             .iter()
-            .map(|f| self.transcribe(f, lang).map(|segs| segs.into_iter().map(|s| s.text).collect::<Vec<_>>().join(" ")))
+            .map(|f| self.transcribe(f, lang).map(|segs| join_text(segs.iter().map(|s| s.text.as_str()))))
             .collect()
     }
     /// Пакетная транскрипция МНОГИХ коротких файлов со словными таймингами (секунды от начала файла).

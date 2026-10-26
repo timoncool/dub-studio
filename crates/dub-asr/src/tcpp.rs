@@ -54,7 +54,7 @@ impl TcppEngine {
 
 impl AsrEngine for TcppEngine {
     fn transcribe_many(&mut self, files: &[PathBuf], lang: &str) -> Vec<Result<String, AsrError>> {
-        self.many(files, lang).into_iter().map(|r| r.map(|w| w.iter().map(|w| w.word.as_str()).collect::<Vec<_>>().join(" "))).collect()
+        self.many(files, lang).into_iter().map(|r| r.map(|w| crate::join_text(w.iter().map(|w| w.word.as_str())))).collect()
     }
 
     fn transcribe_many_words(&mut self, files: &[PathBuf], lang: &str) -> Vec<Result<Vec<Word>, AsrError>> {
