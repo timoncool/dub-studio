@@ -11,6 +11,8 @@ pub enum Backend {
     Cuda,
     Vulkan,
     Cpu,
+    /// Apple's GPU on a Mac.
+    Metal,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]

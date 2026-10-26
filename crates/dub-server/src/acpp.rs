@@ -87,6 +87,7 @@ fn config(repo_root: &Path, models_root: &Path, backend: Backend) -> ServerConfi
         Backend::Cuda => "cuda",
         Backend::Vulkan => "vulkan",
         Backend::Cpu => "cpu",
+        Backend::Metal => "metal",
     };
     ServerConfig {
         exe: exe(repo_root),

@@ -27,6 +27,8 @@ pub enum Build {
     Vulkan,
     /// The processor alone.
     Cpu,
+    /// A Mac on Apple silicon: Metal and the processor in one program.
+    Metal,
 }
 
 /// The oldest card of each build and the CUDA version its driver has to report (cuDriverGetVersion: 1000 * major + 10
@@ -55,6 +57,16 @@ impl Build {
             Build::Cuda13 | Build::Cuda12 => crate::Backend::Cuda,
             Build::Vulkan => crate::Backend::Vulkan,
             Build::Cpu => crate::Backend::Cpu,
+            Build::Metal => crate::Backend::Metal,
+        }
+    }
+
+    /// The build of this Mac: Metal on Apple silicon; None off macOS and on an Intel Mac, for which none is published.
+    pub const fn for_this_mac() -> Option<Build> {
+        if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            Some(Build::Metal)
+        } else {
+            None
         }
     }
 
@@ -65,27 +77,35 @@ impl Build {
             Build::Cuda12 => "audiocpp-cuda12",
             Build::Vulkan => "audiocpp-vulkan",
             Build::Cpu => "audiocpp-cpu",
+            Build::Metal => "audiocpp-metal",
         }
     }
 
     /// The archive of the build: on Windows the program and the VC++ 14.51 libraries it needs (msvcp140, msvcp140_1,
-    /// msvcp140_codecvt_ids, vcruntime140, vcruntime140_1, vcomp140), on Linux the program and libgomp. None where it is
-    /// not published (macOS).
+    /// msvcp140_codecvt_ids, vcruntime140, vcruntime140_1, vcomp140), on Linux the program and libgomp, on a Mac with
+    /// Apple silicon the Metal program. None where a build is not published (Metal off the Mac, the others on it).
     pub const fn server(self) -> Option<Asset> {
         if cfg!(windows) {
-            Some(match self {
-                Build::Cuda13 => SERVER_WIN_CUDA13,
-                Build::Cuda12 => SERVER_WIN_CUDA12,
-                Build::Vulkan => SERVER_WIN_VULKAN,
-                Build::Cpu => SERVER_WIN_CPU,
-            })
+            match self {
+                Build::Cuda13 => Some(SERVER_WIN_CUDA13),
+                Build::Cuda12 => Some(SERVER_WIN_CUDA12),
+                Build::Vulkan => Some(SERVER_WIN_VULKAN),
+                Build::Cpu => Some(SERVER_WIN_CPU),
+                Build::Metal => None,
+            }
         } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-            Some(match self {
-                Build::Cuda13 => SERVER_LINUX_CUDA13,
-                Build::Cuda12 => SERVER_LINUX_CUDA12,
-                Build::Vulkan => SERVER_LINUX_VULKAN,
-                Build::Cpu => SERVER_LINUX_CPU,
-            })
+            match self {
+                Build::Cuda13 => Some(SERVER_LINUX_CUDA13),
+                Build::Cuda12 => Some(SERVER_LINUX_CUDA12),
+                Build::Vulkan => Some(SERVER_LINUX_VULKAN),
+                Build::Cpu => Some(SERVER_LINUX_CPU),
+                Build::Metal => None,
+            }
+        } else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+            match self {
+                Build::Metal => Some(SERVER_MACOS),
+                Build::Cuda13 | Build::Cuda12 | Build::Vulkan | Build::Cpu => None,
+            }
         } else {
             None
         }
@@ -99,7 +119,7 @@ impl Build {
         match self {
             Build::Cuda13 => &["cublas64_13.dll", "cublasLt64_13.dll", "cufft64_12.dll"],
             Build::Cuda12 => &["cudart64_12.dll", "cublas64_12.dll", "cublasLt64_12.dll", "cufft64_11.dll"],
-            Build::Vulkan | Build::Cpu => &[],
+            Build::Vulkan | Build::Cpu | Build::Metal => &[],
         }
     }
 }
@@ -157,6 +177,14 @@ pub const SERVER_LINUX_CPU: Asset = Asset {
     sha256: "753d4147136b61560f6af173c25e81bb389e9399bd6bf9ae7223b7f187fb86e4",
 };
 
+/// The macOS arm64 archive of the Metal build (release server-f476882e): the program with its libraries.
+pub const SERVER_MACOS: Asset = Asset {
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-f476882e/audiocpp-server-macos-arm64-metal.tar.gz",
+    file: "audiocpp-server-macos-arm64-metal.tar.gz",
+    size: 17_285_378,
+    sha256: "6e4e40060cddb02f78510153752ccb4d103f715fc18804785b7ab22f1b35098f",
+};
+
 /// The CUDA 12.9 libraries of the CUDA 12 build (PyPI wheels; their `.dll` files unpack flat): cudart 12.9.79,
 /// cuBLAS 12.9.2.10 (with cuBLASLt), cuFFT 11.4.1.4. The CUDA 13 build takes the studio's own CUDA 13 runtime.
 pub const CUDA12_RUNTIME: &[Asset] = &[
@@ -207,9 +235,22 @@ mod tests {
         assert_eq!(Build::Cuda12.backend(), crate::Backend::Cuda);
         assert_eq!(Build::Vulkan.backend(), crate::Backend::Vulkan);
         assert_eq!(Build::Cpu.backend(), crate::Backend::Cpu);
-        let folders = [Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].map(Build::folder);
-        assert_eq!(folders.iter().collect::<std::collections::HashSet<_>>().len(), 4, "{folders:?}");
-        assert!(Build::Vulkan.libraries().is_empty() && Build::Cpu.libraries().is_empty());
+        assert_eq!(Build::Metal.backend(), crate::Backend::Metal);
+        let folders = [Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu, Build::Metal].map(Build::folder);
+        assert_eq!(folders.iter().collect::<std::collections::HashSet<_>>().len(), 5, "{folders:?}");
+        assert!(Build::Vulkan.libraries().is_empty() && Build::Cpu.libraries().is_empty() && Build::Metal.libraries().is_empty());
+    }
+
+    #[test]
+    fn a_mac_on_apple_silicon_takes_the_metal_build_and_no_other_platform_does() {
+        let on_apple_silicon = cfg!(all(target_os = "macos", target_arch = "aarch64"));
+        assert_eq!(Build::for_this_mac(), on_apple_silicon.then_some(Build::Metal));
+        assert_eq!(Build::Metal.server(), on_apple_silicon.then_some(SERVER_MACOS));
+        if on_apple_silicon {
+            assert!([Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].iter().all(|b| b.server().is_none()));
+        }
+        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-f476882e/"));
+        assert_eq!(serde_json::to_value(crate::Backend::Metal).unwrap(), "metal", "the server's config names it so");
     }
 
     #[test]

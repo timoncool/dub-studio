@@ -1,6 +1,6 @@
 //! The published package of a build (`asset::Build::server` of this platform), as a studio gets it: downloaded into an
 //! empty folder, checked by size and SHA-256, unpacked flat into the build's folder, started and answering `/health`.
-//! Run by hand with ACPP_PACKAGE_ROOT (an empty folder) and ACPP_PACKAGE_BUILD (cpu, vulkan, cuda13 or cuda12; cpu by
+//! Run by hand with ACPP_PACKAGE_ROOT (an empty folder) and ACPP_PACKAGE_BUILD (cpu, vulkan, cuda13, cuda12 or metal; cpu by
 //! default; a CUDA build also needs its libraries in ACPP_PACKAGE_LIBS). With ACPP_PARAKEET (parakeet-tdt-0.6b-v3
 //! GGUF) and ACPP_SPEECH (a 16 kHz mono WAV of speech) the started server also recognises the speech.
 
@@ -17,7 +17,8 @@ fn build_from_env() -> Build {
         Ok("vulkan") => Build::Vulkan,
         Ok("cuda13") => Build::Cuda13,
         Ok("cuda12") => Build::Cuda12,
-        Ok(other) => panic!("ACPP_PACKAGE_BUILD={other}: cpu, vulkan, cuda13 or cuda12"),
+        Ok("metal") => Build::Metal,
+        Ok(other) => panic!("ACPP_PACKAGE_BUILD={other}: cpu, vulkan, cuda13, cuda12 or metal"),
     }
 }
 
