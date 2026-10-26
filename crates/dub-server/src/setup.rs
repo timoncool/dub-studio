@@ -206,21 +206,20 @@ mod platform {
         files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-cpu.dll", dest_rel: "models/transcribe-engine-cpu/transcribe_engine.dll", size: 3_558_912, sha256: "64df1c98b5b6da2b77e6102f3c852adcb2e285336fc49085f7ee63cfddc0855c", extract: Extract::None }],
         markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: 3_558_912 }],
     };
-    // audiocpp_server (fork timoncool/audio.cpp, branch studio, efc92120; model specs inside, AVX2 floor, no AVX-512)
-    // with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and cuFFT
-    // from cuda-runtime. CUDA 12.9: SASS 5.2-12.0a without PTX, its libraries from cuda12-runtime.
+    // audiocpp_server (acpp_server::asset: fork timoncool/audio.cpp, branch studio; model specs inside, AVX2 floor, no
+    // AVX-512) with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and
+    // cuFFT from cuda-runtime. CUDA 12.9: SASS 5.2-12.0a without PTX, its libraries from cuda12-runtime.
+    const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
+        FileSpec { url: asset.url, dest_rel: archive, size: asset.size, sha256: asset.sha256, extract: Extract::Flat }
+    }
     pub const AUDIOCPP_SERVER: Parts = Parts {
-        size: 130_925_562,
-        files: &[
-            FileSpec { url: "https://github.com/timoncool/audio.cpp/releases/download/server-efc92120/audiocpp-server-win-cuda13-x64.zip", dest_rel: "tools/audiocpp/_server.zip", size: 130_925_562, sha256: "d50d4d6a86000b6a99e9d89354a034b61dcc07a79299f0608f6705dc604abbfb", extract: Extract::Flat },
-        ],
+        size: acpp_server::asset::SERVER_WIN_CUDA13.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_CUDA13, "tools/audiocpp/_server.zip")],
         markers: &[Marker { rel: "tools/audiocpp/audiocpp_server.exe", expect: 0 }],
     };
     pub const AUDIOCPP_SERVER_CUDA12: Parts = Parts {
-        size: 177_968_601,
-        files: &[
-            FileSpec { url: "https://github.com/timoncool/audio.cpp/releases/download/server-efc92120/audiocpp-server-win-cuda12-x64.zip", dest_rel: "tools/audiocpp-cuda12/_server.zip", size: 177_968_601, sha256: "db3a50f67948d1d703882efa4a587bc8fe89f1c7d46b1b04e86afd4d5054563e", extract: Extract::Flat },
-        ],
+        size: acpp_server::asset::SERVER_WIN_CUDA12.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_CUDA12, "tools/audiocpp-cuda12/_server.zip")],
         markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server.exe", expect: 0 }],
     };
 
@@ -362,8 +361,6 @@ mod platform {
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
-    // Движок Higgs, собранный под Linux из исходника (timoncool/Higgs-Ultimate, sm 75/80/86/89/90/120a): RUNPATH
-    // $ORIGIN, CUDA-библиотеки берёт из своего каталога (их кладёт cuda-runtime).
     // transcribe.cpp (fork timoncool/transcribe.cpp, scripts/build-engine-linux-docker.sh: Ubuntu 22.04). CUDA 13.3,
     // sm 75/80/86/89/90/100/120, RUNPATH $ORIGIN and ../higgs-engine, where libcudart and libcublas come from
     // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on.
@@ -377,17 +374,46 @@ mod platform {
         files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-cpu.so", dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", size: 4_837_704, sha256: "9f7904d685a8a4385f436a1af821d1bd2629b1c1af814ea4a5b00deada9513b2", extract: Extract::None }],
         markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", expect: 4_837_704 }],
     };
-    pub const HIGGS_ENGINE: Parts = Parts {
-        size: 136_774_464,
-        files: &[
-            FileSpec { url: "https://github.com/timoncool/Higgs-Ultimate/releases/download/engine-0.2.3-turing/libaudiocpp_engine.so", dest_rel: "models/higgs-engine/libaudiocpp_engine.so", size: 136_774_464, sha256: "dae7b29111acf1e564f9afa541b2a4d360ba2cd6fc60eb4d5b8bdb9c04d722f6", extract: Extract::None },
-        ],
-        markers: &[Marker { rel: "models/higgs-engine/libaudiocpp_engine.so", expect: 136_774_464 }],
+    // audiocpp_server (acpp_server::asset): one archive a build with libgomp beside the program; RUNPATH $ORIGIN,
+    // ../../models/higgs-engine (CUDA 13 runtime of cuda-runtime) and ../../models/cuda12-runtime (CUDA 12.9).
+    const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
+        FileSpec { url: asset.url, dest_rel: archive, size: asset.size, sha256: asset.sha256, extract: Extract::Flat }
+    }
+    pub const AUDIOCPP_SERVER: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_CUDA13.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_CUDA13, "tools/audiocpp/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp/audiocpp_server", expect: 0 }],
+    };
+    pub const AUDIOCPP_SERVER_CUDA12: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_CUDA12.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_CUDA12, "tools/audiocpp-cuda12/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server", expect: 0 }],
     };
 
+    /// The audiocpp_server build of this card.
     pub fn audiocpp_server() -> &'static Parts {
-        &HIGGS_ENGINE
+        match crate::acpp::build() {
+            crate::hw::CudaBuild::Cuda13 => &AUDIOCPP_SERVER,
+            crate::hw::CudaBuild::Cuda12 => &AUDIOCPP_SERVER_CUDA12,
+        }
     }
+
+    // CUDA 12.9 runtime for the CUDA 12.9 build (manylinux wheels of the Windows component's versions: cudart 12.9.79,
+    // cuBLAS 12.9.2.10, cuFFT 11.4.1.4), in their own folder the build's RUNPATH names.
+    pub const CUDA12_RUNTIME: Parts = Parts {
+        size: 785_610_881,
+        files: &[
+            FileSpec { url: "https://files.pythonhosted.org/packages/bc/46/a92db19b8309581092a3add7e6fceb4c301a3fd233969856a8cbf042cd3c/nvidia_cuda_runtime_cu12-12.9.79-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", dest_rel: "models/cuda12-runtime/_cudart.whl", size: 3_493_179, sha256: "25bba2dfb01d48a9b59ca474a1ac43c6ebf7011f1b0b8cc44f54eb6ac48a96c3", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/cb/c0/0a517bfe63ccd3b92eb254d264e28fca3c7cab75d07daea315250fb1bf73/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/cuda12-runtime/_cublas.whl", size: 581_240_110, sha256: "e4f53a8ca8c5d6e8c492d0d0a3d565ecb59a751b19cfdaa4f6da0ab2104c1702", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/95/f4/61e6996dd20481ee834f57a8e9dca28b1869366a135e0d42e2aa8493bdd4/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", dest_rel: "models/cuda12-runtime/_cufft.whl", size: 200_877_592, sha256: "c67884f2a7d276b4b80eb56a79322a95df592ae5e765cf1243693365ccab4e28", extract: Extract::Libs },
+        ],
+        markers: &[
+            Marker { rel: "models/cuda12-runtime/libcudart.so.12", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/libcublas.so.12", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/libcublasLt.so.12", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/libcufft.so.11", expect: 0 },
+        ],
+    };
 
     // Движок Drama 3 (форк timoncool/drama-rs, capi/build-linux-docker.sh: CUDA 13.3, Ubuntu 22.04, sm 75/80/86/89/90/
     // 100/120): RUNPATH $ORIGIN и ../higgs-engine, где libcudart и libcublas ставит cuda-runtime.
@@ -1178,7 +1204,6 @@ pub fn manifest() -> Vec<Component> {
     if !cfg!(windows) {
         all.retain(|c| c.id != "vcruntime");
     }
-    #[cfg(windows)]
     if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
         all.push(Component {
             id: "cuda12-runtime",
@@ -2717,6 +2742,8 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
 /// Итог закачки: статус каждого компонента; скачанный вариант модели становится активным (models/active.json),
 /// иначе резолв взял бы дефолт и альт-квант бы не применился.
 fn finish(repo_root: &Path, selected: &[&Component]) -> Value {
+    #[cfg(unix)]
+    make_programs_executable(repo_root, selected);
     let mroot = crate::models_root(repo_root);
     let mut results = Vec::new();
     for c in selected {
@@ -2735,6 +2762,28 @@ fn finish(repo_root: &Path, selected: &[&Component]) -> Value {
     }
     let overall = setup_status(repo_root);
     json!({ "components": results, "ready": overall.ready })
+}
+
+/// A marker naming a program: a file under tools/ without an extension, as Linux and macOS name programs.
+fn is_program_marker(rel: &str) -> bool {
+    rel.starts_with("tools/") && Path::new(rel).extension().is_none()
+}
+
+/// The programs of the components (their markers) are made executable: an archive packed on Windows carries no
+/// execute bit, and the program would answer «Permission denied».
+#[cfg(unix)]
+fn make_programs_executable(repo_root: &Path, selected: &[&Component]) {
+    use std::os::unix::fs::PermissionsExt;
+    for m in selected.iter().flat_map(|c| c.markers).filter(|m| is_program_marker(m.rel)) {
+        let path = repo_root.join(m.rel);
+        let Ok(meta) = std::fs::metadata(&path) else { continue };
+        let mode = meta.permissions().mode();
+        if mode & 0o111 != 0o111 {
+            if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode | 0o755)) {
+                tracing::error!("[ERROR] {} was not made executable: {e}", path.display());
+            }
+        }
+    }
 }
 
 /// Скачать набор компонентов по id (идемпотентно: целые файлы закреплённой версии пропускаются, уже лежащий
@@ -3873,6 +3922,55 @@ mod tests {
 
         std::fs::write(&dll, b"ab").unwrap();
         assert!(!file_installed(&root, &ENGINE), "не тот размер");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_program_marker_is_a_file_under_tools_without_an_extension() {
+        assert!(is_program_marker("tools/audiocpp/audiocpp_server"));
+        assert!(is_program_marker("tools/bsroformer/bs_roformer-cli"));
+        assert!(!is_program_marker("tools/audiocpp/audiocpp_server.exe"));
+        assert!(!is_program_marker("tools/llama/libggml.so"));
+        assert!(!is_program_marker("models/higgs-engine/libcudart.so.13"));
+        assert!(!is_program_marker("models/eng/engine"));
+    }
+
+    /// A Linux archive packed on Windows (no execute bit on its program) still installs a program that runs.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_unpacked_without_its_execute_bit_is_made_executable() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_root("exec-bit");
+        let dir = root.join("tools/srv");
+        std::fs::create_dir_all(&dir).unwrap();
+        let archive = dir.join("_server.tar.gz");
+        {
+            let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::fast());
+            let mut tar = tar::Builder::new(gz);
+            let mut h = tar::Header::new_gnu();
+            h.set_size(4);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tar.append_data(&mut h, "srv/prog", &b"#!/x"[..]).unwrap();
+            tar.into_inner().unwrap().finish().unwrap();
+        }
+        let written = extract_archive(&archive, "tools/srv/_server.tar.gz", Extract::Flat, &dir).unwrap();
+        let prog = dir.join("prog");
+        assert!(written.contains(&prog), "{written:?}");
+        assert_eq!(std::fs::metadata(&prog).unwrap().permissions().mode() & 0o111, 0, "the archive's own mode");
+        let c = Component {
+            id: "srv",
+            name: "srv".into(),
+            purpose: String::new(),
+            requirement: Requirement::Required,
+            delivery: Delivery::Download,
+            size: 0,
+            files: &[],
+            markers: &[Marker { rel: "tools/srv/prog", expect: 0 }],
+            external_url: None,
+        };
+        make_programs_executable(&root, &[&c]);
+        assert_eq!(std::fs::metadata(&prog).unwrap().permissions().mode() & 0o777, 0o755);
         std::fs::remove_dir_all(&root).ok();
     }
 

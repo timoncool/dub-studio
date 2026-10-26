@@ -20,6 +20,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Linux: Higgs voices and CrisperWhisper run again**: the studio installs the audio.cpp server on Linux too (CUDA 13, or CUDA 12.9 with its runtime for older cards) instead of the engine library it no longer runs, and makes the programs it unpacks executable; Windows takes the same server release.
 - **The log on disk survives a crash**: `logs/dub-studio.log` gets every line as it is written, with panics and, on Windows, a crash of an engine library (its exception code and module); it goes into the bug report package, and past 8 MB the older part is kept as `dub-studio.old.log`.
 - **An engine or program counts as installed only as the pinned build**: a file of the right size but another build (an older engine, one another program left) is hashed once, and the studio downloads the pinned one in its place.
 - **Downloads trust the system's certificates**: behind a proxy or an antivirus that checks HTTPS with its own certificate installed in the system, models and engines download instead of failing on the certificate; the check of a large download now moves the bar instead of standing at 100 %.
