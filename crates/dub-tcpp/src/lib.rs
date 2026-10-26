@@ -602,6 +602,21 @@ pub struct Word {
     pub end: f64,
 }
 
+/// The name of `lang` among the languages a model lists: as listed, or the listed region of a plain code («ru» →
+/// «ru-RU»). None for «auto», no language, or a model that lists none: the model is then told nothing.
+fn language_of(languages: &[String], lang: &str) -> Result<Option<String>, String> {
+    let lang = lang.trim();
+    if lang.is_empty() || lang.eq_ignore_ascii_case("auto") || languages.is_empty() {
+        return Ok(None);
+    }
+    let prefix = format!("{}-", lang.to_ascii_lowercase());
+    let found = languages.iter().find(|l| l.eq_ignore_ascii_case(lang)).or_else(|| languages.iter().find(|l| l.to_ascii_lowercase().starts_with(&prefix)));
+    match found {
+        Some(l) => Ok(Some(l.clone())),
+        None => Err(engine_err(format!("transcribe.cpp: the model does not recognise «{lang}» (it knows {})", languages.join(", ")))),
+    }
+}
+
 /// Модель на видеокарте и её сессия; освобождаются при drop.
 pub struct TcppAsr {
     api: Api,
@@ -674,19 +689,10 @@ impl TcppAsr {
         Ok(())
     }
 
-    /// Имя `lang` у самой модели: «ru» — это «ru-RU» у модели, что пишет языки с регионом. Без языка модель с
-    /// языками-регионами (Nemotron) получает `auto`: язык ей нужно назвать всегда.
+    /// Имя `lang` у самой модели: «ru» — это «ru-RU» у модели, что пишет языки с регионом. «auto» и пустой язык
+    /// модели не называются: модели с языками-регионами (Nemotron) строку «auto» не принимают.
     fn language(&self, lang: &str) -> Result<Option<CString>, String> {
-        if lang.is_empty() || lang == "auto" || self.languages.is_empty() {
-            let regional = !self.languages.is_empty() && self.languages.iter().all(|l| l.contains('-'));
-            return Ok(regional.then(|| CString::new("auto").expect("no NUL")));
-        }
-        let prefix = format!("{}-", lang.to_ascii_lowercase());
-        let found = self.languages.iter().find(|l| l.eq_ignore_ascii_case(lang)).or_else(|| self.languages.iter().find(|l| l.to_ascii_lowercase().starts_with(&prefix)));
-        match found {
-            Some(l) => Ok(Some(CString::new(l.as_str()).map_err(|e| engine_err(e.to_string()))?)),
-            None => Err(engine_err(format!("transcribe.cpp: the model does not recognise «{lang}» (it knows {})", self.languages.join(", ")))),
-        }
+        language_of(&self.languages, lang).map(|l| l.map(|l| CString::new(l).expect("model language names hold no NUL")))
     }
 
     /// Слова 16 кГц моно со временем от его начала, с.
@@ -1156,6 +1162,22 @@ mod tests {
         std::fs::write(model_path(&root, &TINY), b"abcd").unwrap();
         assert!(!installed(&root, Build::Cpu, &TINY), "a model of another size");
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn auto_and_no_language_tell_the_model_nothing() {
+        let regional: Vec<String> = ["en-US", "ru-RU", "de-DE"].iter().map(|s| s.to_string()).collect();
+        let plain: Vec<String> = ["en", "ru"].iter().map(|s| s.to_string()).collect();
+        for languages in [&regional, &plain] {
+            assert_eq!(language_of(languages, "auto").unwrap(), None);
+            assert_eq!(language_of(languages, " AUTO ").unwrap(), None);
+            assert_eq!(language_of(languages, "").unwrap(), None);
+        }
+        assert_eq!(language_of(&regional, "ru").unwrap().as_deref(), Some("ru-RU"));
+        assert_eq!(language_of(&regional, "ru-RU").unwrap().as_deref(), Some("ru-RU"));
+        assert_eq!(language_of(&plain, "ru").unwrap().as_deref(), Some("ru"));
+        assert!(language_of(&regional, "ja").unwrap_err().contains("does not recognise"));
+        assert_eq!(language_of(&[], "ja").unwrap(), None);
     }
 
     /// A model hears a language named by its plain code: DUB_TCPP_ENGINE_DIR (an engine), DUB_TCPP_LANG_MODELS
