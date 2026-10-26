@@ -850,6 +850,9 @@ pub fn drama_dll(mroot: &Path) -> PathBuf {
 /// не входит в видеопамять целиком (карта меньше [`DRAMA_FULL_VRAM`] или такой лимит в настройках), оперативной
 /// памяти не меньше [`DRAMA_MIN_RAM`].
 pub fn drama_unavailable(mroot: &Path) -> Option<String> {
+    if let Some(why) = crate::hw::cpu_floor("Drama 3") {
+        return Some(why);
+    }
     let gpu = crate::hw::gpu_report();
     let card = gpu.summary().unwrap_or_else(|| "-".to_string());
     if !gpu.cuda13_ok {
