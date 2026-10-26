@@ -212,6 +212,7 @@ export type GpuReason = "no_nvidia" | "no_device" | "cuda_init" | "driver_old" |
 export type GpuReport = {
   nvidia: boolean; name?: string | null; driverVersion?: string | null; cudaDriver?: string | null;
   compute?: string | null; cuda13Ok: boolean; reason?: GpuReason | null; minDriver: number; minCompute: string;
+  cudaBuild?: "cuda13" | "cuda12" | null;   // the CUDA build of the engines this card runs; none — no CUDA at all
 };
 export type SetupStatus = {
   components: SetupComponent[]; ready: boolean;

@@ -966,8 +966,11 @@ fn ensure_job_components(
                 need.push(id.to_string());
             }
         }
-    } else if models::stage_backend(models_root, "asr_backend") == "gpu" && missing("cuda-runtime") {
-        need.push("cuda-runtime".to_string());
+    } else if models::stage_backend(models_root, "asr_backend") == "gpu" {
+        let runtime = if models::tcpp_build(models_root) == dub_asr::tcpp::Build::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
+        if missing(runtime) {
+            need.push(runtime.to_string());
+        }
     }
     // ONNX Runtime serves diarization, casting, text detection, Supertonic and RUAccent: without either build the
     // first session would end the job in a panic of ort's loader (4.4 on processors).

@@ -210,6 +210,12 @@ mod platform {
         files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, "models/transcribe-engine-cpu/transcribe_engine.dll")],
         markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cpu.download().size }],
     };
+    // CUDA 12.9, sm 52-120a without PTX; cudart and cuBLAS from cuda12-runtime, whose folder is on PATH on such a card.
+    pub const TRANSCRIBE_ENGINE_CUDA12: Parts = Parts {
+        size: dub_asr::tcpp::Build::Cuda12.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, "models/transcribe-engine-cuda12/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine-cuda12/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda12.download().size }],
+    };
     // audiocpp_server (acpp_server::asset: fork timoncool/audio.cpp, branch studio; model specs inside, AVX2 floor, no
     // AVX-512) with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and
     // cuFFT from cuda-runtime. CUDA 12.9: SASS 5.2-12.0a without PTX, its libraries from cuda12-runtime.
@@ -377,6 +383,10 @@ mod platform {
     const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.so";
     #[cfg(not(target_os = "macos"))]
     const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.so";
+    #[cfg(not(target_os = "macos"))]
+    const TCPP_CUDA12: &str = "models/transcribe-engine-cuda12/libtranscribe_engine.so";
+    #[cfg(target_os = "macos")]
+    const TCPP_CUDA12: &str = "models/transcribe-engine-cuda12/libtranscribe_engine.dylib";
     #[cfg(target_os = "macos")]
     const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.dylib";
     #[cfg(target_os = "macos")]
@@ -390,6 +400,12 @@ mod platform {
         size: dub_asr::tcpp::Build::Cpu.download().size,
         files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, TCPP_CPU)],
         markers: &[Marker { rel: TCPP_CPU, expect: dub_asr::tcpp::Build::Cpu.download().size }],
+    };
+    // CUDA 12.9 with RUNPATH $ORIGIN and ../cuda12-runtime, where cuda12-runtime puts libcudart and libcublas.
+    pub const TRANSCRIBE_ENGINE_CUDA12: Parts = Parts {
+        size: dub_asr::tcpp::Build::Cuda12.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, TCPP_CUDA12)],
+        markers: &[Marker { rel: TCPP_CUDA12, expect: dub_asr::tcpp::Build::Cuda12.download().size }],
     };
     // audiocpp_server (acpp_server::asset): one archive a build with libgomp beside the program; RUNPATH $ORIGIN,
     // ../../models/higgs-engine (CUDA 13 runtime of cuda-runtime) and ../../models/cuda12-runtime (CUDA 12.9).
@@ -778,6 +794,17 @@ pub fn manifest() -> Vec<Component> {
             size: platform::TRANSCRIBE_ENGINE_CPU.size,
             files: platform::TRANSCRIBE_ENGINE_CPU.files,
             markers: platform::TRANSCRIBE_ENGINE_CPU.markers,
+            external_url: None,
+        },
+        Component {
+            id: "transcribe-engine-cuda12",
+            name: "transcribe.cpp (CUDA 12)".into(),
+            purpose: t!("setup-comp-transcribe-engine-cuda12-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::TRANSCRIBE_ENGINE_CUDA12.size,
+            files: platform::TRANSCRIBE_ENGINE_CUDA12.files,
+            markers: platform::TRANSCRIBE_ENGINE_CUDA12.markers,
             external_url: None,
         },
         // Альтернативные кванты TTS Higgs (выбор в настройках; своя папка на квант, aux те же).
@@ -1962,12 +1989,10 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
     // первом запуске), а CUDA-движок + CUDA-рантайм — необязательными (не тянем лишние гигабайты).
     // В GPU-режиме наоборот: CPU-движок не нужен.
     let backend = crate::models::local_backend(&mroot);
-    let asr_cpu = crate::models::tcpp_build(&mroot) == dub_asr::tcpp::Build::Cpu;
+    let asr_engine = crate::models::tcpp_build(&mroot).dir();
     for c in comps.iter_mut() {
-        if !cloud_asr && c.id == "transcribe-engine" {
-            c.requirement = if asr_cpu { Requirement::Optional } else { Requirement::Required };
-        } else if !cloud_asr && c.id == "transcribe-engine-cpu" {
-            c.requirement = if asr_cpu { Requirement::Required } else { Requirement::Optional };
+        if !cloud_asr && ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu"].contains(&c.id.as_str()) {
+            c.requirement = if c.id == asr_engine { Requirement::Required } else { Requirement::Optional };
         }
         if backend == "cpu" {
             if c.id == "bsroformer-engine-cpu" {
@@ -3807,7 +3832,7 @@ mod tests {
             assert_eq!((f.url, f.size, f.sha256), (m.download.url, m.download.size, m.download.sha256), "{id}");
             assert_eq!(std::path::Path::new(f.dest_rel), std::path::Path::new("models").join(m.dir).join(m.file), "{id}");
         }
-        for b in [dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cpu] {
+        for b in [dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Cpu] {
             let d = b.download();
             let [f] = comp(b.dir()).files else { panic!("{b:?}: one file") };
             assert_eq!((f.url, f.size, f.sha256), (d.url, d.size, d.sha256), "{b:?}");

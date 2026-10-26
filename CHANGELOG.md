@@ -21,6 +21,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Speech recognition on older NVIDIA cards and drivers runs on the card**: where CUDA 13 does not run (a driver before 580, a card before Turing), recognition took the processor; it now takes the transcribe.cpp engine built for CUDA 12.9 (and CrisperWhisper the CUDA 12.9 audio.cpp server) with the CUDA 12.9 runtime, and «GPU» is open for recognition there.
 - **A program's own file is no longer lost when another program's copy cannot be taken**: at start the studio takes what another program already has, and a file on another drive (where it cannot be linked) left the studio's own older file deleted, so yt-dlp or an engine went missing until it was downloaded again; now the own file is replaced only by a finished link or copy.
 - **Linux: Higgs voices and CrisperWhisper run again**: the studio installs the audio.cpp server on Linux too (CUDA 13, or CUDA 12.9 with its runtime for older cards) instead of the engine library it no longer runs, and makes the programs it unpacks executable; Windows takes the same server release.
 - **The log on disk survives a crash**: `logs/dub-studio.log` gets every line as it is written, with panics and, on Windows, a crash of an engine library (its exception code and module); it goes into the bug report package, and past 8 MB the older part is kept as `dub-studio.old.log`.

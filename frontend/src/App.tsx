@@ -356,7 +356,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
   const backendTabs = (k: string) => {
     const cur = selv(k) || "auto";
-    const gpuOff = !status.gpu.cuda13Ok;
+    const gpuOff = k === "asr_backend" ? !status.gpu.cudaBuild : !status.gpu.cuda13Ok;   // recognition has CUDA 12.9 builds too
     return (
       <div className="flex gap-1 mb-1.5">
         {([["auto", t("settings.auto")], ["gpu", "GPU (CUDA)"], ["cpu", "CPU"]] as const).map(([id, label]) => (
@@ -489,7 +489,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </div>
         ) : asrEngine === "parakeet" ? (
           <>
-            {get("transcribe-engine-cpu")?.requirement === "required" ? rowOf("transcribe-engine-cpu") : rowOf("transcribe-engine")}
+            {rowOf(TCPP_ENGINES.find((id) => get(id)?.requirement === "required") ?? "transcribe-engine")}
             {variantPicker("Parakeet-TDT 0.6B v3", ["parakeet", "parakeet-ultra"], ASR_VARIANT_I18N)}
           </>
         ) : (
@@ -4149,10 +4149,13 @@ const QUANT_GROUP: Record<string, string> = {
 // Engines, runtimes and libraries: the studio takes them for the models chosen and for this computer's card, so they
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
-  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cpu", "langid",
+  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu", "langid",
   "bsroformer-engine", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cuda12-runtime", "cudnn",
   "vcruntime",
 ]);
+
+/** The builds of the transcribe.cpp engine; the server requires the one this computer runs recognition on. */
+const TCPP_ENGINES = ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu"];
 
 /** The service parts a chosen model runs on; of two builds of one engine, the one the server asks for on this computer. */
 function needs(id: string, s: SetupStatus): string[] {
@@ -4162,10 +4165,15 @@ function needs(id: string, s: SetupStatus): string[] {
     if (req(cpu) !== "optional") return cpu;
     return s.gpu?.cuda13Ok ? gpu : cpu;
   };
+  const tcpp = () => {
+    const req = (x: string) => s.components.find((c) => c.id === x)?.requirement ?? "optional";
+    return TCPP_ENGINES.find((x) => req(x) !== "optional")
+      ?? (s.gpu?.cudaBuild === "cuda13" ? "transcribe-engine" : s.gpu?.cudaBuild === "cuda12" ? "transcribe-engine-cuda12" : "transcribe-engine-cpu");
+  };
   if (id.startsWith("higgs")) return ["higgs-engine"];
   if (id.startsWith("qwen3-tts")) return ["qwen3-tts-engine"];
-  if (id.startsWith("parakeet")) return [build("transcribe-engine", "transcribe-engine-cpu")];
-  if (QUANT_GROUP[id] === "whisper") return ["higgs-engine", "langid", build("transcribe-engine", "transcribe-engine-cpu")];
+  if (id.startsWith("parakeet")) return [tcpp()];
+  if (QUANT_GROUP[id] === "whisper") return ["higgs-engine", "langid", tcpp()];
   if (id.startsWith("roformer")) return [build("bsroformer-engine", "bsroformer-engine-cpu")];
   if (id.startsWith("gemma")) return ["llama"];
   return [];

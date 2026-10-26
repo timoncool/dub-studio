@@ -217,7 +217,7 @@ pub fn is_selection_value(key: &str, value: &str) -> bool {
 
 /// Backend конкретной локальной стадии по ключу (sep_backend/diar_backend/asr_backend): "cpu"/"gpu"
 /// перекрывают; "auto"/пусто -> сначала общий local_backend, затем GPU, только если карта и драйвер годятся
-/// под CUDA 13 (hw::gpu_report) — на драйвере до 580 или Pascal «авто» идёт на CPU, а не падает на CUDA.
+/// под CUDA-сборку стадии ([`gpu_runs`]) — иначе «авто» идёт на CPU, а не падает на CUDA.
 /// Любой движок на любой инстанс — стадии независимы.
 pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
     let sel = load_selection(mroot);
@@ -232,12 +232,27 @@ pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
         .or_else(|| {
             if key == "local_backend" { None } else { pick_bk("local_backend") }
         })
-        .unwrap_or(if crate::hw::gpu_report().cuda13_ok { "gpu" } else { "cpu" })
+        .unwrap_or(if gpu_runs(key) { "gpu" } else { "cpu" })
 }
 
-/// Сборка transcribe.cpp под backend распознавания: GPU — CUDA, CPU — CPU-сборка.
+/// Whether this card runs the CUDA build of a stage (`key`, as in [`stage_backend`]): recognition has CUDA 12.9 builds
+/// of transcribe.cpp and of the audio.cpp server beside the CUDA 13 ones, so it runs on any card one of them takes;
+/// the other stages have CUDA 13 builds only.
+pub fn gpu_runs(key: &str) -> bool {
+    let gpu = crate::hw::gpu_report();
+    if key == "asr_backend" { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
+}
+
+/// Сборка transcribe.cpp под backend распознавания: GPU — CUDA 13, или CUDA 12.9 на карте и драйвере, что CUDA 13
+/// не тянут (как сервер audio.cpp, [`crate::acpp::build`]); CPU — CPU-сборка.
 pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
-    if stage_backend(mroot, "asr_backend") == "cpu" { dub_asr::tcpp::Build::Cpu } else { dub_asr::tcpp::Build::Cuda }
+    if stage_backend(mroot, "asr_backend") == "cpu" {
+        dub_asr::tcpp::Build::Cpu
+    } else if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
+        dub_asr::tcpp::Build::Cuda12
+    } else {
+        dub_asr::tcpp::Build::Cuda
+    }
 }
 
 /// Why voice separation cannot run here as set: its GPU build without a usable card, or a processor without the
@@ -249,15 +264,12 @@ pub fn sep_unavailable(mroot: &Path) -> Option<String> {
 
 /// Why a local stage set to «GPU (CUDA)» cannot run on this machine: its CUDA build would fall back to the processor
 /// on its own, so the stage stops before it starts and names the reason. None — the stage is not on the GPU or the
-/// card runs the CUDA 13 builds. `stage` is the stage's name for the message.
+/// card runs the stage's CUDA build ([`gpu_runs`]). `stage` is the stage's name for the message.
 pub fn gpu_stage_unavailable(mroot: &Path, key: &str, stage: &str) -> Option<String> {
-    if stage_backend(mroot, key) != "gpu" {
+    if stage_backend(mroot, key) != "gpu" || gpu_runs(key) {
         return None;
     }
     let gpu = crate::hw::gpu_report();
-    if gpu.cuda13_ok {
-        return None;
-    }
     let card = gpu.summary().unwrap_or_else(|| "-".to_string());
     let why = match gpu.reason {
         Some("no_nvidia") => t!("stage-gpu-why-no-nvidia"),
@@ -734,7 +746,7 @@ pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result
     match choice {
         AsrChoice::Ggml { models_root, build, model } => {
             let _ = prompt;
-            if *build == dub_asr::tcpp::Build::Cuda {
+            if matches!(build, dub_asr::tcpp::Build::Cuda | dub_asr::tcpp::Build::Cuda12) {
                 if let Some(why) = gpu_stage_unavailable(models_root, "asr_backend", &t!("stage-name-asr")) {
                     return Err(why);
                 }
