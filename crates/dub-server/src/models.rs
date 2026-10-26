@@ -738,7 +738,7 @@ pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result
                     return Err(why);
                 }
             }
-            Ok(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))))
+            Ok(dub_asr::tcpp::with_heard_language(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))), models_root, *build, model))
         }
         AsrChoice::CrisperWhisper { repo_root, models_root, backend, build } => {
             let server = crate::acpp::server(repo_root, models_root, crate::acpp::backend(backend), crate::acpp::CRISPERWHISPER)?;

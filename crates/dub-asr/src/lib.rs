@@ -587,21 +587,29 @@ pub fn merge_turns(raw: &[Turn], merge_gap: f64, min_speaker_dur: f64) -> DiarTu
 
 /// Прочитать WAV, свести в моно и ресемплировать в 16 кГц (parakeet-rs требует ровно 16k моно).
 pub(crate) fn load_wav_16k_mono(path: &Path) -> Result<(Vec<f32>, u32), AsrError> {
+    load_wav_16k_mono_head(path, None)
+}
+
+/// [`load_wav_16k_mono`] of the first `secs` seconds only (all of it for None).
+pub(crate) fn load_wav_16k_mono_head(path: &Path, secs: Option<usize>) -> Result<(Vec<f32>, u32), AsrError> {
     let disp = path.display().to_string();
     let wav_err = |e: hound::Error| AsrError::WavRead(disp.clone(), e.to_string());
     let mut reader = hound::WavReader::open(path).map_err(wav_err)?;
     let spec = reader.spec();
     let ch = spec.channels.max(1) as usize;
+    let take = secs.map_or(usize::MAX, |s| s.saturating_mul(spec.sample_rate as usize).saturating_mul(ch));
 
     let interleaved: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .samples::<f32>()
+            .take(take)
             .collect::<Result<Vec<_>, _>>()
             .map_err(wav_err)?,
         hound::SampleFormat::Int => {
             let max = (1i64 << (spec.bits_per_sample - 1)) as f32;
             reader
                 .samples::<i32>()
+                .take(take)
                 .map(|s| s.map(|v| v as f32 / max))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(wav_err)?

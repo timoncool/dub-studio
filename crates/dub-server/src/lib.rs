@@ -916,6 +916,14 @@ fn ensure_job_components(
             }
         }
     }
+    // a transcribe.cpp model that must be told the language hears it by the language id under «auto»
+    if !asr_whisper && !models::openrouter_asr_on(models_root) && missing("langid") {
+        if let models::AsrChoice::Ggml { model, .. } = models::resolve_asr_choice(repo_root, models_root, &sel) {
+            if dub_asr::tcpp::told_the_language(model) {
+                need.push("langid".to_string());
+            }
+        }
+    }
     // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs voice of a render (an
     // install updated from 4.4 has the former Higgs library, not the server); a program named by
     // DUB_STUDIO_AUDIOCPP_SERVER is taken as it is.
