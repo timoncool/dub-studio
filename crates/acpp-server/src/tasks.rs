@@ -5,6 +5,8 @@ use crate::speech::json_or_error;
 use crate::{AcppError, Server};
 use base64::Engine;
 use serde_json::{json, Map, Value};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 /// An artifact of a result: opaque bytes the model returns (a MIDI file, a score, tokens), with its kind as the
 /// server names it (`midi`, `custom`, …) and its string metadata.
@@ -28,19 +30,31 @@ pub struct TaskAudio {
 
 impl Server {
     /// Runs `request` (the model's request fields: `audio` as a path on this computer, `options`, `artifacts`, …) on
-    /// the model `model`; the answer is the server's result.
-    pub fn run_task(&self, model: &str, request: Value) -> Result<Value, AcppError> {
-        run_task_at(&self.http, &self.base, model, request)
+    /// the model `model`; the answer is the server's result. `cancel` set ends the wait at once with
+    /// [`AcppError::Cancelled`]; the server still finishes a run it began (audio.cpp: a JSON client that disconnects
+    /// leaves its run to finish), so a studio that needs the model or the card free at once stops the server.
+    pub fn run_task(&self, model: &str, request: Value, cancel: &AtomicBool) -> Result<Value, AcppError> {
+        run_task_at(&self.http, &self.base, model, request, cancel)
     }
 }
 
-fn run_task_at(http: &reqwest::blocking::Client, base: &str, model: &str, request: Value) -> Result<Value, AcppError> {
-    let resp = http
-        .post(format!("{base}/v1/tasks/run"))
-        .json(&json!({ "model": model, "request": request }))
-        .send()
-        .map_err(|e| AcppError::Io(format!("audiocpp_server task: {e}")))?;
-    json_or_error(resp)
+fn run_task_at(http: &reqwest::blocking::Client, base: &str, model: &str, request: Value, cancel: &AtomicBool) -> Result<Value, AcppError> {
+    let call = http.post(format!("{base}/v1/tasks/run")).json(&json!({ "model": model, "request": request }));
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let answer = call.send().map_err(|e| AcppError::Io(format!("audiocpp_server task: {e}"))).and_then(json_or_error);
+        let _ = tx.send(answer);
+    });
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            return Err(AcppError::Cancelled);
+        }
+        match rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(answer) => return answer,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Err(AcppError::Io("audiocpp_server task: the request ended without an answer".into())),
+        }
+    }
 }
 
 fn b64(field: &str, text: &str) -> Result<Vec<u8>, AcppError> {
@@ -178,16 +192,42 @@ mod tests {
     fn a_task_goes_to_tasks_run_and_its_result_or_error_comes_back() {
         let http = reqwest::blocking::Client::builder().no_proxy().build().unwrap();
         let (base, served) = stand_in(200, r#"{"artifacts":[{"id":"m","kind":"midi","payload":"TVRoZA==","meta":{}}],"timing":{"wall_ms":2.0}}"#);
-        let result = run_task_at(&http, &base, "muscriptor", json!({ "audio": "C:/a.wav", "options": { "output_format": "midi" } })).unwrap();
+        let result = run_task_at(&http, &base, "muscriptor", json!({ "audio": "C:/a.wav", "options": { "output_format": "midi" } }), &AtomicBool::new(false)).unwrap();
         let got = served.join().unwrap();
         assert!(got.starts_with("POST /v1/tasks/run "), "{got}");
         assert!(got.contains(r#""model":"muscriptor""#) && got.contains(r#""request":{"#) && got.contains(r#""output_format":"midi""#), "{got}");
         assert_eq!(task_artifact(&result, "midi").unwrap().unwrap().payload, b"MThd");
 
         let (base, served) = stand_in(400, r#"{"error":{"message":"artifacts[0] (x): unknown kind 'tokens'","type":"invalid_request_error"}}"#);
-        let err = run_task_at(&http, &base, "htdemucs", json!({ "audio": "C:/a.wav" })).unwrap_err();
+        let err = run_task_at(&http, &base, "htdemucs", json!({ "audio": "C:/a.wav" }), &AtomicBool::new(false)).unwrap_err();
         served.join().unwrap();
         assert!(matches!(err, AcppError::Server { status: 400, ref kind, ref message } if kind == "invalid_request_error" && message.contains("unknown kind")), "{err:?}");
+    }
+
+    #[test]
+    fn a_stop_ends_the_wait_for_a_long_task_at_once() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let held = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            std::thread::sleep(Duration::from_secs(3));
+            drop(stream);
+        });
+        let http = reqwest::blocking::Client::builder().no_proxy().build().unwrap();
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let stopper = {
+            let cancel = cancel.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(300));
+                cancel.store(true, Ordering::SeqCst);
+            })
+        };
+        let t0 = std::time::Instant::now();
+        let err = run_task_at(&http, &base, "htdemucs", json!({ "audio": "C:/long.wav" }), &cancel).unwrap_err();
+        assert!(matches!(err, AcppError::Cancelled), "{err:?}");
+        assert!(t0.elapsed() < Duration::from_secs(2), "the stop waited for the server: {:?}", t0.elapsed());
+        stopper.join().unwrap();
+        held.join().unwrap();
     }
 
     #[test]
