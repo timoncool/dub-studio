@@ -230,7 +230,7 @@ mod tests {
         assert_eq!(*told.lock().unwrap(), ["auto"]);
     }
 
-    /// DUB_ASR_MODELS: a models folder with the transcribe.cpp build DUB_ASR_BUILD (cpu, cuda or vulkan) and the language
+    /// DUB_ASR_MODELS: a models folder with the transcribe.cpp build DUB_ASR_BUILD (cpu, cuda, cuda12 or vulkan) and the language
     /// id; DUB_ASR_WAV: speech; DUB_ASR_LANG: its language. Nemotron is told it under «auto».
     #[test]
     #[ignore]
@@ -239,6 +239,7 @@ mod tests {
         let build = match env("DUB_ASR_BUILD").as_str() {
             "cpu" => Build::Cpu,
             "cuda" => Build::Cuda,
+            "cuda12" => Build::Cuda12,
             "vulkan" => Build::Vulkan,
             other => panic!("DUB_ASR_BUILD={other}"),
         };

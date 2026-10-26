@@ -195,16 +195,20 @@ mod platform {
     const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip";
     // transcribe.cpp (fork timoncool/transcribe.cpp, branch studio, scripts/build-engine-windows.cmd): libtranscribe and
     // ggml whole in one library. CUDA 13, sm 75/80/86/89/90/100/120 without PTX, cudart and cuBLAS from cuda-runtime;
-    // the CPU build for a computer without a card CUDA 13 runs on.
+    // the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's.
+    const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
+        let d = build.download();
+        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
+    }
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
-        size: 144_406_016,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine.dll", dest_rel: "models/transcribe-engine/transcribe_engine.dll", size: 144_406_016, sha256: "e38b5d275449cd1453e09e1e40560e9da07f8d5715b1bc8403facb3b7b9b9009", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: 144_406_016 }],
+        size: dub_asr::tcpp::Build::Cuda.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, "models/transcribe-engine/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda.download().size }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
-        size: 3_558_912,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-cpu.dll", dest_rel: "models/transcribe-engine-cpu/transcribe_engine.dll", size: 3_558_912, sha256: "64df1c98b5b6da2b77e6102f3c852adcb2e285336fc49085f7ee63cfddc0855c", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: 3_558_912 }],
+        size: dub_asr::tcpp::Build::Cpu.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, "models/transcribe-engine-cpu/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cpu.download().size }],
     };
     // audiocpp_server (acpp_server::asset: fork timoncool/audio.cpp, branch studio; model specs inside, AVX2 floor, no
     // AVX-512) with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and
@@ -363,16 +367,29 @@ mod platform {
 
     // transcribe.cpp (fork timoncool/transcribe.cpp, scripts/build-engine-linux-docker.sh: Ubuntu 22.04). CUDA 13.3,
     // sm 75/80/86/89/90/100/120, RUNPATH $ORIGIN and ../higgs-engine, where libcudart and libcublas come from
-    // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on.
+    // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's; a Mac has one
+    // build of its architecture in every slot, under the library name dub_tcpp loads there.
+    const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
+        let d = build.download();
+        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
+    }
+    #[cfg(not(target_os = "macos"))]
+    const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.so";
+    #[cfg(not(target_os = "macos"))]
+    const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.so";
+    #[cfg(target_os = "macos")]
+    const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.dylib";
+    #[cfg(target_os = "macos")]
+    const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.dylib";
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
-        size: 160_763_128,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine.so", dest_rel: "models/transcribe-engine/libtranscribe_engine.so", size: 160_763_128, sha256: "1a41940dc1708520d4cc5ba51ffb31b42d13beb67078d476a179df4b1cc45c5e", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine/libtranscribe_engine.so", expect: 160_763_128 }],
+        size: dub_asr::tcpp::Build::Cuda.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, TCPP_CUDA)],
+        markers: &[Marker { rel: TCPP_CUDA, expect: dub_asr::tcpp::Build::Cuda.download().size }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
-        size: 4_837_704,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-cpu.so", dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", size: 4_837_704, sha256: "9f7904d685a8a4385f436a1af821d1bd2629b1c1af814ea4a5b00deada9513b2", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", expect: 4_837_704 }],
+        size: dub_asr::tcpp::Build::Cpu.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, TCPP_CPU)],
+        markers: &[Marker { rel: TCPP_CPU, expect: dub_asr::tcpp::Build::Cpu.download().size }],
     };
     // audiocpp_server (acpp_server::asset): one archive a build with libgomp beside the program; RUNPATH $ORIGIN,
     // ../../models/higgs-engine (CUDA 13 runtime of cuda-runtime) and ../../models/cuda12-runtime (CUDA 12.9).
@@ -3790,7 +3807,7 @@ mod tests {
             assert_eq!((f.url, f.size, f.sha256), (m.download.url, m.download.size, m.download.sha256), "{id}");
             assert_eq!(std::path::Path::new(f.dest_rel), std::path::Path::new("models").join(m.dir).join(m.file), "{id}");
         }
-        for b in dub_asr::tcpp::Build::ALL.into_iter().filter(|b| *b != dub_asr::tcpp::Build::Vulkan) {
+        for b in [dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cpu] {
             let d = b.download();
             let [f] = comp(b.dir()).files else { panic!("{b:?}: one file") };
             assert_eq!((f.url, f.size, f.sha256), (d.url, d.size, d.sha256), "{b:?}");

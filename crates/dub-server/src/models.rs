@@ -601,6 +601,7 @@ impl AsrChoice {
                 let quant = model.file.trim_end_matches(".gguf").rsplit('-').next().unwrap_or(model.file);
                 let on = match build {
                     dub_asr::tcpp::Build::Cuda => "CUDA",
+                    dub_asr::tcpp::Build::Cuda12 => "CUDA 12",
                     dub_asr::tcpp::Build::Vulkan => "Vulkan",
                     dub_asr::tcpp::Build::Cpu => "CPU",
                 };

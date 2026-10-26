@@ -28,6 +28,9 @@ pub struct Download {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Build {
     Cuda,
+    /// CUDA 12.9 for the cards and drivers CUDA 13 does not run; its cudart and cuBLAS come from the program's CUDA 12.9
+    /// runtime (on Windows its folder on PATH, on Linux the library's RUNPATH `$ORIGIN/../cuda12-runtime`).
+    Cuda12,
     Vulkan,
     Cpu,
 }
@@ -67,12 +70,13 @@ pub fn cpu_floor_missing() -> Vec<&'static str> {
 }
 
 impl Build {
-    pub const ALL: [Build; 3] = [Build::Cuda, Build::Vulkan, Build::Cpu];
+    pub const ALL: [Build; 4] = [Build::Cuda, Build::Cuda12, Build::Vulkan, Build::Cpu];
 
     /// Папка сборки в каталоге моделей (= id компонента).
     pub fn dir(self) -> &'static str {
         match self {
             Build::Cuda => "transcribe-engine",
+            Build::Cuda12 => "transcribe-engine-cuda12",
             Build::Vulkan => "transcribe-engine-vulkan",
             Build::Cpu => "transcribe-engine-cpu",
         }
@@ -89,39 +93,44 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine.dll",
-                size: 144_406_016,
-                sha256: "e38b5d275449cd1453e09e1e40560e9da07f8d5715b1bc8403facb3b7b9b9009",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine.dll",
+                size: 144_430_592,
+                sha256: "b4d4cfef4a3a5802cd2426b539de86758a7f92c0acbeb4ea5ade917bff7ac380",
+            },
+            Build::Cuda12 => Download {
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-cuda12.dll",
+                size: 172_778_496,
+                sha256: "16657d6a49b88cf2ced1585dee1359f3713bc12b0af62d108d69474480fb8ad4",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-vulkan.dll",
-                size: 48_806_400,
-                sha256: "a82e53b5f09293a6c3577229397a800230bfd0cac821782b1be6e21e576253d5",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-vulkan.dll",
+                size: 48_807_936,
+                sha256: "5b0d2d194ebb838d18f4145f418a141321748c89a41f6ba8692e200597ca5bf8",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/transcribe_engine-cpu.dll",
-                size: 3_558_912,
-                sha256: "64df1c98b5b6da2b77e6102f3c852adcb2e285336fc49085f7ee63cfddc0855c",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-cpu.dll",
+                size: 3_560_960,
+                sha256: "c39fa05fd6762fa8a29199a8d90765cab5c7afdfec1bd5dcdfd7bcf1cfc6af9a",
             },
         }
     }
 
-    /// На Mac одна сборка на архитектуру, в папке процессорной: Metal и процессор на Apple silicon, процессор (и Metal
-    /// карт Intel-Маков) на x86_64. CUDA и Vulkan на Mac нет, их место занимает она же.
+    /// На Mac одна сборка на архитектуру, в папке процессорной: Metal и процессор на Apple silicon, процессор на
+    /// x86_64. CUDA и Vulkan на Mac нет, их место занимает она же.
     #[cfg(target_os = "macos")]
     pub const fn download(self) -> Download {
         let _ = self;
         #[cfg(target_arch = "aarch64")]
         return Download {
-            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-macos-arm64.dylib",
-            size: 8_994_040,
-            sha256: "683456e64f2cd16442895e0ac293c146b2b773f18a2aaedd2d7d6b6a90523829",
+            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-macos-arm64.dylib",
+            size: 9_012_648,
+            sha256: "2a5204cd63156a58ac476610acdb0333bddf929dc9b941da422e8ba703a2e17c",
         };
         #[cfg(not(target_arch = "aarch64"))]
         return Download {
-            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-macos-x86_64.dylib",
-            size: 9_918_736,
-            sha256: "7f9d0d154540673227880fc27a6178e2bd2ebbdff73e8f9a1a18d7cb262a9290",
+            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-macos-x86_64.dylib",
+            size: 9_933_088,
+            sha256: "f6e73be83962f4bf9bb20ec54704f1c871119b61b114fdffb1439b0262c29bb8",
         };
     }
 
@@ -129,19 +138,24 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine.so",
-                size: 160_763_128,
-                sha256: "1a41940dc1708520d4cc5ba51ffb31b42d13beb67078d476a179df4b1cc45c5e",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine.so",
+                size: 160_764_040,
+                sha256: "55f703005d320afe9ac4eee52b50599ef6eeb002975b2de6ea8d711fcae41283",
+            },
+            Build::Cuda12 => Download {
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-cuda12.so",
+                size: 184_375_104,
+                sha256: "6b17f67201f4cc9d40ed219c62783efe0c2c08a9dc17c27896e909300b82a4be",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-vulkan.so",
-                size: 50_802_760,
-                sha256: "b20c17f2eb91a05cc3ab7cd5e90ecaad178cbcc3fcd0bdcc5baad8257ac9382a",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-vulkan.so",
+                size: 50_807_768,
+                sha256: "a4d1951f881edea2b477abe44977587db0884f7a295647196b3743d20e752560",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.3/libtranscribe_engine-cpu.so",
-                size: 4_837_704,
-                sha256: "9f7904d685a8a4385f436a1af821d1bd2629b1c1af814ea4a5b00deada9513b2",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-cpu.so",
+                size: 4_838_616,
+                sha256: "566328f75598ca35b8aebbbb45e730cbccabe81abd185833186deb3d836db675",
             },
         }
     }
