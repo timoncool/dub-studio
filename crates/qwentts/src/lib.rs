@@ -23,7 +23,9 @@ pub const STRESS_LORA: &str = "qwen-talker-1.7b-base-ru-stress-lora.safetensors"
 const STRESS_LORA_SCALE: f32 = 32.0 / 16.0;
 #[cfg(windows)]
 pub const LIBRARY: &str = "qwen.dll";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub const LIBRARY: &str = "libqwen.dylib";
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub const LIBRARY: &str = "libqwen.so";
 /// Голоса CustomVoice: id, имя, пол, родной язык по карточке модели.
 pub const SPEAKERS: &[(&str, &str, &str, &str)] = &[

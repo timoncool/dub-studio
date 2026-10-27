@@ -205,8 +205,10 @@ mod tests {
         let models = root.path().join("models");
         for c in CHANGES {
             assert!(!(c.reason)().starts_with("update-why-"), "{}: its reason is not in the catalogue", c.what);
-            // the CUDA 12.9 components are in the manifest only on a card that takes them
-            if ids.contains(&c.what) || c.what == "cuda12-runtime" || c.what == "bsroformer-engine-cuda12" {
+            // components a platform or a card leaves out of the manifest: CUDA 12.9 ones on a card that takes no CUDA
+            // 12.9, the CUDA builds on a Mac
+            let elsewhere = ["cuda12-runtime", "bsroformer-engine-cuda12", "transcribe-engine", "transcribe-engine-cuda12", "bsroformer-engine"];
+            if ids.contains(&c.what) || elsewhere.contains(&c.what) {
                 continue;
             }
             let path = if c.what.contains('/') { root.path().join(c.what) } else { models.join(c.what) };

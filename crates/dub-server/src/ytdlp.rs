@@ -26,7 +26,9 @@ const EXE: &str = "yt-dlp.exe";
 const ASSET: &str = "yt-dlp.exe";
 #[cfg(not(windows))]
 const EXE: &str = "yt-dlp";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+const ASSET: &str = "yt-dlp_macos";
+#[cfg(all(not(windows), not(target_os = "macos")))]
 const ASSET: &str = "yt-dlp_linux";
 const SUFFIX: &str = std::env::consts::EXE_SUFFIX;
 #[cfg(windows)]

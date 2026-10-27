@@ -174,7 +174,13 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             if open {
                 // Браузер, запущенный изнутри job студии, закрылся бы вместе с ней.
                 let opened = dub_server::process_group::detach_from_group(
-                    &mut dub_core::proc::host_command(if cfg!(windows) { "explorer" } else { "xdg-open" }),
+                    &mut dub_core::proc::host_command(if cfg!(windows) {
+                        "explorer"
+                    } else if cfg!(target_os = "macos") {
+                        "open"
+                    } else {
+                        "xdg-open"
+                    }),
                 )
                 .arg(RELEASES_URL)
                 .spawn();

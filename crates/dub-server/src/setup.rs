@@ -363,30 +363,20 @@ mod platform {
 
 /// Linux x86-64: tar-сборки GitHub, PyPI-колёса manylinux, redist NVIDIA linux-x86_64. Библиотеки CUDA ищутся
 /// через LD_LIBRARY_PATH, который ставит `ensure_library_path` на старте студии.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
     // transcribe.cpp (fork timoncool/transcribe.cpp, scripts/build-engine-linux-docker.sh: Ubuntu 22.04). CUDA 13.3,
     // sm 75/80/86/89/90/100/120, RUNPATH $ORIGIN and ../higgs-engine, where libcudart and libcublas come from
-    // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's; a Mac has one
-    // build of its architecture in every slot, under the library name dub_tcpp loads there.
+    // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's.
     const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
         let d = build.download();
         FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
     }
-    #[cfg(not(target_os = "macos"))]
     const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.so";
-    #[cfg(not(target_os = "macos"))]
     const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.so";
-    #[cfg(not(target_os = "macos"))]
     const TCPP_CUDA12: &str = "models/transcribe-engine-cuda12/libtranscribe_engine.so";
-    #[cfg(target_os = "macos")]
-    const TCPP_CUDA12: &str = "models/transcribe-engine-cuda12/libtranscribe_engine.dylib";
-    #[cfg(target_os = "macos")]
-    const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.dylib";
-    #[cfg(target_os = "macos")]
-    const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.dylib";
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
         size: dub_asr::tcpp::Build::Cuda.download().size,
         files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, TCPP_CUDA)],
@@ -451,29 +441,17 @@ mod platform {
     // Сборки Qwen3-TTS для Linux пока нет: компонент ставит только кодек, движок остаётся недоступным с причиной.
     pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
 
-    // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: on Linux the studios' CUDA 13 and 12.9 builds (Ubuntu 22.04,
-    // libgomp beside the program, RUNPATH $ORIGIN, ../../models/higgs-engine and ../../models/cuda12-runtime), Vulkan and
-    // the processor the author's; a Mac has the author's one build (Metal and the processor) in the processor slot.
-    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
-    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
-    #[cfg(not(target_os = "macos"))]
+    // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: the studios' CUDA 13 and 12.9 builds (Ubuntu 22.04, libgomp
+    // beside the program, RUNPATH $ORIGIN, ../../models/higgs-engine and ../../models/cuda12-runtime), Vulkan and the
+    // processor the author's.
     const SEP_CUDA13: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda13)];
-    #[cfg(not(target_os = "macos"))]
     const SEP_CUDA12: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda12)];
-    #[cfg(not(target_os = "macos"))]
     const SEP_VULKAN: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Vulkan)];
-    #[cfg(not(target_os = "macos"))]
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
     pub const BSROFORMER: Parts = Parts { size: SEP_CUDA13[0].size, files: &SEP_CUDA13, markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli", expect: 0 }] };
-    #[cfg(not(target_os = "macos"))]
     pub const BSROFORMER_CUDA12: Parts = Parts { size: SEP_CUDA12[0].size, files: &SEP_CUDA12, markers: &[Marker { rel: "tools/bsroformer-cuda12/bs_roformer-cli", expect: 0 }] };
-    #[cfg(not(target_os = "macos"))]
     pub const BSROFORMER_VULKAN: Parts = Parts { size: SEP_VULKAN[0].size, files: &SEP_VULKAN, markers: &[Marker { rel: "tools/bsroformer-vulkan/bs_roformer-cli", expect: 0 }] };
-    #[cfg(target_os = "macos")]
-    pub const BSROFORMER: Parts = Parts { size: 0, files: &[], markers: &[] };
-    #[cfg(target_os = "macos")]
-    pub const BSROFORMER_CUDA12: Parts = Parts { size: 0, files: &[], markers: &[] };
-    #[cfg(target_os = "macos")]
-    pub const BSROFORMER_VULKAN: Parts = Parts { size: 0, files: &[], markers: &[] };
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
 
     // llama.cpp b11900 ubuntu-cuda-13.4: RUNPATH $ORIGIN для своих библиотек, cudart/cuBLAS 13 — из cuda-runtime,
     // libssl.so.3 — системная.
@@ -549,6 +527,108 @@ mod platform {
             FileSpec { url: "https://files.pythonhosted.org/packages/af/75/96ea5c5368eb595c39d629cde08a66227a864e71ccb0e593add2612bb952/nvidia_cudnn_cu13-9.27.0.42-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/higgs-engine/_cudnn.whl", size: 536_771_498, sha256: "9677e76f21862eb5da7ee5ed69d544738b2d8b5c3ce7e5ec125c5592e6cdbdc8", extract: Extract::Libs },
         ],
         markers: &[Marker { rel: "models/higgs-engine/libcudnn.so.9", expect: 0 }],
+    };
+}
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+compile_error!("Dub Studio for macOS is built for Apple silicon only: ONNX Runtime 1.28.2 has no Intel build");
+
+/// macOS on Apple silicon: one build of each engine, Metal and the processor in it, in the processor build's folders
+/// (a stage set to the processor or to «auto» runs it); no CUDA, no Vulkan, no Drama 3 and no Qwen3-TTS engine. The pins
+/// are Speech Studio's.
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::{Extract, FileSpec, Marker, Parts};
+
+    const NONE: Parts = Parts { size: 0, files: &[], markers: &[] };
+
+    // transcribe.cpp (dub_tcpp's pin): Metal and the processor in one library, in the processor build's folder.
+    pub const TRANSCRIBE_ENGINE: Parts = NONE;
+    pub const TRANSCRIBE_ENGINE_CUDA12: Parts = NONE;
+    pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
+        size: dub_asr::tcpp::Build::Cpu.download().size,
+        files: &[FileSpec {
+            url: dub_asr::tcpp::Build::Cpu.download().url,
+            dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.dylib",
+            size: dub_asr::tcpp::Build::Cpu.download().size,
+            sha256: dub_asr::tcpp::Build::Cpu.download().sha256,
+            extract: Extract::None,
+        }],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.dylib", expect: dub_asr::tcpp::Build::Cpu.download().size }],
+    };
+
+    // audiocpp_server (acpp_server::asset::SERVER_MACOS): Metal and the processor in one program.
+    pub const AUDIOCPP_SERVER: Parts = Parts {
+        size: acpp_server::asset::SERVER_MACOS.size,
+        files: &[FileSpec {
+            url: acpp_server::asset::SERVER_MACOS.url,
+            dest_rel: "tools/audiocpp-metal/_server.tar.gz",
+            size: acpp_server::asset::SERVER_MACOS.size,
+            sha256: acpp_server::asset::SERVER_MACOS.sha256,
+            extract: Extract::Flat,
+        }],
+        markers: &[Marker { rel: "tools/audiocpp-metal/audiocpp_server", expect: 0 }],
+    };
+
+    /// The audiocpp_server build of this Mac: its one Metal build.
+    pub fn audiocpp_server() -> &'static Parts {
+        &AUDIOCPP_SERVER
+    }
+
+    pub const CUDA12_RUNTIME: Parts = NONE;
+    pub const CUDA_RUNTIME: Parts = NONE;
+    pub const CUDNN: Parts = NONE;
+    pub const ORT_GPU: Parts = NONE;
+
+    // Drama 3 is a CUDA engine: macOS does not offer it (`models::drama_unavailable`).
+    pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "", dest_rel: "models/drama-engine/libdrama_engine.dylib", size: 0, sha256: "", extract: Extract::None };
+
+    // Qwen3-TTS has no engine for the Mac in Dub Studio: the component sets only the codec, the engine says why it
+    // does not run (`models::qwen_unavailable`).
+    pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
+
+    // BSRoformer.cpp v0.1.0, dub_sep::asset's one Mac build (the author's: Metal and the processor).
+    pub const BSROFORMER: Parts = NONE;
+    pub const BSROFORMER_CUDA12: Parts = NONE;
+    pub const BSROFORMER_VULKAN: Parts = NONE;
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
+
+    // llama.cpp b11900 macos-arm64: Metal and the processor, rpath @loader_path.
+    pub const LLAMA: Parts = Parts {
+        size: 16_295_973,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-macos-arm64.tar.gz", dest_rel: "tools/llama/_llama.tar.gz", size: 16_295_973, sha256: "6d3af8649e687b288395ee79f4423a21376892edb94520fa6320bfd3eb81700b", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama/llama-server", expect: 0 }],
+    };
+
+    pub const ORT: Parts = Parts {
+        size: 32_093_967,
+        files: &[
+            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-osx-arm64-1.28.2.tgz", dest_rel: "models/runtime/_ort.tgz", size: 32_093_967, sha256: "c4fceacfc53765d0869dc9180c31ec91054d149017a99d1e80ffe28dc79596de", extract: Extract::Tree },
+        ],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-osx-arm64-1.28.2/lib/libonnxruntime.1.28.2.dylib", expect: 0 }],
+    };
+
+    // ffmpeg 9.0.2 of ffmpeg.martin-riedl.de (static, signed): ffmpeg and ffprobe, a zip each.
+    pub const FFMPEG: Parts = Parts {
+        size: 56_713_400,
+        files: &[
+            FileSpec { url: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip", dest_rel: "tools/ffmpeg/_ffmpeg.zip", size: 28_395_699, sha256: "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924", extract: Extract::Pick },
+            FileSpec { url: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip", dest_rel: "tools/ffmpeg/_ffprobe.zip", size: 28_317_701, sha256: "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6", extract: Extract::Pick },
+        ],
+        markers: &[Marker { rel: "tools/ffmpeg/ffmpeg", expect: 66_332_880 }, Marker { rel: "tools/ffmpeg/ffprobe", expect: 66_158_064 }],
+    };
+
+    pub const YTDLP: Parts = Parts {
+        size: 75_951_531,
+        files: &[
+            FileSpec { url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.21/yt-dlp_macos", dest_rel: "tools/yt-dlp/yt-dlp", size: 37_180_736, sha256: "7a6fe71d7d680f1fb0ac18d4949873d77db2859e90017c0f44bd94b23be4ee40", extract: Extract::None },
+            FileSpec { url: "https://github.com/denoland/deno/releases/download/v2.9.8/deno-aarch64-apple-darwin.zip", dest_rel: "tools/yt-dlp/_deno.zip", size: 38_770_795, sha256: "9f0bf660393da2eaff044cdc7444cb08c73f235849b61d224d825a194ce7c98e", extract: Extract::Flat },
+        ],
+        markers: &[
+            Marker { rel: "tools/yt-dlp/yt-dlp", expect: 37_180_736 },
+            Marker { rel: "tools/yt-dlp/deno", expect: 81_512_928 },
+        ],
     };
 }
 
@@ -1260,6 +1340,10 @@ pub fn manifest() -> Vec<Component> {
     // Среда исполнения Visual C++ есть только у Windows-сборок движков.
     if !cfg!(windows) {
         all.retain(|c| c.id != "vcruntime");
+    }
+    // Drama 3 is a CUDA engine: a Mac has none to run it
+    if cfg!(target_os = "macos") {
+        all.retain(|c| c.id != "drama3");
     }
     if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
         all.push(Component {
@@ -3874,7 +3958,13 @@ mod tests {
             let cli = dub_sep::engine_cli_of(Path::new(""), b.name());
             assert!(c.markers.iter().any(|m| Path::new(m.rel) == cli), "{b:?}: the marker is the program dub_sep runs");
         }
-        for b in [dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Cpu] {
+        // a Mac has the processor build alone (Metal in it)
+        let builds: &[dub_asr::tcpp::Build] = if cfg!(target_os = "macos") {
+            &[dub_asr::tcpp::Build::Cpu]
+        } else {
+            &[dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Cpu]
+        };
+        for &b in builds {
             let d = b.download();
             let [f] = comp(b.dir()).files else { panic!("{b:?}: one file") };
             assert_eq!((f.url, f.size, f.sha256), (d.url, d.size, d.sha256), "{b:?}");
@@ -3897,6 +3987,7 @@ mod tests {
     /// Архив установлен, только если его запись называет закреплённый sha256 и файлы на месте: у обновившихся
     /// пользователей CUDA-DLL прошлой версии (того же имени и даже размера) дают «недостающий компонент».
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn an_archive_counts_only_with_the_pinned_version_recorded() {
         let root = temp_root("record");
         let all = manifest();

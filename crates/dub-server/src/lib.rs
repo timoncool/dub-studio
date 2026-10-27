@@ -2211,23 +2211,32 @@ async fn restore_project(State(st): State<AppState>, AxPath(pid): AxPath<String>
         return (StatusCode::CONFLICT, t!("project-restore-exists")).into_response();
     }
     let (workspace, name) = (st.workspace.clone(), pid.clone());
-    let found = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        // the bin keeps the folder the project was deleted from as the system spells it
-        let home = std::fs::canonicalize(&workspace).map_err(|e| format!("{}: {e}", workspace.display()))?;
-        let item = trash::os_limited::list()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter(|i| i.name == name.as_str() && std::fs::canonicalize(&i.original_parent).is_ok_and(|parent| parent == home))
-            .max_by_key(|i| i.time_deleted)
-            .ok_or_else(|| t!("project-restore-gone"))?;
-        trash::os_limited::restore_all([item]).map_err(|e| e.to_string())
-    })
-    .await;
+    let found = tokio::task::spawn_blocking(move || restore_from_bin(&workspace, &name)).await;
     match found {
         Ok(Ok(())) => Json(json!({ "restored": pid })).into_response(),
         Ok(Err(e)) => (StatusCode::NOT_FOUND, e).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+/// The project `name` deleted last from `workspace`, put back from the system's recycle bin.
+#[cfg(not(target_os = "macos"))]
+fn restore_from_bin(workspace: &Path, name: &str) -> Result<(), String> {
+    // the bin keeps the folder the project was deleted from as the system spells it
+    let home = std::fs::canonicalize(workspace).map_err(|e| format!("{}: {e}", workspace.display()))?;
+    let item = trash::os_limited::list()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|i| i.name == name && std::fs::canonicalize(&i.original_parent).is_ok_and(|parent| parent == home))
+        .max_by_key(|i| i.time_deleted)
+        .ok_or_else(|| t!("project-restore-gone"))?;
+    trash::os_limited::restore_all([item]).map_err(|e| e.to_string())
+}
+
+/// macOS gives programs no way to list the Bin or put an item back from it; Finder's Put Back does it.
+#[cfg(target_os = "macos")]
+fn restore_from_bin(_workspace: &Path, _name: &str) -> Result<(), String> {
+    Err(t!("project-restore-finder"))
 }
 
 // ─── POST /projects/{pid}/analyze ───────────────────────────────────────────
@@ -3154,7 +3163,11 @@ async fn open_output(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
                 .args(["/C", "start", "", &path])
                 .spawn();
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
+        {
+            let _ = dub_core::proc::host_command("open").arg(&path).spawn();
+        }
+        #[cfg(all(not(windows), not(target_os = "macos")))]
         {
             let _ = dub_core::proc::host_command("xdg-open").arg(&path).spawn();
         }

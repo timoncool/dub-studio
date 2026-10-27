@@ -52,11 +52,20 @@ pub fn exe(repo_root: &Path) -> PathBuf {
         return PathBuf::from(p);
     }
     let name = if cfg!(windows) { "audiocpp_server.exe" } else { "audiocpp_server" };
-    repo_root.join(build_dir(build())).join(name)
+    // a Mac has its one Metal build (acpp_server::asset::SERVER_MACOS)
+    let dir = if cfg!(target_os = "macos") { "tools/audiocpp-metal" } else { build_dir(build()) };
+    repo_root.join(dir).join(name)
 }
 
 pub fn backend(stage_backend: &str) -> Backend {
-    if stage_backend == "cpu" { Backend::Cpu } else { Backend::Cuda }
+    if cfg!(target_os = "macos") {
+        // the Mac's one build runs Metal and the processor for every choice
+        Backend::Metal
+    } else if stage_backend == "cpu" {
+        Backend::Cpu
+    } else {
+        Backend::Cuda
+    }
 }
 
 /// Every model the server can carry now: the chosen Higgs quant when the voice is Higgs, Parakeet TDT v3 and

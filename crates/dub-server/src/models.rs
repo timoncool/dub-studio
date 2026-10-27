@@ -246,7 +246,8 @@ pub fn gpu_runs(key: &str) -> bool {
 /// Сборка transcribe.cpp под backend распознавания: GPU — CUDA 13, или CUDA 12.9 на карте и драйвере, что CUDA 13
 /// не тянут (как сервер audio.cpp, [`crate::acpp::build`]); CPU — CPU-сборка.
 pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
-    if stage_backend(mroot, "asr_backend") == "cpu" {
+    // a Mac's one build (Metal and the processor) lies in the processor build's folder
+    if cfg!(target_os = "macos") || stage_backend(mroot, "asr_backend") == "cpu" {
         dub_asr::tcpp::Build::Cpu
     } else if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
         dub_asr::tcpp::Build::Cuda12
@@ -265,7 +266,7 @@ pub fn sep_unavailable(mroot: &Path) -> Option<String> {
 /// The build of the separation engine for its device (`sep_backend`): the processor's, or on the card its CUDA build —
 /// 13, or 12.9 where the card or driver does not run 13 (as the audio.cpp server's, [`crate::acpp::build`]).
 pub fn sep_build(mroot: &Path) -> dub_sep::asset::Build {
-    if stage_backend(mroot, "sep_backend") == "cpu" {
+    if cfg!(target_os = "macos") || stage_backend(mroot, "sep_backend") == "cpu" {
         dub_sep::asset::Build::Cpu
     } else if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
         dub_sep::asset::Build::Cuda12
@@ -873,7 +874,13 @@ pub fn drama_installed(mroot: &Path) -> bool {
 }
 
 pub fn drama_dll(mroot: &Path) -> PathBuf {
-    mroot.join("drama-engine").join(if cfg!(windows) { "drama_engine.dll" } else { "libdrama_engine.so" })
+    mroot.join("drama-engine").join(if cfg!(windows) {
+        "drama_engine.dll"
+    } else if cfg!(target_os = "macos") {
+        "libdrama_engine.dylib"
+    } else {
+        "libdrama_engine.so"
+    })
 }
 
 /// Почему Drama 3 на этой машине не пойдёт: None — карта NVIDIA с CUDA 13 не меньше [`DRAMA_MIN_VRAM`], и если модель

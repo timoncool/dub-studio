@@ -262,6 +262,7 @@ project-delete-failed = eliminando el proyecto { $path }: { $error }
 project-delete-in-use = un archivo del proyecto está en uso (lo lee la ventana u otro programa): { $error }
 project-restore-exists = El proyecto ya está en su sitio.
 project-restore-gone = El proyecto no está en la papelera: se vació o no se borró desde aquí.
+project-restore-finder = En macOS el proyecto borrado se recupera desde la Papelera en Finder: selecciónalo allí y elige «Devolver».
 setup-no-ids = ids está vacío
 setup-fetching-missing = Descargando los modelos que faltan para esta función…
 setup-diarization-missing = El modelo de diarización no se descargó ({ $error }); el análisis seguirá sin separar a los hablantes
