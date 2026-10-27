@@ -25,7 +25,7 @@ export const SAME_AS_EN: Record<"*" | "ru" | "zh" | "es" | "pt" | "fr", string[]
   zh: ["units.gb", "units.mb", "units.kb", "units.b"],
   es: [
     "style.color", "voice.g_female", "voice.g_male", "remix.title", "jobs.kind.remix", "compare.original", "multilang.openEditor",
-    "settings.auto", "settings.sec", "common.error", "setup.error", "batch.error", "transcribe.sec",
+    "settings.auto", "settings.sec", "settings.idleMinutes", "common.error", "setup.error", "batch.error", "transcribe.sec",
     "comp.audioLabel", "comp.subsOriginal", "trStyle.normal", "casting.contentAuto",
     "units.gb", "units.mb", "units.kb", "units.b", "units.watt", "cloud.beta", "proxy.title", "hwPreset.ram", "secrets.proxyTitle",
     "takes.dur",
@@ -33,14 +33,14 @@ export const SAME_AS_EN: Record<"*" | "ru" | "zh" | "es" | "pt" | "fr", string[]
   ],
   pt: [
     "voice.g_female", "voice.g_male", "remix.title", "jobs.kind.remix", "compare.original", "multilang.openEditor",
-    "settings.auto", "settings.sec", "transcribe.sec", "comp.subsOriginal", "trStyle.normal", "casting.contentAuto",
+    "settings.auto", "settings.sec", "settings.idleMinutes", "transcribe.sec", "comp.subsOriginal", "trStyle.normal", "casting.contentAuto",
     "units.gb", "units.mb", "units.kb", "units.b", "units.watt", "cloud.beta", "proxy.title", "hwPreset.ram", "secrets.proxyTitle",
     "takes.dur",
     "glossary.auto", "journal.kind.download", "journal.kind.proxy",
   ],
   fr: [
     "editor.style", "voice.recordStop", "voice.g_female", "remix.title", "jobs.kind.remix", "compare.original", "settings.vision",
-    "settings.auto", "settings.sec", "help.sectionsTitle", "common.pause", "comp.audioLabel", "comp.subsOriginal",
+    "settings.auto", "settings.sec", "settings.idleMinutes", "help.sectionsTitle", "common.pause", "comp.audioLabel", "comp.subsOriginal",
     "trStyle.normal", "casting.contentAuto", "units.watt", "proxy.title", "proxy.services", "secrets.proxyTitle", "bridge.agent",
     "takes.dur", "glossary.auto", "providers.agent", "journal.kind.casting", "journal.kind.proxy",
   ],
