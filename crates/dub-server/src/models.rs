@@ -257,7 +257,12 @@ pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
     if cfg!(target_os = "macos") {
         return dub_asr::tcpp::Build::Cpu;
     }
-    match crate::acpp::build_for(server_choice(mroot, "asr_backend")) {
+    tcpp_build_of(crate::acpp::build_for(server_choice(mroot, "asr_backend")))
+}
+
+/// The transcribe.cpp build of a server build of the recognition device.
+fn tcpp_build_of(build: Result<crate::acpp::Build, String>) -> dub_asr::tcpp::Build {
+    match build {
         Ok(crate::acpp::Build::Cuda12) => dub_asr::tcpp::Build::Cuda12,
         Ok(crate::acpp::Build::Vulkan) => dub_asr::tcpp::Build::Vulkan,
         Ok(crate::acpp::Build::Cpu | crate::acpp::Build::Metal) => dub_asr::tcpp::Build::Cpu,
@@ -279,7 +284,12 @@ pub fn sep_build(mroot: &Path) -> dub_sep::asset::Build {
     if cfg!(target_os = "macos") {
         return dub_sep::asset::Build::Cpu;
     }
-    match crate::acpp::build_for(server_choice(mroot, "sep_backend")) {
+    sep_build_of(crate::acpp::build_for(server_choice(mroot, "sep_backend")))
+}
+
+/// The separation engine's build of a server build of the separation device.
+fn sep_build_of(build: Result<crate::acpp::Build, String>) -> dub_sep::asset::Build {
+    match build {
         Ok(crate::acpp::Build::Cuda12) => dub_sep::asset::Build::Cuda12,
         Ok(crate::acpp::Build::Vulkan) => dub_sep::asset::Build::Vulkan,
         Ok(crate::acpp::Build::Cpu | crate::acpp::Build::Metal) => dub_sep::asset::Build::Cpu,
@@ -1077,6 +1087,29 @@ mod asr_variant_tests {
         assert_eq!(on(serde_json::json!({})), "server parakeet-v3");
         assert_eq!(on(serde_json::json!({ "asr_engine": "nemotron" })), "server nemotron");
         assert_eq!(on(serde_json::json!({ "asr": "ultra-int8" })), "transcribe.cpp parakeet-ultra");
+    }
+
+    /// A card or driver that does not run CUDA 13 (`acpp::cuda_build` Cuda12) gets the CUDA 12.9 build of every engine
+    /// and its runtime; a card chosen that runs no CUDA build keeps the CUDA build, which refuses with the reason.
+    #[test]
+    fn a_cuda_12_card_takes_the_cuda_12_9_build_of_every_engine() {
+        use crate::acpp::Build;
+        assert_eq!(tcpp_build_of(Ok(Build::Cuda12)), dub_asr::tcpp::Build::Cuda12);
+        assert_eq!(sep_build_of(Ok(Build::Cuda12)), dub_sep::asset::Build::Cuda12);
+        assert_eq!(crate::acpp::runtime_component(Build::Cuda12), Some("cuda12-runtime"));
+        assert_eq!(dub_sep::asset::Build::Cuda12.runtime_component(), Some("cuda12-runtime"));
+        assert_eq!(dub_asr::tcpp::Build::Cuda12.dir(), "transcribe-engine-cuda12");
+        assert_eq!(crate::setup::llama_dir(Path::new("R"), Build::Cuda12), Path::new("R").join("tools").join("llama-cuda12"));
+        assert!(crate::setup::llama_parts(Build::Cuda12).files.iter().all(|f| f.dest_rel.starts_with("tools/llama-cuda12/")) || cfg!(target_os = "macos"));
+        for (server, tcpp, sep) in [
+            (Build::Cuda13, dub_asr::tcpp::Build::Cuda, dub_sep::asset::Build::Cuda13),
+            (Build::Vulkan, dub_asr::tcpp::Build::Vulkan, dub_sep::asset::Build::Vulkan),
+            (Build::Cpu, dub_asr::tcpp::Build::Cpu, dub_sep::asset::Build::Cpu),
+        ] {
+            assert_eq!((tcpp_build_of(Ok(server)), sep_build_of(Ok(server))), (tcpp, sep), "{server:?}");
+        }
+        assert_eq!(tcpp_build_of(Err("no CUDA build".into())), dub_asr::tcpp::Build::Cuda);
+        assert_eq!(sep_build_of(Err("no CUDA build".into())), dub_sep::asset::Build::Cuda13);
     }
 
     #[test]
