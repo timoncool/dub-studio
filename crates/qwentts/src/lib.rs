@@ -282,8 +282,9 @@ unsafe impl Sync for QwenEngine {}
 
 impl QwenEngine {
     /// Загружает библиотеку (CUDA-библиотеки она находит по PATH) и талкер кванта на устройстве ggml `device` (`CUDA0`,
-    /// `Vulkan0`, `CPU`, `MTL0`): Base при `clone`, иначе CustomVoice; `stress` добавляет к Base адаптер ударений.
-    pub fn load(models_root: &Path, device: &str, quant: &str, clone: bool, stress: bool) -> Result<QwenEngine, QwenError> {
+    /// `Vulkan0`, `CPU`, `MTL0`): Base при `clone`, иначе CustomVoice; `stress` добавляет к Base адаптер ударений;
+    /// `clamp_fp16` зажимает активации fp16 (Vulkan, карты до Ampere).
+    pub fn load(models_root: &Path, device: &str, clamp_fp16: bool, quant: &str, clone: bool, stress: bool) -> Result<QwenEngine, QwenError> {
         if stress && !clone {
             return Err(QwenError::Load("the stress adapter is trained on the Base talker".into()));
         }
@@ -305,6 +306,7 @@ impl QwenEngine {
         p.talker_path = t.as_ptr();
         p.codec_path = c.as_ptr();
         p.device = device.as_ptr();
+        p.clamp_fp16 = clamp_fp16;
         if let Some(lora) = &lora {
             p.lora_path = lora.as_ptr();
             p.lora_scale = STRESS_LORA_SCALE;

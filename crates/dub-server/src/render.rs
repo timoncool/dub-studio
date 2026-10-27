@@ -888,6 +888,8 @@ pub struct QwenVoices {
     models_root: PathBuf,
     /// The build of the voicing device the talkers run on.
     build: crate::acpp::Build,
+    /// fp16 activations clamped on this build and card ([`crate::models::qwen_clamp_fp16`]).
+    clamp_fp16: bool,
     quant: &'static str,
     lang: String,
     /// Клон читает русские ударения адаптером: «+» перед гласной уходит в модель знаком U+0301.
@@ -904,10 +906,11 @@ impl QwenVoices {
         }
         let device = crate::models::qwen_device(self.build);
         let engine = Arc::new(
-            qwentts::QwenEngine::load(&self.models_root, device, self.quant, clone, clone && self.stress)
+            qwentts::QwenEngine::load(&self.models_root, device, self.clamp_fp16, self.quant, clone, clone && self.stress)
                 .map_err(|e| t!("render-qwen-load-failed", error = e.to_string()))?,
         );
-        tracing::info!("voicing: Qwen3-TTS {} {} on {device} ({})", if clone { "Base" } else { "CustomVoice" }, self.quant, engine.version());
+        let clamp = if self.clamp_fp16 { ", fp16 clamped" } else { "" };
+        tracing::info!("voicing: Qwen3-TTS {} {} on {device}{clamp} ({})", if clone { "Base" } else { "CustomVoice" }, self.quant, engine.version());
         *slot = Some(engine.clone());
         Ok(engine)
     }
@@ -1023,6 +1026,7 @@ fn load_tts_engine(paths: &RenderPaths, lang: &str, progress: &Progress) -> Resu
         return Ok(TtsEngine::Qwen(QwenVoices {
             models_root: paths.models_root.clone(),
             build,
+            clamp_fp16: crate::models::qwen_clamp_fp16(build, crate::hw::gpu_report().compute.as_deref()),
             quant,
             lang: lang.to_string(),
             stress: qwen_stress(&paths.models_root, lang),

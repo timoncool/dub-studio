@@ -1245,7 +1245,8 @@ async fn qwen_voice_sample(mroot: &Path, speaker: &str, req: axum::http::Request
             if !models::qwen_library_installed(&root, build) || !qwentts::installed(&root, quant, false) {
                 return Err(t!("render-qwen-missing"));
             }
-            let engine = qwentts::QwenEngine::load(&root, models::qwen_device(build), quant, false, false).map_err(|e| e.to_string())?;
+            let clamp = models::qwen_clamp_fp16(build, hw::gpu_report().compute.as_deref());
+            let engine = qwentts::QwenEngine::load(&root, models::qwen_device(build), clamp, quant, false, false).map_err(|e| e.to_string())?;
             let say = qwentts::Say { text: "Hello! This is how my voice sounds in your dub.", lang: "en", speaker: Some(&speaker), reference: None, seed: 7, temperature: 0.7, max_new_tokens: 0 };
             let audio = engine.speak(&say).map_err(|e| e.to_string())?;
             if let Some(dir) = out.parent() {

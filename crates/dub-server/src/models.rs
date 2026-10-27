@@ -941,6 +941,22 @@ pub fn qwen_device(build: crate::acpp::Build) -> &'static str {
     }
 }
 
+/// Whether Qwen3-TTS clamps its fp16 activations on a build: on Vulkan always (an AMD card renders silence without it)
+/// and on a CUDA card older than Ampere (compute capability under 8.0, `compute` as the driver gives it: `7.5`), whose
+/// tensor cores accumulate in fp16.
+pub fn qwen_clamp_fp16(build: crate::acpp::Build, compute: Option<&str>) -> bool {
+    use crate::acpp::Build;
+    let cc = compute.and_then(|c| {
+        let (major, minor) = c.split_once('.')?;
+        Some((major.trim().parse::<u32>().ok()?, minor.trim().parse::<u32>().ok()?))
+    });
+    match build {
+        Build::Vulkan => true,
+        Build::Cuda13 | Build::Cuda12 => cc.is_some_and(|cc| cc < (8, 0)),
+        Build::Cpu | Build::Metal => false,
+    }
+}
+
 /// The ggml backend module of a device the library loads beside itself; the CPU one ships with the library, and on a
 /// Mac Metal is linked into it.
 fn qwen_module(build: crate::acpp::Build) -> Option<&'static str> {
@@ -1188,6 +1204,25 @@ mod asr_variant_tests {
         std::fs::write(root.join("active.json"), r#"{"tts_backend":"cpu"}"#).unwrap();
         assert_eq!(qwen_components(&root), ["qwen3-tts-engine"]);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Qwen3-TTS clamps fp16 on Vulkan whatever the card, and on CUDA only for a card older than Ampere.
+    #[test]
+    fn qwen_clamps_fp16_on_vulkan_and_before_ampere() {
+        use crate::acpp::Build;
+        for (build, compute, clamp) in [
+            (Build::Vulkan, None, true),
+            (Build::Vulkan, Some("8.9"), true),
+            (Build::Cuda13, Some("7.5"), true),
+            (Build::Cuda12, Some("6.1"), true),
+            (Build::Cuda13, Some("8.0"), false),
+            (Build::Cuda13, Some("12.0"), false),
+            (Build::Cuda12, None, false),
+            (Build::Cpu, Some("7.5"), false),
+            (Build::Metal, None, false),
+        ] {
+            assert_eq!(qwen_clamp_fp16(build, compute), clamp, "{build:?} {compute:?}");
+        }
     }
 
     #[test]
