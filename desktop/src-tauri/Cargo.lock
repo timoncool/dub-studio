@@ -1553,6 +1553,7 @@ dependencies = [
  "studio-hub-client",
  "sysinfo",
  "tar",
+ "tempfile",
  "tokenizers",
  "tokio",
  "tokio-stream",
