@@ -1,5 +1,6 @@
 //! The studio's audiocpp_server (audio.cpp, through the crate `acpp-server`: `SERVERS`, one process per build): Higgs
-//! voicing, CrisperWhisper, Parakeet TDT v3 and Nemotron 3.5 recognition, with the models on disk now. The same server,
+//! voicing, CrisperWhisper, Parakeet TDT v3 and Nemotron 3.5 recognition, Nemotron 3 Diarization, with the models on
+//! disk now. The same server,
 //! builds and layout as Speech Studio's, so a model of one program serves the other.
 
 pub use acpp_server::asset::Build;
@@ -12,6 +13,7 @@ pub const HIGGS: &str = "higgs";
 pub const CRISPERWHISPER: &str = "crisperwhisper";
 pub const PARAKEET: &str = "parakeet-v3";
 pub const NEMOTRON: &str = "nemotron";
+pub const DIAR: &str = "nemotron-diar";
 
 /// The models of transcribe.cpp's catalogue the server runs, reading their GGUF in place: Parakeet TDT v3 and Nemotron
 /// 3.5. Parakeet Ultra stays on transcribe.cpp: audio.cpp does not read its built-in VAD head.
@@ -98,6 +100,14 @@ pub fn missing_libraries(repo_root: &Path, build: Build) -> Vec<&'static str> {
     acpp_server::asset::missing_libraries(build, &[&beside, &cuda13, &cuda12])
 }
 
+/// Nemotron 3 Diarization, which the server reads as it is: env DUB_STUDIO_SORTFORMER, else
+/// `<models>/nemotron-diar/nemotron3_diar_v3.onnx`.
+pub fn diar_onnx(models_root: &Path) -> PathBuf {
+    std::env::var_os("DUB_STUDIO_SORTFORMER")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| models_root.join(dub_asr::DIAR_MODEL_DIR).join(dub_asr::DIAR_MODEL_FILE))
+}
+
 /// Every model the server can carry now: the chosen Higgs quant, CrisperWhisper, and the transcribe.cpp GGUFs of
 /// Parakeet TDT v3 and Nemotron 3.5. A model whose files are not on disk stays out: the server reads each configured
 /// model's contract when it starts, and one missing file would stop all of them. One list for analysis and render, so
@@ -113,6 +123,10 @@ pub fn models(models_root: &Path) -> Vec<ModelEntry> {
     let crisper = models_root.join(CRISPERWHISPER_DIR);
     if crisper.join("model.safetensors").is_file() {
         out.push(ModelEntry::crisperwhisper(CRISPERWHISPER, &crisper));
+    }
+    let diar = diar_onnx(models_root);
+    if diar.is_file() {
+        out.push(ModelEntry::nemotron_3_diar(DIAR, &diar));
     }
     for id in SERVER_ASR {
         let Some(model) = dub_asr::tcpp::model(id) else { continue };
@@ -189,5 +203,18 @@ mod tests {
         assert_eq!(component(auto), "higgs-engine", "the build «auto» runs is the server component");
         let folders = [Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].map(|b| exe(Path::new("R"), b).parent().unwrap().to_path_buf());
         assert_eq!(folders.map(|f| f.file_name().unwrap().to_string_lossy().into_owned()), ["audiocpp", "audiocpp-cuda12", "audiocpp-vulkan", "audiocpp-cpu"]);
+    }
+
+    #[test]
+    fn the_installed_diarization_model_is_on_the_server() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(!models(root.path()).iter().any(|m| m.id == DIAR));
+        let onnx = root.path().join(dub_asr::DIAR_MODEL_DIR).join(dub_asr::DIAR_MODEL_FILE);
+        std::fs::create_dir_all(onnx.parent().unwrap()).unwrap();
+        std::fs::write(&onnx, b"onnx").unwrap();
+        if std::env::var_os("DUB_STUDIO_SORTFORMER").is_none() {
+            assert_eq!(diar_onnx(root.path()), onnx);
+            assert!(models(root.path()).iter().any(|m| m.id == DIAR));
+        }
     }
 }

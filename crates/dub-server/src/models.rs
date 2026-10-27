@@ -236,11 +236,11 @@ pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
 }
 
 /// Whether this card runs the CUDA build of a stage (`key`, as in [`stage_backend`]): recognition (transcribe.cpp and the
-/// audio.cpp server) and separation (BSRoformer.cpp) have CUDA 12.9 builds beside the CUDA 13 ones, so they run on any
-/// card one of them takes; the other stages have CUDA 13 builds only.
+/// audio.cpp server), diarization (the audio.cpp server) and separation (BSRoformer.cpp) have CUDA 12.9 builds beside
+/// the CUDA 13 ones, so they run on any card one of them takes; the other stages have CUDA 13 builds only.
 pub fn gpu_runs(key: &str) -> bool {
     let gpu = crate::hw::gpu_report();
-    if key == "asr_backend" || key == "sep_backend" { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
+    if matches!(key, "asr_backend" | "sep_backend" | "diar_backend") { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
 }
 
 /// Сборка transcribe.cpp под backend распознавания: GPU — CUDA 13, или CUDA 12.9 на карте и драйвере, что CUDA 13

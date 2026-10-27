@@ -672,26 +672,39 @@ mod continuous_diarization_cache_tests {
     }
 }
 
-fn known_speaker_turns(
+/// The speakers' turns from Nemotron 3 Diarization in audiocpp_server, on the build of the diarization device: by
+/// itself for `count` 0, else for a told speaker count with the speaker voices (WeSpeaker). The model leaves the
+/// card after it.
+fn diarize_on_server(
+    paths: &AnalyzePaths,
     wav: &std::path::Path,
-    detector: &std::path::Path,
     voice_model: &std::path::Path,
-    gpu: bool,
     count: usize,
     progress: &Progress,
 ) -> Result<dub_asr::DiarTurns, String> {
-    let msg = if dub_asr::continuous_diarization_enabled()? {
-        t!("analyze-diarize-continuous", speakers = count)
-    } else {
-        t!("analyze-diarize-fragments", speakers = count)
-    };
-    emit(progress, "diarize", &msg);
-    let mut embedder = dub_faces::VoiceEmbedder::load_on(voice_model, gpu)
-        .map_err(|e| t!("analyze-wespeaker-needed", error = e.localize()))?;
-    dub_asr::turns_with_speaker_count(wav, &dub_asr::Diarizer::Onnx(detector), count, &mut |samples| {
-        crate::jobs::check_cancelled()?;
-        embedder.embed_samples(samples).map_err(|e| e.localize())
-    }).map_err(|e| e.localize())
+    let build = crate::acpp::build_for(crate::models::server_choice(&paths.models_root, "diar_backend"))?;
+    let server = crate::acpp::server(&paths.repo_root, &paths.models_root, build, crate::acpp::DIAR)?;
+    tracing::info!("diarization: Nemotron 3 Diarization on audiocpp_server {build:?}");
+    let diarizer = dub_asr::Diarizer::Server { server, model: crate::acpp::DIAR };
+    let turns = (|| {
+        if count == 0 {
+            return dub_asr::turns(wav, &diarizer, 0.8, 2.5).map_err(|e| e.localize());
+        }
+        let msg = if dub_asr::continuous_diarization_enabled()? {
+            t!("analyze-diarize-continuous", speakers = count)
+        } else {
+            t!("analyze-diarize-fragments", speakers = count)
+        };
+        emit(progress, "diarize", &msg);
+        let mut embedder = dub_faces::VoiceEmbedder::load(voice_model)
+            .map_err(|e| t!("analyze-wespeaker-needed", error = e.localize()))?;
+        dub_asr::turns_with_speaker_count(wav, &diarizer, count, &mut |samples| {
+            crate::jobs::check_cancelled()?;
+            embedder.embed_samples(samples).map_err(|e| e.localize())
+        }).map_err(|e| e.localize())
+    })();
+    crate::acpp::unload(&[crate::acpp::DIAR]);
+    turns
 }
 
 /// Кто переводит (stage "llm") или смотрит кадры (stage "vision") — для ключа стадии перевода: своя Gemma
@@ -984,8 +997,6 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     };
     crate::jobs::check_cancelled()?;
     bench.stage("diarize");
-    // Backend диаризации (onnx CUDA-EP / CPU) — exec_config читает DUB_ASR_BACKEND при создании сессии.
-    std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "diar_backend"));
     emit(progress, "diarize", &t!("analyze-diarizing", model = "Nemotron 3 Diarization"));
     // Вход диаризации и ASR — asr_wav (чистый вокал или сырое аудио): ключи стадий от его отпечатка.
     let asr_in_hash = cache::hash_file_prefix(&asr_wav);
@@ -1000,12 +1011,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             crate::jobs::emit_resumed(progress, "diarize", &t!("analyze-diarization-cached"));
             Some(d.into_turns())
         } else {
-            let result = if args.speaker_count > 0 {
-                known_speaker_turns(&asr_wav, &paths.sortformer_onnx, &voice_model,
-                    crate::models::stage_backend(&paths.models_root, "diar_backend") == "gpu", args.speaker_count, progress)
-            } else {
-                dub_asr::turns(&asr_wav, &dub_asr::Diarizer::Onnx(&paths.sortformer_onnx), 0.8, 2.5).map_err(|e| e.localize())
-            };
+            let result = diarize_on_server(paths, &asr_wav, &voice_model, args.speaker_count, progress);
             match result {
                 Ok(d) => {
                     stage_store(&mut cache, &paths.work_dir, "diarize", &diar_key, DIAR_FILE, &DiarOut::of(&d), progress);

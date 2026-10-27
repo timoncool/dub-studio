@@ -356,7 +356,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
   const backendTabs = (k: string) => {
     const cur = selv(k) || "auto";
-    const gpuOff = k === "asr_backend" || k === "sep_backend" ? !status.gpu.cudaBuild : !status.gpu.cuda13Ok;   // recognition and separation have CUDA 12.9 builds too
+    const gpuOff = k === "asr_backend" || k === "sep_backend" || k === "diar_backend" ? !status.gpu.cudaBuild : !status.gpu.cuda13Ok;
     return (
       <div className="flex gap-1 mb-1.5">
         {([["auto", t("settings.auto")], ["gpu", "GPU (CUDA)"], ["cpu", "CPU"]] as const).map(([id, label]) => (
@@ -517,11 +517,11 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         {rowOf(SEP_ENGINES.find((id) => get(id)?.requirement === "recommended") ?? "bsroformer-engine")}
       </>)}
       {group(t("settings.roleDiar"), <>
-        {/* На чём считать диаризацию — свои табы (Nemotron 3 Diarization onnx: CUDA-EP / CPU-провайдер). */}
+        {/* На чём считать диаризацию — свои табы (Nemotron 3 Diarization на сервере audio.cpp). */}
         {backendTabs("diar_backend")}
         {rowOf("sortformer")}
       </>)}
-      {group(t("settings.roleRuntime"), <>{rowOf("onnxruntime")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("onnxruntime-gpu")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("cuda12-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</>)}
+      {group(t("settings.roleRuntime"), <>{rowOf("onnxruntime")}{selv("local_backend") !== "cpu" && rowOf("onnxruntime-gpu")}{selv("local_backend") !== "cpu" && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("cuda12-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</>)}
       <YtDlpTool installed={!!get("ytdlp")?.installed} row={rowOf("ytdlp")} />
       {/* Производительность / экономия RAM — ВИДИМЫЕ контролы (не авто-магия): против OOM на слабой памяти. */}
       {group(t("settings.perfTitle"), <>

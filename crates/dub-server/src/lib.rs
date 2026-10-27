@@ -298,7 +298,7 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
             // а закачка onnxruntime ставит его на скачанную (point_ort)
             let mut candidates = dub_core::runtime::ort_candidates(&repo_root.join("models"));
             let expected = if crate::hw::gpu_report().cuda13_ok { candidates.remove(0) } else { candidates.remove(candidates.len() - 1) };
-            eprintln!("[ERROR] onnxruntime 1.28 not found in {}: recognition and diarization will not start until the ONNX Runtime component is downloaded", rt.display());
+            eprintln!("[ERROR] onnxruntime 1.28 not found in {}: casting, text detection and speaker voices will not start until the ONNX Runtime component is downloaded", rt.display());
             std::env::set_var("ORT_DYLIB_PATH", expected);
         }
     }
@@ -393,11 +393,7 @@ impl AppState {
             Ok(_) => {}
             Err(e) => tracing::error!("secrets from active.json were not moved to the store: {e:#}"),
         }
-        let sortformer_onnx = std::env::var("DUB_STUDIO_SORTFORMER")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                mroot.join(dub_asr::DIAR_MODEL_DIR).join(dub_asr::DIAR_MODEL_FILE)
-            });
+        let sortformer_onnx = crate::acpp::diar_onnx(&mroot);
         // llama-server: env-override, иначе <repo>/tools/llama/llama-server(.exe) (негитуемый каталог,
         // кладёт установщик/раунд 3). Существование проверяет сама стадия перевода (fail-safe).
         let llama_bin = dub_llm::resolve_llama_bin(&repo_root.join("tools").join("llama"));
@@ -954,16 +950,21 @@ fn ensure_job_components(
         need.push("casting".to_string());
     }
     // A stage on the card needs its CUDA stack: separation its BSRoformer build and that build's runtime (CUDA 13 or
-    // 12.9), diarization onnxruntime-GPU with cuDNN and the CUDA 13 runtime (without cuFFT the CUDA EP does not start),
-    // recognition the runtime of its transcribe.cpp build.
+    // 12.9), the speaker voices of casting and of a told speaker count (ONNX Runtime on the common device)
+    // onnxruntime-GPU with cuDNN and the CUDA 13 runtime (without cuFFT the CUDA EP does not start), recognition the
+    // runtime of its transcribe.cpp build. Diarization runs in audiocpp_server: the build of its device and that
+    // build's runtime.
     let mut stage_needs: Vec<&str> = Vec::new();
     if models::stage_backend(models_root, "sep_backend") == "gpu" {
         let sep = models::sep_build(models_root);
         stage_needs.push(sep.component());
         stage_needs.extend(sep.runtime_component());
     }
-    if models::stage_backend(models_root, "diar_backend") == "gpu" {
+    if (casting || diarization) && models::stage_backend(models_root, "local_backend") == "gpu" {
         stage_needs.extend(["cuda-runtime", "onnxruntime-gpu", "cudnn"]);
+    }
+    if diarization {
+        stage_needs.extend(models::server_components(models_root, "diar_backend"));
     }
     for id in stage_needs {
         if missing(id) && !need.iter().any(|n| n == id) {
@@ -976,7 +977,7 @@ fn ensure_job_components(
             need.push(runtime.to_string());
         }
     }
-    // ONNX Runtime serves diarization, casting, text detection, Supertonic and RUAccent: without either build the
+    // ONNX Runtime serves casting, speaker voices, text detection, Supertonic and RUAccent: without either build the
     // first session would end the job in a panic of ort's loader (4.4 on processors).
     if missing("onnxruntime") && missing("onnxruntime-gpu") && !need.iter().any(|n| n == "onnxruntime-gpu") {
         need.push("onnxruntime".to_string());
