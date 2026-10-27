@@ -318,6 +318,9 @@ fn probe_gpu() -> GpuReport {
             r.reason = Some("cuda_init");
         }
         CudaProbe::Ok { version, compute } => {
+            // `DUB_STUDIO_SIMULATE_CUDA_DRIVER` (the driver's CUDA version, 12080 for 12.8) stands in for the driver's:
+            // a card that runs CUDA 13 is then checked on the builds of an older driver
+            let version = std::env::var("DUB_STUDIO_SIMULATE_CUDA_DRIVER").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(version);
             r.nvidia = true;
             r.cuda_driver = Some(format!("{}.{}", version / 1000, (version % 1000) / 10));
             r.compute = Some(format!("{}.{}", compute.0, compute.1));
