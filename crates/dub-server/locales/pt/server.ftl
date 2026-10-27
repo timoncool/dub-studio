@@ -701,6 +701,7 @@ setup-comp-parakeet-purpose = Reconhece a fala do vídeo com o tempo exato de ca
 setup-comp-transcribe-engine-purpose = O motor de reconhecimento transcribe.cpp na GPU; nele roda o Parakeet
 setup-comp-transcribe-engine-cpu-purpose = O motor de reconhecimento transcribe.cpp no processador, para um computador sem NVIDIA; nele roda o Parakeet, mais devagar
 setup-comp-transcribe-engine-cuda12-purpose = O motor de reconhecimento transcribe.cpp numa placa ou driver NVIDIA antigos (CUDA 12.9); nele roda o Parakeet
+setup-comp-transcribe-engine-vulkan-purpose = O motor de reconhecimento transcribe.cpp em Vulkan, para uma placa AMD ou Intel ou quando o reconhecimento está em Vulkan: Parakeet Ultra e a deteção do idioma
 setup-comp-higgs-q6-k-purpose = Voz: variante mais leve que Q8_0
 setup-comp-higgs-q4-k-m-purpose = Voz: a variante mais leve
 setup-comp-parakeet-ultra-purpose = Reconhecimento de fala: versão ajustada, com menos erros

@@ -965,8 +965,8 @@ fn ensure_job_components(
     // runtime of its transcribe.cpp build. Diarization runs in audiocpp_server: the build of its device and that
     // build's runtime.
     let mut stage_needs: Vec<&str> = Vec::new();
-    if models::stage_backend(models_root, "sep_backend") == "gpu" {
-        let sep = models::sep_build(models_root);
+    let sep = models::sep_build(models_root);
+    if sep != dub_sep::asset::Build::Cpu {
         stage_needs.push(sep.component());
         stage_needs.extend(sep.runtime_component());
     }
@@ -981,8 +981,12 @@ fn ensure_job_components(
             need.push(id.to_string());
         }
     }
-    if models::stage_backend(models_root, "asr_backend") == "gpu" {
-        let runtime = if models::tcpp_build(models_root) == dub_asr::tcpp::Build::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
+    let tcpp_runtime = match models::tcpp_build(models_root) {
+        dub_asr::tcpp::Build::Cuda => Some("cuda-runtime"),
+        dub_asr::tcpp::Build::Cuda12 => Some("cuda12-runtime"),
+        dub_asr::tcpp::Build::Vulkan | dub_asr::tcpp::Build::Cpu => None,
+    };
+    if let Some(runtime) = tcpp_runtime {
         if missing(runtime) && !need.iter().any(|n| n == runtime) {
             need.push(runtime.to_string());
         }

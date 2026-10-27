@@ -156,6 +156,7 @@ pub fn is_selection_key(key: &str) -> bool {
             // gpu = CUDA, cpu = без NVIDIA. sep=сепарация(BSRoformer CUDA/CPU-сборка), diar=диаризация
             // (Sortformer onnx CUDA-EP/CPU), asr=локальный ASR (Parakeet onnx / Whisper CTranslate2).
             | "local_backend" | "sep_backend" | "diar_backend" | "asr_backend"
+            | "tts_backend"     // voicing engines in audiocpp_server (Higgs, Supertonic): auto|gpu|vulkan|cpu
             // Лимиты RAM (видимые контролы в настройках, НЕ авто-магия): против OOM на слабой памяти.
             | "llama_ubatch"    // размер prefill-батча Gemma (меньше = меньше пиковый буфер графа prefill)
             | "higgs_ref_secs"  // длина реф-клипа клона голоса (меньше = меньше prefill Higgs; <12с спасает 32ГБ)
@@ -247,16 +248,20 @@ pub fn gpu_runs(key: &str) -> bool {
     if matches!(key, "asr_backend" | "sep_backend" | "diar_backend") { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
 }
 
-/// Сборка transcribe.cpp под backend распознавания: GPU — CUDA 13, или CUDA 12.9 на карте и драйвере, что CUDA 13
-/// не тянут (как сервер audio.cpp, [`crate::acpp::build`]); CPU — CPU-сборка.
+/// The transcribe.cpp build of the recognition device (`asr_backend`, else `local_backend`), as the audio.cpp server's
+/// ([`crate::acpp::build_for`], as Speech Studio picks it): the card's CUDA build (13, or 12.9 where the card or driver
+/// does not run 13), Vulkan, or the processor's. A card chosen that runs no CUDA build gets the CUDA build, which
+/// refuses with the reason.
 pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
     // a Mac's one build (Metal and the processor) lies in the processor build's folder
-    if cfg!(target_os = "macos") || stage_backend(mroot, "asr_backend") == "cpu" {
-        dub_asr::tcpp::Build::Cpu
-    } else if crate::acpp::cuda_build() == crate::hw::CudaBuild::Cuda12 {
-        dub_asr::tcpp::Build::Cuda12
-    } else {
-        dub_asr::tcpp::Build::Cuda
+    if cfg!(target_os = "macos") {
+        return dub_asr::tcpp::Build::Cpu;
+    }
+    match crate::acpp::build_for(server_choice(mroot, "asr_backend")) {
+        Ok(crate::acpp::Build::Cuda12) => dub_asr::tcpp::Build::Cuda12,
+        Ok(crate::acpp::Build::Vulkan) => dub_asr::tcpp::Build::Vulkan,
+        Ok(crate::acpp::Build::Cpu | crate::acpp::Build::Metal) => dub_asr::tcpp::Build::Cpu,
+        Ok(crate::acpp::Build::Cuda13) | Err(_) => dub_asr::tcpp::Build::Cuda,
     }
 }
 
@@ -267,15 +272,18 @@ pub fn sep_unavailable(mroot: &Path) -> Option<String> {
         .or_else(|| (stage_backend(mroot, "sep_backend") == "gpu").then(|| crate::hw::cpu_floor("BSRoformer")).flatten())
 }
 
-/// The build of the separation engine for its device (`sep_backend`): the processor's, or on the card its CUDA build —
-/// 13, or 12.9 where the card or driver does not run 13 (as the audio.cpp server's, [`crate::acpp::build`]).
+/// The build of the separation engine for its device (`sep_backend`, else `local_backend`), as Speech Studio picks it
+/// ([`crate::acpp::build_for`]): the card's CUDA build (13, or 12.9 where the card or driver does not run 13), Vulkan,
+/// or the processor's. A card chosen that runs no CUDA build gets the CUDA build, which refuses with the reason.
 pub fn sep_build(mroot: &Path) -> dub_sep::asset::Build {
-    if cfg!(target_os = "macos") || stage_backend(mroot, "sep_backend") == "cpu" {
-        dub_sep::asset::Build::Cpu
-    } else if crate::acpp::cuda_build() == crate::hw::CudaBuild::Cuda12 {
-        dub_sep::asset::Build::Cuda12
-    } else {
-        dub_sep::asset::Build::Cuda13
+    if cfg!(target_os = "macos") {
+        return dub_sep::asset::Build::Cpu;
+    }
+    match crate::acpp::build_for(server_choice(mroot, "sep_backend")) {
+        Ok(crate::acpp::Build::Cuda12) => dub_sep::asset::Build::Cuda12,
+        Ok(crate::acpp::Build::Vulkan) => dub_sep::asset::Build::Vulkan,
+        Ok(crate::acpp::Build::Cpu | crate::acpp::Build::Metal) => dub_sep::asset::Build::Cpu,
+        Ok(crate::acpp::Build::Cuda13) | Err(_) => dub_sep::asset::Build::Cuda13,
     }
 }
 

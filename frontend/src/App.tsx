@@ -352,14 +352,15 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
 
   // Тумблер движка «локально | OpenRouter» — тот же вид, что переключатель Parakeet|Whisper в группе ASR.
   const orRowCls = "px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]";
-  // На чём считать стадию (устройство): Авто / GPU (CUDA) / CPU — свои табы в каждом разделе, по
-  // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
+  // На чём считать стадию (устройство): Авто / GPU (CUDA) / Vulkan / CPU — свои табы в каждом разделе, как у Speech
+  // Studio. Независимый ключ на стадию (tts_backend / sep_backend / diar_backend / asr_backend): у audio.cpp,
+  // transcribe.cpp и BSRoformer есть сборки CUDA 12.9 и Vulkan.
   const backendTabs = (k: string) => {
     const cur = selv(k) || "auto";
-    const gpuOff = k === "asr_backend" || k === "sep_backend" || k === "diar_backend" ? !status.gpu.cudaBuild : !status.gpu.cuda13Ok;
+    const gpuOff = !status.gpu.cudaBuild;
     return (
       <div className="flex gap-1 mb-1.5">
-        {([["auto", t("settings.auto")], ["gpu", "GPU (CUDA)"], ["cpu", "CPU"]] as const).map(([id, label]) => (
+        {([["auto", t("settings.auto")], ["gpu", "GPU (CUDA)"], ["vulkan", "Vulkan"], ["cpu", "CPU"]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setSel(k, id)} disabled={id === "gpu" && gpuOff && cur !== "gpu"}
             title={id === "gpu" && gpuOff ? gpuReasonText(status.gpu) : undefined}
             className={`flex-1 px-2 py-1.5 rounded-md text-[12px] font-medium border transition-colors ${cur === id ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"} disabled:opacity-40`}>{label}</button>
@@ -439,6 +440,8 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </div>
         ) : (
           <>
+            {/* Higgs and Supertonic run in the audio.cpp server on the build of this device */}
+            {ttsPick !== "drama3" && !isQwenTts(ttsPick) && backendTabs("tts_backend")}
             {variantPicker(ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3", TTS_IDS, TTS_VARIANT_I18N)}
             {ttsPick === "drama3" && (
               <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
@@ -4178,13 +4181,13 @@ const QUANT_GROUP: Record<string, string> = {
 // Engines, runtimes and libraries: the studio takes them for the models chosen and for this computer's card, so they
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
-  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu", "langid", "silero-vad",
+  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-vulkan", "transcribe-engine-cpu", "langid", "silero-vad",
   "bsroformer-engine", "bsroformer-engine-cuda12", "bsroformer-engine-vulkan", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cuda12-runtime", "cudnn",
   "vcruntime",
 ]);
 
 /** The builds of the transcribe.cpp engine; the server requires the one this computer runs recognition on. */
-const TCPP_ENGINES = ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu"];
+const TCPP_ENGINES = ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-vulkan", "transcribe-engine-cpu"];
 /** The builds of the separation engine (dub_sep::asset). */
 const SEP_ENGINES = ["bsroformer-engine", "bsroformer-engine-cuda12", "bsroformer-engine-vulkan", "bsroformer-engine-cpu"];
 

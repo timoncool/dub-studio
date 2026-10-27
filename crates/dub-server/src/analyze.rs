@@ -1213,7 +1213,8 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         let mut asr_choice = paths.asr.clone();
         if let crate::models::AsrChoice::Ggml { models_root, build, .. } | crate::models::AsrChoice::Server { models_root, build, .. } = &paths.asr {
             let lang = if args.src_lang == "auto" {
-                crate::fetch_missing(&paths.repo_root, &["langid"], progress)?;
+                // the language id runs on the transcribe.cpp build of the recognition device
+                crate::fetch_missing(&paths.repo_root, &["langid", build.dir()], progress)?;
                 let langid = dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID);
                 dub_asr::acpp::heard_language(&dub_asr::tcpp::engine_dir(models_root, *build), &langid, &asr_wav).map_err(|e| e.localize())?
             } else {

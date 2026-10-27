@@ -289,6 +289,11 @@ mod platform {
         files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, "models/transcribe-engine-cuda12/transcribe_engine.dll")],
         markers: &[Marker { rel: "models/transcribe-engine-cuda12/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda12.download().size }],
     };
+    pub const TRANSCRIBE_ENGINE_VULKAN: Parts = Parts {
+        size: dub_asr::tcpp::Build::Vulkan.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine-vulkan/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Vulkan.download().size }],
+    };
     // audiocpp_server (acpp_server::asset: fork timoncool/audio.cpp, branch studio; model specs inside, AVX2 floor, no
     // AVX-512) with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and
     // cuFFT from cuda-runtime. CUDA 12.9: SASS 5.2-12.0a without PTX, its libraries from cuda12-runtime.
@@ -494,6 +499,11 @@ mod platform {
         files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, TCPP_CUDA12)],
         markers: &[Marker { rel: TCPP_CUDA12, expect: dub_asr::tcpp::Build::Cuda12.download().size }],
     };
+    pub const TRANSCRIBE_ENGINE_VULKAN: Parts = Parts {
+        size: dub_asr::tcpp::Build::Vulkan.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/libtranscribe_engine.so")],
+        markers: &[Marker { rel: "models/transcribe-engine-vulkan/libtranscribe_engine.so", expect: dub_asr::tcpp::Build::Vulkan.download().size }],
+    };
     // audiocpp_server (acpp_server::asset): one archive a build with libgomp beside the program; RUNPATH $ORIGIN,
     // ../../models/higgs-engine (CUDA 13 runtime of cuda-runtime) and ../../models/cuda12-runtime (CUDA 12.9).
     const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
@@ -675,6 +685,7 @@ mod platform {
     // transcribe.cpp (dub_tcpp's pin): Metal and the processor in one library, in the processor build's folder.
     pub const TRANSCRIBE_ENGINE: Parts = NONE;
     pub const TRANSCRIBE_ENGINE_CUDA12: Parts = NONE;
+    pub const TRANSCRIBE_ENGINE_VULKAN: Parts = NONE;
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
         size: dub_asr::tcpp::Build::Cpu.download().size,
         files: &[FileSpec {
@@ -1023,6 +1034,17 @@ pub fn manifest() -> Vec<Component> {
             size: platform::TRANSCRIBE_ENGINE_CUDA12.size,
             files: platform::TRANSCRIBE_ENGINE_CUDA12.files,
             markers: platform::TRANSCRIBE_ENGINE_CUDA12.markers,
+            external_url: None,
+        },
+        Component {
+            id: "transcribe-engine-vulkan",
+            name: "transcribe.cpp (Vulkan)".into(),
+            purpose: t!("setup-comp-transcribe-engine-vulkan-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::TRANSCRIBE_ENGINE_VULKAN.size,
+            files: platform::TRANSCRIBE_ENGINE_VULKAN.files,
+            markers: platform::TRANSCRIBE_ENGINE_VULKAN.markers,
             external_url: None,
         },
         // Альтернативные кванты TTS Higgs (выбор в настройках; своя папка на квант, aux те же).
