@@ -1001,7 +1001,7 @@ fn ensure_job_components(
             }
         }
     }
-    // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs voice of a render (an
+    // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs or Supertonic voice of a render (an
     // install updated from 4.4 has the former Higgs library, not the server); a program named by
     // DUB_STUDIO_AUDIOCPP_SERVER is taken as it is.
     let tts = models::resolve_tts(models_root, &sel).1;
@@ -1014,7 +1014,8 @@ fn ensure_job_components(
     if asr_whisper && !models::openrouter_asr_on(models_root) {
         server_needs.extend(models::server_components(models_root, "asr_backend"));
     }
-    if higgs_voice {
+    let supertonic_voice = voicing && !models::cloud_tts_on(models_root) && tts == models::SUPERTONIC_TTS;
+    if higgs_voice || supertonic_voice {
         server_needs.extend(models::server_components(models_root, "tts_backend"));
     }
     for id in server_needs {
@@ -1169,7 +1170,7 @@ fn supertonic_voice_names(mroot: &Path) -> Vec<String> {
 }
 
 /// Проба голоса Supertonic 3: один раз сказанная фраза, дальше файл из models/supertonic3/samples.
-async fn supertonic_voice_sample(mroot: &Path, voice: &str, req: axum::http::Request<axum::body::Body>) -> Response {
+async fn supertonic_voice_sample(repo_root: &Path, mroot: &Path, voice: &str, req: axum::http::Request<axum::body::Body>) -> Response {
     if !supertonic::VOICES.contains(&voice) {
         return (StatusCode::NOT_FOUND, "voice not found").into_response();
     }
@@ -1178,14 +1179,14 @@ async fn supertonic_voice_sample(mroot: &Path, voice: &str, req: axum::http::Req
     }
     let sample = supertonic::dir(mroot).join("samples").join(format!("{voice}.wav"));
     if !sample.is_file() {
-        let (root, out, voice) = (mroot.to_path_buf(), sample.clone(), voice.to_string());
+        let (repo, root, out, voice) = (repo_root.to_path_buf(), mroot.to_path_buf(), sample.clone(), voice.to_string());
         let made = tokio::task::spawn_blocking(move || -> Result<(), String> {
             static MAKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
             let _one = MAKING.lock().unwrap_or_else(|e| e.into_inner());
             if out.is_file() {
                 return Ok(());
             }
-            let model = supertonic::Model::load(&root, models::local_backend(&root) == "gpu")?;
+            let model = supertonic::Model::load(&repo, &root)?;
             let audio = model.speak("Hello! This is how my voice sounds in your dub.", "en", &voice, supertonic::DEFAULT_STEPS, supertonic::DEFAULT_SPEED, 7)?;
             if let Some(dir) = out.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -1248,7 +1249,7 @@ async fn voice_sample(
         return qwen_voice_sample(&st.models_root, speaker, req).await;
     }
     if let Some(voice) = q.get("name").and_then(|name| name.strip_prefix(render::SUPERTONIC_VOICE)) {
-        return supertonic_voice_sample(&st.models_root, voice, req).await;
+        return supertonic_voice_sample(&st.repo_root, &st.models_root, voice, req).await;
     }
     let name = sanitize_voice_name(q.get("name").map(|s| s.as_str()).unwrap_or(""));
     if name.is_empty() {
@@ -3025,9 +3026,11 @@ async fn dub_audio_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Respo
     let input = project_input(&dir)?;
     let paths = render_paths(st, &dir, input);
     let dir_for_job = dir.clone();
+    let repo_root = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         clean_partials(&dir_for_job);
         let cb = |ev: Value| progress(ev);
+        ensure_job_components(&repo_root, &paths.models_root, JobNeeds { voicing: true, ..JobNeeds::default() }, &cb)?;
         let text = std::fs::read_to_string(&proj_path).map_err(|e| e.to_string())?;
         let proj = Project::from_json(&text).map_err(|e| e.to_string())?;
         let regen = proj.segments.iter().any(|s| s.dirty);

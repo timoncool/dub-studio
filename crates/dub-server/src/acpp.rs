@@ -1,5 +1,5 @@
 //! The studio's audiocpp_server (audio.cpp, through the crate `acpp-server`: `SERVERS`, one process per build): Higgs
-//! voicing, CrisperWhisper, Parakeet TDT v3 and Nemotron 3.5 recognition, Nemotron 3 Diarization, with the models on
+//! and Supertonic 3 voicing, CrisperWhisper, Parakeet TDT v3 and Nemotron 3.5 recognition, Nemotron 3 Diarization, with the models on
 //! disk now. The same server,
 //! builds and layout as Speech Studio's, so a model of one program serves the other.
 
@@ -14,6 +14,7 @@ pub const CRISPERWHISPER: &str = "crisperwhisper";
 pub const PARAKEET: &str = "parakeet-v3";
 pub const NEMOTRON: &str = "nemotron";
 pub const DIAR: &str = "nemotron-diar";
+pub const SUPERTONIC: &str = "supertonic";
 
 /// The models of transcribe.cpp's catalogue the server runs, reading their GGUF in place: Parakeet TDT v3 and Nemotron
 /// 3.5. Parakeet Ultra stays on transcribe.cpp: audio.cpp does not read its built-in VAD head.
@@ -127,6 +128,9 @@ pub fn models(models_root: &Path) -> Vec<ModelEntry> {
     let diar = diar_onnx(models_root);
     if diar.is_file() {
         out.push(ModelEntry::nemotron_3_diar(DIAR, &diar));
+    }
+    if crate::supertonic::installed(models_root) {
+        out.push(ModelEntry::supertonic(SUPERTONIC, &crate::supertonic::dir(models_root)));
     }
     for id in SERVER_ASR {
         let Some(model) = dub_asr::tcpp::model(id) else { continue };

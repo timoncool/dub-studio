@@ -1002,8 +1002,8 @@ fn load_tts(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<Arc<
             return Err(t!("render-supertonic-missing"));
         }
         emit(progress, "tts", &t!("render-loading-supertonic"));
-        let gpu = crate::models::local_backend(&paths.models_root) == "gpu";
-        let model = crate::supertonic::Model::load(&paths.models_root, gpu).map_err(|e| t!("render-supertonic-load-failed", error = e))?;
+        let model = crate::supertonic::Model::load(&paths.repo_root, &paths.models_root).map_err(|e| t!("render-supertonic-load-failed", error = e))?;
+        tracing::info!("voicing: Supertonic 3 on audiocpp_server {:?}", model.backend());
         return Ok(Arc::new(TtsEngine::Supertonic(SupertonicVoices { model, models_root: paths.models_root.clone(), lang: lang.to_string() })));
     }
     if paths.higgs_quant == crate::models::DRAMA_TTS {
