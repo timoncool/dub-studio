@@ -4826,10 +4826,11 @@ mod tests {
 
     /// Vendor libraries the studio downloads whose AVX-512 the vendor picks at run time (they run on every x86-64
     /// processor their vendor supports) and that carry no symbols: NVIDIA's CUDA libraries, Microsoft's VC++ runtime and
-    /// ONNX Runtime (MLAS picks its kernels by the processor), denoland's deno (V8 and simdutf do the same).
+    /// ONNX Runtime (MLAS picks its kernels by the processor), denoland's deno (V8 and simdutf do the same), and the
+    /// Widevine module WebView2 downloads into the window's profile (webview-data) itself.
     const VENDOR_DISPATCHED: &[&str] = &[
         "cublas64_", "cublaslt64_", "cufft64_", "cufftw64_", "cudnn", "cudart64_", "nvblas64_", "vcruntime140", "msvcp140", "vcomp140",
-        "onnxruntime", "libonnxruntime", "deno",
+        "onnxruntime", "libonnxruntime", "deno", "widevinecdm",
     ];
     /// What a package brings that the studio never loads: ONNX Runtime's TensorRT provider (the studio takes its CUDA
     /// one), which imports TensorRT.
