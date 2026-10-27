@@ -1210,6 +1210,19 @@ pub fn manifest() -> Vec<Component> {
             markers: &[Marker { rel: "models/crisperwhisper2-turbo/model.safetensors", expect: 1_617_907_538 }],
             external_url: None,
         },
+        // Where the speech is (Silero VAD v6.2 on transcribe.cpp): a long recording goes to Parakeet Ultra in pieces cut
+        // at the pauses, as in Speech Studio.
+        Component {
+            id: "silero-vad",
+            name: t!("setup-comp-silero-vad-name"),
+            purpose: t!("setup-comp-silero-vad-purpose"),
+            requirement: Requirement::Recommended,
+            delivery: Delivery::Download,
+            size: 1_241_056,
+            files: &[FileSpec { url: "https://huggingface.co/handy-computer/silero-vad-v6.2-gguf/resolve/a9b2d61c20ae4ddf3644edb34969e8185a485448/silero-vad-v6.2-F32.gguf", dest_rel: "models/silero-vad/silero-vad-v6.2-F32.gguf", size: 1_241_056, sha256: "0d871a800c420fdd5d1b17a3aea4296d1c39608f0ff4a9295eb76457eb1c88e6", extract: Extract::None }],
+            markers: &[Marker { rel: "models/silero-vad/silero-vad-v6.2-F32.gguf", expect: 1_241_056 }],
+            external_url: None,
+        },
         // Определение языка речи (VoxLingua107, transcribe.cpp): язык оригинала «авто» для CrisperWhisper.
         Component {
             id: "langid",

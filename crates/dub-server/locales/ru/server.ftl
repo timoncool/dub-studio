@@ -394,7 +394,8 @@ analyze-cloud-done = облако: { $lines } { $lines ->
    *[many] спикеров
 }
 analyze-hallucination-filter = фильтр галлюцинаций ASR: { $error }
-analyze-asr-to-crisperwhisper = язык «{ $lang }» — Parakeet его не знает, распознаю CrisperWhisper
+analyze-asr-piece = Распознаю речь: кусок { $n } из { $total }
+analyze-asr-to-crisperwhisper =язык «{ $lang }» — Parakeet его не знает, распознаю CrisperWhisper
 analyze-asr-no-words = В ролике { $speech } с речи, а Parakeet услышал в ней { $words } слов: он знает только 25 европейских языков. Укажите язык источника в окне вместо «Авто» — для языка вне Европы студия переключит распознавание на Whisper.
 analyze-hidden-hallucinations = скрыто фраз-галлюцинаций ASR (голоса нет): { $count } — { $lines }
 analyze-hidden-by-text = скрыто титров и звуков ASR по тексту (на интервале звук, голос от музыки не отделён): { $count } — { $lines }
@@ -716,6 +717,8 @@ setup-comp-higgs-q4-k-m-purpose = Озвучка — самый лёгкий в�
 setup-comp-parakeet-ultra-purpose = Распознавание речи — дообученная версия, меньше ошибок
 setup-comp-crisperwhisper-purpose = Распознавание речи на 99 языках с метками слов, сверх 25 европейских у Parakeet. Лицензия: nyra health Non-Commercial (LICENSE.md рядом с весами)
 setup-comp-langid-purpose = Определяет язык записи, когда язык оригинала оставлен «авто», — для CrisperWhisper
+setup-comp-silero-vad-name = Silero VAD v6.2
+setup-comp-silero-vad-purpose = Находит речь в записи: длинная запись режется для распознавания по паузам, а не посреди слова (1,2 МБ)
 setup-comp-sortformer-name = Кто говорит (до 8 голосов)
 setup-comp-sortformer-purpose = Разделяет реплики по говорящим, чтобы у каждого был свой голос
 setup-comp-roformer-purpose = Отделяет голос от музыки и шумов, чтобы фон остался

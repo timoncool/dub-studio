@@ -491,6 +491,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <>
             {rowOf(TCPP_ENGINES.find((id) => get(id)?.requirement === "required") ?? "transcribe-engine")}
             {variantPicker("Parakeet-TDT 0.6B v3", ["parakeet", "parakeet-ultra"], ASR_VARIANT_I18N)}
+            {rowOf("silero-vad")}
           </>
         ) : (
           <>
@@ -4151,7 +4152,7 @@ const QUANT_GROUP: Record<string, string> = {
 // Engines, runtimes and libraries: the studio takes them for the models chosen and for this computer's card, so they
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
-  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu", "langid",
+  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu", "langid", "silero-vad",
   "bsroformer-engine", "bsroformer-engine-cuda12", "bsroformer-engine-vulkan", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cuda12-runtime", "cudnn",
   "vcruntime",
 ]);
@@ -4169,6 +4170,7 @@ function needs(id: string, s: SetupStatus): string[] {
       ?? (s.gpu?.cudaBuild === "cuda13" ? "transcribe-engine" : s.gpu?.cudaBuild === "cuda12" ? "transcribe-engine-cuda12" : "transcribe-engine-cpu");
   if (id.startsWith("higgs")) return ["higgs-engine"];
   if (id.startsWith("qwen3-tts")) return ["qwen3-tts-engine"];
+  if (id.startsWith("parakeet-ultra")) return [tcpp(), "silero-vad"];
   if (id.startsWith("parakeet")) return [tcpp()];
   if (QUANT_GROUP[id] === "whisper") return ["higgs-engine", "langid", tcpp()];
   // the server recommends the separation engine of the separation device

@@ -71,6 +71,7 @@ mod takes;
 mod translate;
 mod tts_audit;
 mod tts_host;
+mod vad;
 mod update_screen;
 mod tts_text;
 mod tts_trim;

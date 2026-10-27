@@ -368,7 +368,8 @@ analyze-cloud-done = cloud : { $lines } { $lines ->
    *[other] locuteurs
 }
 analyze-hallucination-filter = filtre d’hallucinations de l’ASR : { $error }
-analyze-asr-to-crisperwhisper = langue « { $lang } » : Parakeet ne la connaît pas, reconnaissance avec CrisperWhisper
+analyze-asr-piece = Reconnaissance de la parole : morceau { $n } sur { $total }
+analyze-asr-to-crisperwhisper =langue « { $lang } » : Parakeet ne la connaît pas, reconnaissance avec CrisperWhisper
 analyze-asr-no-words = La vidéo contient { $speech } s de parole et Parakeet n’y a entendu que { $words } mots : il ne connaît que 25 langues européennes. Choisissez la langue source dans la fenêtre au lieu d’Auto — pour une langue hors d’Europe, le studio bascule la reconnaissance sur Whisper.
 analyze-hidden-hallucinations = répliques hallucinées de l’ASR masquées (pas de voix) : { $count } : { $lines }
 analyze-hidden-by-text = titres et sons de l’ASR masqués d’après leur texte (il y a du son sur l’intervalle, la voix n’est pas séparée de la musique) : { $count } : { $lines }
@@ -705,6 +706,8 @@ setup-comp-higgs-q4-k-m-purpose = Voix : la variante la plus légère
 setup-comp-parakeet-ultra-purpose = Reconnaissance vocale : version affinée, moins d'erreurs
 setup-comp-crisperwhisper-purpose = Reconnaissance vocale en 99 langues avec horodatage des mots, au-delà des 25 langues européennes de Parakeet. Licence : nyra health Non-Commercial (LICENSE.md à côté des poids)
 setup-comp-langid-purpose = Reconnaît la langue de l’enregistrement quand la langue source reste sur Automatique, pour CrisperWhisper
+setup-comp-silero-vad-name = Silero VAD v6.2
+setup-comp-silero-vad-purpose = Repère la parole dans un enregistrement, pour couper un long fichier aux pauses et non au milieu d’un mot avant la reconnaissance (1,2 Mo)
 setup-comp-sortformer-name = Qui parle (jusqu'à 8 voix)
 setup-comp-sortformer-purpose = Répartit les répliques par locuteur, pour que chacun garde sa voix
 setup-comp-roformer-purpose = Sépare la voix de la musique et des bruits, pour garder le fond

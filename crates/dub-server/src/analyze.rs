@@ -672,6 +672,47 @@ mod continuous_diarization_cache_tests {
     }
 }
 
+/// Recognition of a recording in pieces cut at its pauses (Silero VAD), as Speech Studio cuts it: silence does not go to
+/// the recognizer, and a long recording is not cut mid-word. A recording without speech gives no lines.
+fn recognise_by_pauses(
+    paths: &AnalyzePaths,
+    asr: &mut dyn dub_asr::AsrEngine,
+    wav: &std::path::Path,
+    lang: &str,
+    progress: &Progress,
+) -> Result<Vec<dub_asr::Segment>, String> {
+    let lacking = crate::vad::missing(&paths.models_root);
+    crate::fetch_missing(&paths.repo_root, &lacking.iter().map(String::as_str).collect::<Vec<_>>(), progress)?;
+    let (samples, sr) = crate::wavio::read_mono_f32(wav)?;
+    if sr as usize != crate::vad::SR {
+        return Err(format!("{}: {sr} Hz, the speech finder takes {} Hz", wav.display(), crate::vad::SR));
+    }
+    let probs = crate::vad::probabilities(&paths.models_root, &samples)?;
+    let spans = crate::vad::speech(&probs, samples.len(), &crate::vad::VadConfig::default());
+    let windows = crate::vad::windows(&spans, &probs, crate::vad::MAX_WINDOW_SECS);
+    let piece = paths.work_dir.join("asr_piece.wav");
+    let mut all = Vec::new();
+    for (k, &(a, b)) in windows.iter().enumerate() {
+        crate::jobs::check_cancelled()?;
+        emit(progress, "asr", &t!("analyze-asr-piece", n = (k + 1) as i64, total = windows.len() as i64));
+        let (from, to) = ((a * sr as f64) as usize, ((b * sr as f64) as usize).min(samples.len()));
+        crate::wavio::write_mono_f32(&piece, &samples[from..to], sr)?;
+        for mut s in asr.transcribe(&piece, lang).map_err(|e| e.localize())? {
+            s.start += a;
+            s.end += a;
+            for w in &mut s.words {
+                w.start += a;
+                w.end += a;
+            }
+            all.push(s);
+        }
+    }
+    if let Err(e) = std::fs::remove_file(&piece) {
+        tracing::warn!("{}: {e}", piece.display());
+    }
+    Ok(all)
+}
+
 /// The speakers' turns from Nemotron 3 Diarization in audiocpp_server, on the build of the diarization device: by
 /// itself for `count` 0, else for a told speaker count with the speaker voices (WeSpeaker). The model leaves the
 /// card after it.
@@ -1201,9 +1242,12 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             "asr",
             &t!("asr-windowed", speakers = nsp),
         );
-        let ts = asr
-            .transcribe(&asr_wav, &args.src_lang)
-            .map_err(|e| e.localize())?;
+        // the server's models window a long recording themselves; transcribe.cpp's get it in pieces cut at pauses
+        let ts = if matches!(asr_choice, crate::models::AsrChoice::Ggml { .. }) {
+            recognise_by_pauses(paths, &mut *asr, &asr_wav, &args.src_lang, progress)?
+        } else {
+            asr.transcribe(&asr_wav, &args.src_lang).map_err(|e| e.localize())?
+        };
         // Спикер — по словам: реплика, на которой сменился спикер диаризации, режется на слове смены.
         let segs: Vec<Segment> = dub_asr::split_at_speaker_turns(ts, turns)
             .into_iter()

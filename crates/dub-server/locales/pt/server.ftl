@@ -368,7 +368,8 @@ analyze-cloud-done = nuvem: { $lines } { $lines ->
    *[other] falantes
 }
 analyze-hallucination-filter = filtro de alucinações do ASR: { $error }
-analyze-asr-to-crisperwhisper = idioma «{ $lang }»: o Parakeet não o conhece, reconhecendo com o CrisperWhisper
+analyze-asr-piece = Reconhecendo a fala: trecho { $n } de { $total }
+analyze-asr-to-crisperwhisper =idioma «{ $lang }»: o Parakeet não o conhece, reconhecendo com o CrisperWhisper
 analyze-asr-no-words = O vídeo tem { $speech } s de fala e o Parakeet ouviu { $words } palavras: conhece apenas 25 idiomas europeus. Escolha o idioma de origem na janela em vez de Auto — para um idioma fora da Europa o estúdio troca o reconhecimento para o Whisper.
 analyze-hidden-hallucinations = falas alucinadas do ASR ocultadas (sem voz): { $count }: { $lines }
 analyze-hidden-by-text = títulos e sons do ASR ocultados pelo texto (há som no intervalo, a voz não está separada da música): { $count }: { $lines }
@@ -705,6 +706,8 @@ setup-comp-higgs-q4-k-m-purpose = Voz: a variante mais leve
 setup-comp-parakeet-ultra-purpose = Reconhecimento de fala: versão ajustada, com menos erros
 setup-comp-crisperwhisper-purpose = Reconhecimento de fala em 99 idiomas com marcas de tempo, além dos 25 europeus do Parakeet. Licença: nyra health Non-Commercial (LICENSE.md junto aos pesos)
 setup-comp-langid-purpose = Detecta o idioma da gravação quando o idioma de origem fica em Automático, para o CrisperWhisper
+setup-comp-silero-vad-name = Silero VAD v6.2
+setup-comp-silero-vad-purpose = Encontra onde há fala numa gravação, para cortar uma longa nas pausas e não no meio da palavra no reconhecimento (1,2 MB)
 setup-comp-sortformer-name = Quem está falando (até 8 vozes)
 setup-comp-sortformer-purpose = Separa as falas por pessoa, para que cada uma tenha sua voz
 setup-comp-roformer-purpose = Separa a voz da música e dos ruídos, para manter o fundo

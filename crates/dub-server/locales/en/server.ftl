@@ -368,7 +368,8 @@ analyze-cloud-done = cloud: { $lines } { $lines ->
    *[other] speakers
 }
 analyze-hallucination-filter = ASR hallucination filter: { $error }
-analyze-asr-to-crisperwhisper = language "{ $lang }": Parakeet does not know it, recognising with CrisperWhisper
+analyze-asr-piece = Recognising speech: piece { $n } of { $total }
+analyze-asr-to-crisperwhisper =language "{ $lang }": Parakeet does not know it, recognising with CrisperWhisper
 analyze-asr-no-words = The video has { $speech } s of speech and Parakeet heard { $words } words in it: Parakeet knows only 25 European languages. Pick the source language in the window instead of Auto — for a language outside Europe the studio switches recognition to Whisper.
 analyze-hidden-hallucinations = ASR hallucination lines hidden (no voice): { $count }: { $lines }
 analyze-hidden-by-text = ASR titles and sounds hidden by their text (there is sound in the interval, the voice is not separated from the music): { $count }: { $lines }
@@ -708,6 +709,8 @@ setup-comp-higgs-q4-k-m-purpose = Voices — the lightest variant
 setup-comp-parakeet-ultra-purpose = Speech recognition — a fine-tuned version with fewer mistakes
 setup-comp-crisperwhisper-purpose = Speech recognition in 99 languages with timestamps, beyond Parakeet's 25 European ones. Licence: nyra health Non-Commercial (LICENSE.md beside the weights)
 setup-comp-langid-purpose = Hears the language of the recording when the source language is left on Auto, for CrisperWhisper
+setup-comp-silero-vad-name = Silero VAD v6.2
+setup-comp-silero-vad-purpose = Finds where speech is in a recording, so a long one is cut into pieces at the pauses for recognition, not mid-word (1.2 MB)
 setup-comp-sortformer-name = Who is speaking (up to 8 voices)
 setup-comp-sortformer-purpose = Splits the lines by speaker, so each one gets their own voice
 setup-comp-roformer-purpose = Separates the voice from music and noise, so the background stays
