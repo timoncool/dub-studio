@@ -177,12 +177,12 @@ pub const SERVER_LINUX_CPU: Asset = Asset {
     sha256: "9893b970f431d5a9bb2290a9963834cd38afc56c2ef20e13ef8449e6065bc4ff",
 };
 
-/// The macOS arm64 archive of the Metal build (release server-f476882e): the program with its libraries.
+/// The macOS arm64 archive of the Metal build (release server-6d6cb6a5): the program with its libraries.
 pub const SERVER_MACOS: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-f476882e/audiocpp-server-macos-arm64-metal.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-6d6cb6a5/audiocpp-server-macos-arm64-metal.tar.gz",
     file: "audiocpp-server-macos-arm64-metal.tar.gz",
-    size: 17_285_378,
-    sha256: "6e4e40060cddb02f78510153752ccb4d103f715fc18804785b7ab22f1b35098f",
+    size: 17_535_293,
+    sha256: "fa5afc009fbafb09c48bfc48b8e15a77256d52623d72bd855d0f0664ddb1f345",
 };
 
 /// The CUDA 12.9 libraries of the CUDA 12 build (PyPI wheels; their `.dll` files unpack flat): cudart 12.9.79,
@@ -249,7 +249,7 @@ mod tests {
         if on_apple_silicon {
             assert!([Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].iter().all(|b| b.server().is_none()));
         }
-        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-f476882e/"));
+        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-6d6cb6a5/"));
         assert_eq!(serde_json::to_value(crate::Backend::Metal).unwrap(), "metal", "the server's config names it so");
     }
 
