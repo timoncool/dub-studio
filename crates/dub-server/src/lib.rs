@@ -699,7 +699,7 @@ async fn capabilities(State(st): State<AppState>) -> Json<Value> {
     let ffmpeg = which_ffmpeg();
     // Текущий выбор вариантов (active.json) — фронт рисует по нему селекторы движка/модели/кванта ASR.
     // Без секретов: вместо ключа OpenRouter и пароля прокси — флаги or_key_set / proxy_password_set.
-    let sel = models::public_selection(&st.models_root);
+    let sel = cloud_tts::with_defaults(models::public_selection(&st.models_root));
     // Языки контента = полный набор Whisper (99). Единый источник — dub_translate::WHISPER_LANGS.
     let langs: Vec<&str> = dub_translate::WHISPER_LANGS.iter().map(|(c, _)| *c).collect();
     let llm_provider = models::llm_backend(&st.models_root, "llm");
