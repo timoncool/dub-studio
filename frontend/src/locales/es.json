@@ -1491,7 +1491,15 @@
     "standardHint": "Solicitudes directas en paralelo según el ajuste de concurrencia de la nube. Uso y coste estimado: project_google_tts_report en MCP.",
     "provider_local": "En local · Higgs / Drama / Qwen / Supertonic",
     "provider_openrouter": "Mediante OpenRouter",
-    "provider_google": "Google · directo"
+    "provider_google": "Google · directo",
+    "auto": "Auto: directo hasta 10 frases, Batch desde 11",
+    "autoHint": "Hasta 10 frases van como solicitudes directas al instante; más van a Google Batch a mitad de tarifa. El coste está en Ajustes, Nube.",
+    "spendTitle": "Gastos en la nube",
+    "spendTotals": "Total {{total}}, hoy {{today}}",
+    "spendUnpriced": "ejecuciones sin precio: {{n}}",
+    "runs": "ejecuciones: {{n}}",
+    "limit": "Límite diario para agentes y programas, USD",
+    "limitHint": "0 — sin límite; con un límite, una ejecución sin precio se rechaza"
   },
   "hub": {
     "why": "Saber cuántas personas usan Dub Studio y para qué ayuda a decidir en qué trabajar. Nada personal: ni vídeos, ni textos, ni voces, ni nombres de archivo — solo recuentos de tareas, qué funciones del estudio se usaron (por nombre, nunca con qué), los modelos de cada etapa, la versión, un número del equipo común a nuestros programas (un hash irreversible, no el número del sistema), la clase de tarjeta gráfica y por qué falló una tarea, con rutas, nombres y texto entre comillas eliminados en este equipo antes de enviarlo.",

@@ -2041,7 +2041,7 @@ fn build_dub_pass(
         {
             emit(progress, "tts", &t!("render-cloud-tts-parallel", count = jobs.len(), threads = conc),
             );
-            let done = crate::cloud_tts::synth_batch(&paths.models_root, wd, jobs, conc, progress)?;
+            let done = crate::cloud_tts::synth_batch(&paths.repo_root, &paths.models_root, wd, jobs, conc, progress)?;
             let mut ok = 0usize;
             for (&idx, &good) in job_segs.iter().zip(&done.ok) {
                 if good {

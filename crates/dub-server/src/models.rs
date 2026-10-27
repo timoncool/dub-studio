@@ -169,6 +169,7 @@ pub fn is_selection_key(key: &str) -> bool {
             | "emo_ref_on"      // "1" -> эмоциональный референс сцены (перенос эмоций из оригинального вокала); "0" -> выкл
             | "drama_vram_gb"   // видеопамять для Drama 3, ГБ; "0" (по умолчанию) — авто, см. drama_vram_limit_mb
             | "tts_idle_unload_min" // через сколько минут простоя выгружать модель озвучки (0 — никогда)
+            | "cloud_daily_limit_usd" // дневной лимит облака для агентов и программ, USD (0 — без лимита)
             | "auto_shorten"    // "1" (по умолчанию) -> не влезшие в слот фразы рендер сокращает через LLM и озвучивает заново
             // Провайдер перевода и отдельно vision: local (своя Gemma) | server (локальный OpenAI-совместимый
             // сервер: Ollama, LM Studio, vLLM) | openrouter. Значение проверяет select_model.
@@ -206,7 +207,8 @@ pub fn is_selection_value(key: &str, value: &str) -> bool {
         "cloud_ok_recognition" | "cloud_ok_translation" | "cloud_ok_vision" | "cloud_ok_voicing" => matches!(value, "0" | "1"),
         "drama_vram_gb" => value.parse::<u32>().is_ok_and(|gb| gb == 0 || (DRAMA_MIN_LIMIT_GB..=256).contains(&gb)),
         "tts_idle_unload_min" => matches!(value, "0" | "5" | "15" | "30" | "60"),
-        "google_tts_mode" => matches!(value, "standard" | "batch"),
+        "google_tts_mode" => matches!(value, "standard" | "batch" | "auto"),
+        "cloud_daily_limit_usd" => value.parse::<f64>().is_ok_and(|v| (0.0..=10_000.0).contains(&v)),
         "google_tts_model" => {
             !value.is_empty()
                 && value

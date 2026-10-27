@@ -1211,7 +1211,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "settings_set",
-                description: "Change one setting to a text value. TTS: tts_provider=local|openrouter|google, google_tts_model=<id without models/>, google_tts_mode=standard|batch. Voice/autocast use or_tts_voice/or_tts_autocast, parallel requests use or_concurrency (1..16). Applies from the next job. Secrets: openrouter_set_key, google_set_key; proxy: proxy_settings_set.",
+                description: "Change one setting to a text value. TTS: tts_provider=local|openrouter|google, google_tts_model=<id without models/>, google_tts_mode=standard|batch|auto (auto: up to 10 phrases as direct requests, more as one Batch at half the price). Voice/autocast use or_tts_voice/or_tts_autocast, parallel requests use or_concurrency (1..16). cloud_daily_limit_usd caps what agents and programs spend on the cloud a day (0 = no limit; see cloud_spend). Applies from the next job. Secrets: openrouter_set_key, google_set_key; proxy: proxy_settings_set.",
                 schema: || object(json!({ "key": { "type": "string" }, "value": { "type": "string" } }), &["key", "value"]),
                 call: |args| {
                     let key = text(args, "key")?;
@@ -1330,9 +1330,15 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "project_google_tts_report",
-                description: "Direct Google TTS usage, generated audio duration, wall time, tariff-based cost estimate (not invoice), and persisted Batch names/states for a project. settings_set tts_provider=google, google_tts_model=<id without models/>, google_tts_mode=standard|batch; project_dub_audio or project_render starts the normal pipeline. A local job cancellation pauses polling; the remote Batch continues and resume uses its saved name without submitting again.",
+                description: "A project's Google Gemini voicing: the Batch under way (pending, with its journal), the last job (last: mode, phrases asked, cached, ok, failed with their reasons, cost estimate from the published tariff, not an invoice) and the batches done. settings_set tts_provider=google, google_tts_model=<id without models/>, google_tts_mode=standard|batch|auto; project_dub_audio or project_render voices through it. A phrase already voiced is taken from the project's cache, not asked again; a local job cancellation stops waiting, the Batch goes on in Google and the next job finds it by its name instead of sending it again.",
                 schema: || id_only("pid","project id"),
                 call: |args| get(format!("/projects/{}/google-tts",text(args,"pid")?)),
+            },
+            Tool {
+                name: "cloud_spend",
+                description: "What the cloud voicing cost so far (Google Gemini: the tariff estimate after each run), in all, today, by provider, model and day, with the daily limit for agents and programs (daily_limit_usd, settings_set cloud_daily_limit_usd); pid narrows it to one project.",
+                schema: || object(json!({ "pid": { "type": "string", "description": "project id" } }), &[]),
+                call: |args| get(format!("/cloud/spend{}", query(&[("project", given(args, "pid"))]))),
             },
             Tool {
                 name: "openrouter_status",

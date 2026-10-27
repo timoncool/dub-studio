@@ -74,6 +74,8 @@ mod tts_host;
 mod vad;
 mod denoise;
 mod voice_library;
+mod google_speech;
+mod spending;
 mod update_screen;
 mod tts_text;
 mod tts_trim;
@@ -552,8 +554,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/engine/google/models", get(secrets_api::google_models))
         .route(
             "/projects/{pid}/google-tts",
-            get(google_tts::project_report),
+            get(google_speech::project_report),
         )
+        .route("/cloud/spend", get(cloud_spend))
         .route(
             "/engine/proxy/settings", get(secrets_api::proxy_settings).put(secrets_api::update_proxy_settings),
         )
@@ -1853,6 +1856,15 @@ async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> J
         Ok(()) => Json(voices_listing(&st.voices_dir)),
         Err(e) => Json(json!({ "error": e, "voices": list_voice_names(&st.voices_dir) })),
     }
+}
+
+/// GET /cloud/spend?project= — what the cloud cost: in all, today, by provider, model and day, with the daily limit for
+/// agents and programs, as Speech Studio's.
+async fn cloud_spend(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+    let all = spending::spent(&st.repo_root);
+    let mut s = spending::summary(&all, q.get("project").map(String::as_str).filter(|p| !p.is_empty()));
+    s["daily_limit_usd"] = json!(spending::daily_limit(&st.models_root));
+    Json(s)
 }
 
 /// The library voices and those of them whose sound was cleaned, with the original kept (`voices/.originals`).

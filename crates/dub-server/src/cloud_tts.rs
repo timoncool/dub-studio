@@ -88,26 +88,6 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str,
     Ok(bytes)
 }
 
-pub fn seg_audio(mime: &str, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
-    if is_seg_format(&bytes) {
-        return Ok(bytes);
-    }
-    if mime.starts_with("audio/L16") || mime.starts_with("audio/pcm") {
-        let rate = mime
-            .split(';')
-            .find_map(|p| p.trim().strip_prefix("rate="))
-            .and_then(|n| n.parse().ok())
-            .ok_or("Google PCM has no sample rate")?;
-        let wav = dub_llm::openrouter::pcm16_to_wav(&bytes, rate, 1).map_err(|e| e.to_string())?;
-        return if rate == SEG_RATE {
-            Ok(wav)
-        } else {
-            to_seg_wav("audio/wav", &wav)
-        };
-    }
-    to_seg_wav(mime, &bytes)
-}
-
 /// Частота seg-файлов дубляжа.
 const SEG_RATE: u32 = 24_000;
 
@@ -143,7 +123,7 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
 /// провал -> false (основной цикл ретраит/фолбэкнет на оригинал). Возвращает успех по каждой джобе.
 /// Потоки привязаны к джобе вызывающего: её отмена прекращает раздачу новых сегментов, а процессы
 /// сайдкара попадают в учёт джобы.
-pub fn synth_batch(models_root: &Path,
+pub fn synth_batch(repo_root: &Path, models_root: &Path,
     wd: &Path,
     jobs: Vec<Job>, concurrency: usize,
     progress: &crate::render::Progress,
@@ -152,7 +132,7 @@ pub fn synth_batch(models_root: &Path,
         return Ok(Synthesized { ok: Vec::new(), failures: Vec::new() });
     }
     if crate::models::tts_provider(models_root) == "google" {
-        return crate::google_tts::synth_jobs(models_root, wd, &jobs, concurrency, progress);
+        return crate::google_speech::synth_jobs(repo_root, models_root, wd, &jobs, progress);
     }
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     let n = jobs.len();

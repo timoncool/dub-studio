@@ -424,6 +424,7 @@ export const api = {
   saveGoogleKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/google/settings", { api_key: apiKey }),
   deleteGoogleKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/google/settings"),
   googleModels: () => getJson<{models: {name:string;displayName?:string;supportedGenerationMethods?:string[]}[]}>("/engine/google/models"),
+  cloudSpend: () => getJson<{ total: number; today: number; unpriced: number; providers: { key: string; usd: number; runs: number }[]; daily_limit_usd: number }>("/cloud/spend"),
   saveOpenrouterKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/openrouter/settings", { api_key: apiKey }),
   deleteOpenrouterKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/openrouter/settings"),
   // Прокси: адрес без пароля + флаг. password: нет поля — оставить сохранённый, null — удалить, строка — заменить.

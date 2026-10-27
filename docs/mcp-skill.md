@@ -100,16 +100,18 @@ connected and the address to paste.
 `google_status` reports whether a key is configured; `google_set_key` verifies and stores it,
 `google_delete_key` removes it. The key is never returned. `google_models` lists available TTS
 model IDs and generation methods. Set `tts_provider=google`, `google_tts_model` to an ID without
-`models/`, and `google_tts_mode=standard|batch` using `settings_set`. Voices and autocasting use
-`or_tts_voice` and `or_tts_autocast`; standard concurrency uses `or_concurrency`.
+`models/`, and `google_tts_mode=standard|batch|auto` using `settings_set` (auto: up to 10 phrases
+as direct requests, more as one Batch). Voices and autocasting use `or_tts_voice` and
+`or_tts_autocast`; standard concurrency uses `or_concurrency`.
 
 Run `project_dub_audio` or `project_render`, then `studio_wait`. Batch uses Google's discounted
 asynchronous service and may wait in its queue for up to the documented 24-hour target.
-`project_google_tts_report` returns persisted Google Batch names/states and the latest usage,
-audio duration, elapsed time and tariff-based estimated USD cost, not an invoice.
-Cancelling the local job pauses polling; it does not cancel the remote Google batch. Use
-`project_resume` to retrieve that same paid batch. An uncertain submission is blocked from
-automatic resubmission; inspect the recorded Google displayName before retrying.
+`project_google_tts_report` returns the batch under way, the last job (phrases asked, cached, ok,
+failed with their reasons, tariff-based estimated USD cost, not an invoice) and the batches done.
+A phrase already voiced comes from the project's cache and is not paid again. Cancelling the local
+job stops waiting; it does not cancel the remote Google batch, and the next job finds that same
+paid batch by its name instead of sending it again. `cloud_spend` shows what the cloud cost, and
+`cloud_daily_limit_usd` caps what agents and programs spend a day (0 = no limit).
 `tts_style` on each segment is voice direction metadata, never part of the spoken text.
 The renderer keeps existing takes; pinned takes remain protected until explicitly unpinned.
 

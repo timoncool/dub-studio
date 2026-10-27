@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Changed
 
+- **Google Gemini voicing plans a render as Speech Studio does**: a new «Auto» mode sends up to 10 phrases as direct requests and more as one Batch at half the price; direct requests are retried on rate limits and server errors, a refusal for money or access stops the rest at once, and the reasons Google gives are told in plain words. Every phrase voiced is kept in the project and is not paid again; a phrase Google refused names why. Settings → Models (Google) shows what the cloud cost so far and takes a daily limit for agents and programs.
 - **Noise out of a library voice**, as in Speech Studio: DPDFNet (10.5 MB) cleans a voice's reference before cloning, with a limit of how far the noise goes down; the original is kept in voices/.originals and comes back with one call. Renaming or deleting a voice takes its original along.
 - **Parakeet Ultra hears a long recording in pieces cut at its pauses**, as in Speech Studio: Silero VAD v6.2 (1.2 MB, run by transcribe.cpp) finds where the speech is, so silence does not go to the recognizer and a piece never ends mid-word.
 - **Gemma runs on the llama.cpp build of the card**, as in Speech Studio: CUDA 13, CUDA 12 on older cards and drivers, Vulkan on a card of another make, the processor without one. On a Linux whose glibc is older than 2.38, which the CUDA builds of llama.cpp need, it takes the Vulkan build, and Settings → Models says why.

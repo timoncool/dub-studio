@@ -1455,7 +1455,15 @@
     "standardHint": "按云端并发设置发送并行直接请求。用量和估算费用：MCP 中的 project_google_tts_report。",
     "provider_local": "本地 · Higgs / Drama / Qwen / Supertonic",
     "provider_openrouter": "通过 OpenRouter",
-    "provider_google": "Google · 直连"
+    "provider_google": "Google · 直连",
+    "auto": "自动：10 句以内直接请求，11 句起用 Batch",
+    "autoHint": "10 句以内直接请求立即完成，更多的句子半价走 Google Batch。费用见“设置 → 云端”。",
+    "spendTitle": "云端开销",
+    "spendTotals": "总计 {{total}}，今天 {{today}}",
+    "spendUnpriced": "无价格的运行：{{n}}",
+    "runs": "运行：{{n}}",
+    "limit": "代理和程序的每日限额，USD",
+    "limitHint": "0 — 无限额；设置限额时，没有价格的运行会被拒绝"
   },
   "hub": {
     "why": "有多少人在用 Dub Studio、用来做什么，决定接下来做什么。不含任何个人信息：没有视频、文本、声音或文件名——只有任务计数、用过哪些功能（仅功能名，不含内容）、各阶段所用模型、版本、我们各程序共用的电脑编号（不可逆哈希，不是系统编号本身）、显卡档次和任务失败原因；原因中的路径、名称和引号内文字会在发送前于本机删除。",

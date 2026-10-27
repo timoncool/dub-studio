@@ -1473,7 +1473,15 @@
     "standardHint": "Parallel direct requests using the cloud concurrency setting. Usage and estimated cost: project_google_tts_report in MCP.",
     "provider_local": "Local · Higgs / Drama / Qwen / Supertonic",
     "provider_openrouter": "OpenRouter",
-    "provider_google": "Google · direct"
+    "provider_google": "Google · direct",
+    "auto": "Auto — direct up to 10 phrases, Batch from 11",
+    "autoHint": "Up to 10 phrases go as direct requests at once, more go to Google Batch at half the tariff. What it has cost is in Settings, Cloud.",
+    "spendTitle": "Cloud spending",
+    "spendTotals": "Total {{total}}, today {{today}}",
+    "spendUnpriced": "unpriced runs: {{n}}",
+    "runs": "runs: {{n}}",
+    "limit": "Daily limit for agents and programs, USD",
+    "limitHint": "0 — no limit; a run without a price is refused while a limit is set"
   },
   "hub": {
     "why": "How many people use Dub Studio and what for helps decide what to work on next. Nothing personal: no videos, texts, voices or file names — only counts of jobs, which of the studio's functions were used (by name, never with what), the models each stage used, the version, a computer number shared by our programs (a one-way hash, not the system number itself), the graphics card class and why a job failed, with paths, names and quoted text cut out on this computer before it is sent.",
