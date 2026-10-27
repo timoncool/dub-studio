@@ -15,6 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod asset;
 mod wav;
 
 #[derive(Debug, thiserror::Error)]

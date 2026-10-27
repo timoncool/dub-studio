@@ -953,22 +953,26 @@ fn ensure_job_components(
     if casting && missing("casting") {
         need.push("casting".to_string());
     }
-    // Сепарация или диаризация на GPU → полный CUDA-стек: диаризация грузит onnxruntime-GPU + cuDNN, ggml-движки
-    // (сепарация/Higgs) — cuda-runtime (cudart/cublas/cuFFT). Без cuFFT CUDA-EP не поднимется. Распознавание на GPU
-    // (transcribe.cpp, audiocpp_server) берёт из него только cuda-runtime.
-    let gpu = ["sep_backend", "diar_backend"]
-        .iter()
-        .any(|k| models::stage_backend(models_root, k) == "gpu");
-    if gpu {
-        for id in ["cuda-runtime", "onnxruntime-gpu", "cudnn", "bsroformer-engine",
-        ] {
-            if missing(id) {
-                need.push(id.to_string());
-            }
+    // A stage on the card needs its CUDA stack: separation its BSRoformer build and that build's runtime (CUDA 13 or
+    // 12.9), diarization onnxruntime-GPU with cuDNN and the CUDA 13 runtime (without cuFFT the CUDA EP does not start),
+    // recognition the runtime of its transcribe.cpp build.
+    let mut stage_needs: Vec<&str> = Vec::new();
+    if models::stage_backend(models_root, "sep_backend") == "gpu" {
+        let sep = models::sep_build(models_root);
+        stage_needs.push(sep.component());
+        stage_needs.extend(sep.runtime_component());
+    }
+    if models::stage_backend(models_root, "diar_backend") == "gpu" {
+        stage_needs.extend(["cuda-runtime", "onnxruntime-gpu", "cudnn"]);
+    }
+    for id in stage_needs {
+        if missing(id) && !need.iter().any(|n| n == id) {
+            need.push(id.to_string());
         }
-    } else if models::stage_backend(models_root, "asr_backend") == "gpu" {
+    }
+    if models::stage_backend(models_root, "asr_backend") == "gpu" {
         let runtime = if models::tcpp_build(models_root) == dub_asr::tcpp::Build::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
-        if missing(runtime) {
+        if missing(runtime) && !need.iter().any(|n| n == runtime) {
             need.push(runtime.to_string());
         }
     }
@@ -1330,8 +1334,7 @@ async fn speaker_voice(
     let tmp = dir.join("_voicecut");
     let res = tokio::task::spawn_blocking(move || {
         std::fs::create_dir_all(&voices_dir).map_err(|e| format!("{}: {e}", voices_dir.display()))?;
-        let cli = dub_sep::engine_cli(&repo_root, models::stage_backend(&models_root, "sep_backend"),
-        );
+        let cli = models::sep_cli(&repo_root, &models_root);
         let blocked = models::sep_unavailable(&models_root);
         let made = render::speaker_voice_clip(&cand, 12.0, &dir, &input, (&cli, &model), blocked.as_deref(), &tmp, &out);
         let cleaned =
@@ -2332,8 +2335,7 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         caption_fps: st.opts.caption_fps,
         import_subs,
         // Сепарация ДО диаризации/ASR (best practices): чистый вокал; stems-кэш общий с рендером.
-        bsroformer_cli: dub_sep::engine_cli(&st.repo_root, models::stage_backend(&st.models_root, "sep_backend"),
-        ),
+        bsroformer_cli: models::sep_cli(&st.repo_root, &st.models_root),
         bsroformer_model: st.bsroformer_model.clone(),
     };
 
@@ -2548,8 +2550,7 @@ fn render_paths(st: &AppState, dir: &Path, input: PathBuf) -> render::RenderPath
         bench: models::bench_enabled(&st.models_root),
         work_dir: dir.to_path_buf(),
         output: dir.join("output.mp4"),
-        bsroformer_cli: dub_sep::engine_cli(&st.repo_root, models::stage_backend(&st.models_root, "sep_backend"),
-        ),
+        bsroformer_cli: models::sep_cli(&st.repo_root, &st.models_root),
         bsroformer_model: sep_model,
         repo_root: st.repo_root.clone(),
         higgs_model_root,

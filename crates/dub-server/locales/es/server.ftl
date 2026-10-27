@@ -1003,6 +1003,7 @@ update-why-crisperwhisper = Reconocimiento de otros idiomas en lugar de Faster-W
 update-why-langid = Detecta el idioma de la grabación para CrisperWhisper cuando el idioma de origen se deja en «auto»
 update-why-cuda12 = Bibliotecas CUDA 12.9 para el servidor audio.cpp en tarjetas y controladores antiguos
 update-why-llama = Una versión más reciente de llama.cpp para la traducción
+update-why-bsroformer-studio = La compilación propia de los estudios para separar la voz: lista para cada tarjeta NVIDIA compatible sin compilar en el primer inicio, y en Linux funciona en Ubuntu 22.04 y posteriores
 update-why-ffmpeg = Una versión más reciente de FFmpeg para leer y montar vídeo y sonido
 update-why-ytdlp = Un yt-dlp más reciente con deno: los sitios cambian y los enlaces se descargan con la versión nueva
 update-why-faster-whisper-gone = Faster-Whisper se sustituye por CrisperWhisper

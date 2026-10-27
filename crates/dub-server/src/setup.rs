@@ -144,6 +144,14 @@ pub struct Parts {
     pub markers: &'static [Marker],
 }
 
+/// The archive of a build of the separation engine (dub_sep::asset) on a platform that has the build.
+const fn sep_file(build: dub_sep::asset::Build) -> FileSpec {
+    match build.engine() {
+        Some(a) => FileSpec { url: a.url, dest_rel: a.archive, size: a.size, sha256: a.sha256, extract: Extract::Flat },
+        None => panic!("this platform has no such build of the separation engine"),
+    }
+}
+
 // Сборка llama.cpp одна на обе платформы.
 const GH_LLAMA_BUILD: &str = "b11900";
 
@@ -152,13 +160,6 @@ const GH_LLAMA_BUILD: &str = "b11900";
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
-    // GitHub: BSRoformer.cpp движок win-cuda-13.1.0 zip (chenmozhijin/BSRoformer.cpp v0.1.0).
-    const GH_BSROFORMER_ENGINE: &str =
-        "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-cuda-13.1.0.zip";
-    // GitHub: BSRoformer.cpp CPU-сборка (win-x64-msvc, без CUDA) — сепарация на процессоре: медленнее,
-    // но полная функция. Статический exe 671КБ; MSVC-рантайм уже вшит компонентом vcruntime.
-    const GH_BSROFORMER_ENGINE_CPU: &str =
-        "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-x64-msvc.zip";
     // GitHub: llama.cpp win-cuda-13.4 (ggml-org/llama.cpp, билд b11900).
     // ggml-cuda.dll импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
     const GH_LLAMA: &str =
@@ -278,21 +279,16 @@ mod platform {
         markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/qwen.dll", expect: 425_984 }, Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 140_809_728 }],
     };
 
-    pub const BSROFORMER: Parts = Parts {
-        size: 164_990_561,
-        files: &[
-            FileSpec { url: GH_BSROFORMER_ENGINE, dest_rel: "tools/bsroformer/_engine.zip", size: 164_990_561, sha256: "a7c330774c0a40ec4de09ca0613af48fdc23c28bd0d90212425697daf7b1db74", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli.exe", expect: 0 }],
-    };
-
-    pub const BSROFORMER_CPU: Parts = Parts {
-        size: 671_031,
-        files: &[
-            FileSpec { url: GH_BSROFORMER_ENGINE_CPU, dest_rel: "tools/bsroformer-cpu/_engine.zip", size: 671_031, sha256: "e002811d56605bce6a51c275cf8f9ba447a3707771289ea6fbcca7f4d3e9ba1f", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli.exe", expect: 0 }],
-    };
+    // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: CUDA 13 and 12.9 the studios' builds (cuBLAS from cuda-runtime /
+    // cuda12-runtime), Vulkan and the processor the author's (the processor's static, its VC++ runtime from vcruntime).
+    const SEP_CUDA13: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda13)];
+    const SEP_CUDA12: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda12)];
+    const SEP_VULKAN: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Vulkan)];
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
+    pub const BSROFORMER: Parts = Parts { size: SEP_CUDA13[0].size, files: &SEP_CUDA13, markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli.exe", expect: 0 }] };
+    pub const BSROFORMER_CUDA12: Parts = Parts { size: SEP_CUDA12[0].size, files: &SEP_CUDA12, markers: &[Marker { rel: "tools/bsroformer-cuda12/bs_roformer-cli.exe", expect: 0 }] };
+    pub const BSROFORMER_VULKAN: Parts = Parts { size: SEP_VULKAN[0].size, files: &SEP_VULKAN, markers: &[Marker { rel: "tools/bsroformer-vulkan/bs_roformer-cli.exe", expect: 0 }] };
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli.exe", expect: 0 }] };
 
     pub const LLAMA: Parts = Parts {
         size: 164_721_212,
@@ -455,23 +451,29 @@ mod platform {
     // Сборки Qwen3-TTS для Linux пока нет: компонент ставит только кодек, движок остаётся недоступным с причиной.
     pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
 
-    // BSRoformer.cpp v0.1.0 linux-cuda-13.1.0: RUNPATH указывает на каталог CI, свои libggml берёт через
-    // LD_LIBRARY_PATH запуска (dub-sep).
-    pub const BSROFORMER: Parts = Parts {
-        size: 239_527_692,
-        files: &[
-            FileSpec { url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-cuda-13.1.0.tar.xz", dest_rel: "tools/bsroformer/_engine.tar.xz", size: 239_527_692, sha256: "6d7e543f2985b785cfef2baf0b217fc2f891e6b5a03804ce2657b4eb70379126", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli", expect: 0 }],
-    };
-
-    pub const BSROFORMER_CPU: Parts = Parts {
-        size: 640_204,
-        files: &[
-            FileSpec { url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-x64-cpu.tar.xz", dest_rel: "tools/bsroformer-cpu/_engine.tar.xz", size: 640_204, sha256: "bc0f20237b9ed263582ebd0844dfc7dbb61309a67c31f4a8d7ba156e21292c77", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }],
-    };
+    // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: on Linux the studios' CUDA 13 and 12.9 builds (Ubuntu 22.04,
+    // libgomp beside the program, RUNPATH $ORIGIN, ../../models/higgs-engine and ../../models/cuda12-runtime), Vulkan and
+    // the processor the author's; a Mac has the author's one build (Metal and the processor) in the processor slot.
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
+    #[cfg(not(target_os = "macos"))]
+    const SEP_CUDA13: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda13)];
+    #[cfg(not(target_os = "macos"))]
+    const SEP_CUDA12: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda12)];
+    #[cfg(not(target_os = "macos"))]
+    const SEP_VULKAN: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Vulkan)];
+    #[cfg(not(target_os = "macos"))]
+    pub const BSROFORMER: Parts = Parts { size: SEP_CUDA13[0].size, files: &SEP_CUDA13, markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli", expect: 0 }] };
+    #[cfg(not(target_os = "macos"))]
+    pub const BSROFORMER_CUDA12: Parts = Parts { size: SEP_CUDA12[0].size, files: &SEP_CUDA12, markers: &[Marker { rel: "tools/bsroformer-cuda12/bs_roformer-cli", expect: 0 }] };
+    #[cfg(not(target_os = "macos"))]
+    pub const BSROFORMER_VULKAN: Parts = Parts { size: SEP_VULKAN[0].size, files: &SEP_VULKAN, markers: &[Marker { rel: "tools/bsroformer-vulkan/bs_roformer-cli", expect: 0 }] };
+    #[cfg(target_os = "macos")]
+    pub const BSROFORMER: Parts = Parts { size: 0, files: &[], markers: &[] };
+    #[cfg(target_os = "macos")]
+    pub const BSROFORMER_CUDA12: Parts = Parts { size: 0, files: &[], markers: &[] };
+    #[cfg(target_os = "macos")]
+    pub const BSROFORMER_VULKAN: Parts = Parts { size: 0, files: &[], markers: &[] };
 
     // llama.cpp b11900 ubuntu-cuda-13.4: RUNPATH $ORIGIN для своих библиотек, cudart/cuBLAS 13 — из cuda-runtime,
     // libssl.so.3 — системная.
@@ -1119,6 +1121,17 @@ pub fn manifest() -> Vec<Component> {
             external_url: None,
         },
         Component {
+            id: "bsroformer-engine-vulkan",
+            name: format!("{} · Vulkan", t!("setup-comp-bsroformer-engine-name")),
+            purpose: t!("setup-comp-bsroformer-engine-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::BSROFORMER_VULKAN.size,
+            files: platform::BSROFORMER_VULKAN.files,
+            markers: platform::BSROFORMER_VULKAN.markers,
+            external_url: None,
+        },
+        Component {
             id: "llama",
             name: t!("setup-comp-llama-name"),
             purpose: t!("setup-comp-llama-purpose"),
@@ -1260,7 +1273,21 @@ pub fn manifest() -> Vec<Component> {
             markers: platform::CUDA12_RUNTIME.markers,
             external_url: None,
         });
+        // the separation engine's CUDA 12.9 build, for the card that takes it
+        all.push(Component {
+            id: "bsroformer-engine-cuda12",
+            name: format!("{} · CUDA 12.9", t!("setup-comp-bsroformer-engine-name")),
+            purpose: t!("setup-comp-bsroformer-engine-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::BSROFORMER_CUDA12.size,
+            files: platform::BSROFORMER_CUDA12.files,
+            markers: platform::BSROFORMER_CUDA12.markers,
+            external_url: None,
+        });
     }
+    // a build this platform has not got (a Mac's separation engine is the processor's alone)
+    all.retain(|c| c.delivery != Delivery::Download || !c.files.is_empty());
     all
 }
 
@@ -1999,17 +2026,15 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
     // В GPU-режиме наоборот: CPU-движок не нужен.
     let backend = crate::models::local_backend(&mroot);
     let asr_engine = crate::models::tcpp_build(&mroot).dir();
+    let sep_engine = crate::models::sep_build(&mroot).component();
     for c in comps.iter_mut() {
         if !cloud_asr && ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu"].contains(&c.id.as_str()) {
             c.requirement = if c.id == asr_engine { Requirement::Required } else { Requirement::Optional };
         }
-        if backend == "cpu" {
-            if c.id == "bsroformer-engine-cpu" {
-                c.requirement = Requirement::Recommended;
-            } else if c.id == "bsroformer-engine" || c.id == "cuda-runtime" || c.id == "onnxruntime-gpu" || c.id == "cudnn" {
-                c.requirement = Requirement::Optional;
-            }
-        } else if c.id == "bsroformer-engine-cpu" {
+        // the separation engine of the separation device is the recommended one, its other builds are optional
+        if c.id.starts_with("bsroformer-engine") {
+            c.requirement = if c.id == sep_engine { Requirement::Recommended } else { Requirement::Optional };
+        } else if backend == "cpu" && (c.id == "cuda-runtime" || c.id == "onnxruntime-gpu" || c.id == "cudnn") {
             c.requirement = Requirement::Optional;
         }
     }
@@ -3840,6 +3865,14 @@ mod tests {
             let [f] = c.files else { panic!("{id}: one file") };
             assert_eq!((f.url, f.size, f.sha256), (m.download.url, m.download.size, m.download.sha256), "{id}");
             assert_eq!(std::path::Path::new(f.dest_rel), std::path::Path::new("models").join(m.dir).join(m.file), "{id}");
+        }
+        for b in dub_sep::asset::Build::ALL {
+            let Some(c) = manifest().into_iter().find(|c| c.id == b.component()) else { continue };
+            let a = b.engine().expect("a component only for a build this platform has");
+            let [f] = c.files else { panic!("{b:?}: one archive") };
+            assert_eq!((f.url, f.dest_rel, f.size, f.sha256), (a.url, a.archive, a.size, a.sha256), "{b:?}");
+            let cli = dub_sep::engine_cli_of(Path::new(""), b.name());
+            assert!(c.markers.iter().any(|m| Path::new(m.rel) == cli), "{b:?}: the marker is the program dub_sep runs");
         }
         for b in [dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Cpu] {
             let d = b.download();

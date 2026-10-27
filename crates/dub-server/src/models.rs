@@ -235,12 +235,12 @@ pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
         .unwrap_or(if gpu_runs(key) { "gpu" } else { "cpu" })
 }
 
-/// Whether this card runs the CUDA build of a stage (`key`, as in [`stage_backend`]): recognition has CUDA 12.9 builds
-/// of transcribe.cpp and of the audio.cpp server beside the CUDA 13 ones, so it runs on any card one of them takes;
-/// the other stages have CUDA 13 builds only.
+/// Whether this card runs the CUDA build of a stage (`key`, as in [`stage_backend`]): recognition (transcribe.cpp and the
+/// audio.cpp server) and separation (BSRoformer.cpp) have CUDA 12.9 builds beside the CUDA 13 ones, so they run on any
+/// card one of them takes; the other stages have CUDA 13 builds only.
 pub fn gpu_runs(key: &str) -> bool {
     let gpu = crate::hw::gpu_report();
-    if key == "asr_backend" { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
+    if key == "asr_backend" || key == "sep_backend" { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
 }
 
 /// Сборка transcribe.cpp под backend распознавания: GPU — CUDA 13, или CUDA 12.9 на карте и драйвере, что CUDA 13
@@ -260,6 +260,23 @@ pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
 pub fn sep_unavailable(mroot: &Path) -> Option<String> {
     gpu_stage_unavailable(mroot, "sep_backend", &t!("stage-name-sep"))
         .or_else(|| (stage_backend(mroot, "sep_backend") == "gpu").then(|| crate::hw::cpu_floor("BSRoformer")).flatten())
+}
+
+/// The build of the separation engine for its device (`sep_backend`): the processor's, or on the card its CUDA build —
+/// 13, or 12.9 where the card or driver does not run 13 (as the audio.cpp server's, [`crate::acpp::build`]).
+pub fn sep_build(mroot: &Path) -> dub_sep::asset::Build {
+    if stage_backend(mroot, "sep_backend") == "cpu" {
+        dub_sep::asset::Build::Cpu
+    } else if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
+        dub_sep::asset::Build::Cuda12
+    } else {
+        dub_sep::asset::Build::Cuda13
+    }
+}
+
+/// The separation engine's program for its device ([`sep_build`]).
+pub fn sep_cli(repo_root: &Path, mroot: &Path) -> PathBuf {
+    dub_sep::engine_cli_of(repo_root, sep_build(mroot).name())
 }
 
 /// Why a local stage set to «GPU (CUDA)» cannot run on this machine: its CUDA build would fall back to the processor

@@ -21,6 +21,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Voice separation on Linux and on older NVIDIA cards**: the studio takes the studios' own builds of BSRoformer.cpp (CUDA 13, and CUDA 12.9 for cards and drivers CUDA 13 does not run) instead of the author's, which on Linux needed a newer system than Ubuntu 22.04 and its CUDA libraries from the build machine, and on Windows compiled itself for the card on the first run; separation on the card now opens on any card a CUDA build takes.
 - **Speech recognition on older NVIDIA cards and drivers runs on the card**: where CUDA 13 does not run (a driver before 580, a card before Turing), recognition took the processor; it now takes the transcribe.cpp engine built for CUDA 12.9 (and CrisperWhisper the CUDA 12.9 audio.cpp server) with the CUDA 12.9 runtime, and «GPU» is open for recognition there.
 - **An engine taken from another program counts as installed**: the install record of the older build it replaced stayed beside it, so the studio kept it uninstalled and asked for it again; that record now goes with the old file and the new one is recorded as what it is.
 - **A program's own file is no longer lost when another program's copy cannot be taken**: at start the studio takes what another program already has, and a file on another drive (where it cannot be linked) left the studio's own older file deleted, so yt-dlp or an engine went missing until it was downloaded again; now the own file is replaced only by a finished link or copy.

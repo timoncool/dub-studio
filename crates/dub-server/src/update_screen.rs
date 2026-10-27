@@ -31,6 +31,8 @@ const CHANGES: &[Change] = &[
     Change { what: "langid", reason: || t!("update-why-langid"), replaces: &[] },
     Change { what: "cuda12-runtime", reason: || t!("update-why-cuda12"), replaces: &[] },
     Change { what: "llama", reason: || t!("update-why-llama"), replaces: &[] },
+    Change { what: "bsroformer-engine", reason: || t!("update-why-bsroformer-studio"), replaces: &[] },
+    Change { what: "bsroformer-engine-cuda12", reason: || t!("update-why-bsroformer-studio"), replaces: &[] },
     Change { what: "ffmpeg", reason: || t!("update-why-ffmpeg"), replaces: &[] },
     Change { what: "ytdlp", reason: || t!("update-why-ytdlp"), replaces: &[] },
     Change { what: "whisper", reason: || t!("update-why-faster-whisper-gone"), replaces: &[] },
@@ -203,7 +205,8 @@ mod tests {
         let models = root.path().join("models");
         for c in CHANGES {
             assert!(!(c.reason)().starts_with("update-why-"), "{}: its reason is not in the catalogue", c.what);
-            if ids.contains(&c.what) || c.what == "cuda12-runtime" {
+            // the CUDA 12.9 components are in the manifest only on a card that takes them
+            if ids.contains(&c.what) || c.what == "cuda12-runtime" || c.what == "bsroformer-engine-cuda12" {
                 continue;
             }
             let path = if c.what.contains('/') { root.path().join(c.what) } else { models.join(c.what) };

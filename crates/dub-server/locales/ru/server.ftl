@@ -1031,6 +1031,7 @@ update-why-crisperwhisper = Распознавание других языков
 update-why-langid = Определяет язык записи для CrisperWhisper, когда язык оригинала оставлен «авто»
 update-why-cuda12 = Библиотеки CUDA 12.9 для сервера audio.cpp на старых видеокартах и драйверах
 update-why-llama = Новая сборка llama.cpp для перевода
+update-why-bsroformer-studio = Своя сборка студий для отделения голоса: готова для каждой поддерживаемой видеокарты NVIDIA без компиляции при первом запуске, а на Linux работает на Ubuntu 22.04 и новее
 update-why-ffmpeg = Новая сборка FFmpeg для чтения и сборки видео и звука
 update-why-ytdlp = Новый yt-dlp с deno: сайты меняются, по ссылке качает свежая версия
 update-why-faster-whisper-gone = Faster-Whisper заменён CrisperWhisper
