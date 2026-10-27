@@ -89,7 +89,7 @@ On **first run** a "First run" panel lists the components with a ✓/! status ea
 
 ## Quick start
 
-1. **Download** the portable build from [Releases](https://github.com/timoncool/dub-studio/releases) and unzip anywhere (or install via `-setup.exe` / `.msi`).
+1. **Download** the portable build from [Releases](https://github.com/timoncool/dub-studio/releases) and unzip anywhere (or install via `-setup.exe`).
 
 2. **Launch** `Dub Studio.exe`.
 

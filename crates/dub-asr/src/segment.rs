@@ -99,16 +99,59 @@ fn ends_sentence(word: &str, next: Option<&str>) -> bool {
     true
 }
 
-/// Склейка слов сегмента через пробел (эквивалент `join(" ").trim()`, без промежуточного Vec).
+/// Склейка слов сегмента в текст (см. [`join_text`]).
 fn join_words(ws: &[Word]) -> String {
+    join_text(ws.iter().map(|w| w.word.as_str()))
+}
+
+/// Pieces of recognised text joined as the language writes them: a space between words, none where the script puts
+/// none (Chinese, Japanese, Thai, Lao, Khmer, Burmese — between two of their characters, or one of them and a digit) and
+/// none before closing punctuation.
+pub fn join_text<'a>(pieces: impl IntoIterator<Item = &'a str>) -> String {
     let mut s = String::new();
-    for x in ws {
-        if !s.is_empty() {
-            s.push(' ');
+    for piece in pieces {
+        let piece = piece.trim();
+        if piece.is_empty() {
+            continue;
         }
-        s.push_str(&x.word);
+        if let (Some(a), Some(b)) = (s.chars().last(), piece.chars().next()) {
+            if spaced(a, b) {
+                s.push(' ');
+            }
+        }
+        s.push_str(piece);
     }
-    s.trim().to_string()
+    s
+}
+
+fn spaced(a: char, b: char) -> bool {
+    if is_closing(b) {
+        return false;
+    }
+    let (sa, sb) = (unspaced_script(a), unspaced_script(b));
+    !((sa && (sb || b.is_ascii_digit())) || (sb && (a.is_ascii_digit() || a.is_ascii_punctuation())))
+}
+
+/// Characters of scripts written without spaces between words.
+fn unspaced_script(c: char) -> bool {
+    matches!(c as u32,
+        0x3040..=0x30FF       // hiragana, katakana
+        | 0x31F0..=0x31FF     // katakana phonetic extensions
+        | 0x3000..=0x303F     // CJK symbols and punctuation
+        | 0x3400..=0x4DBF     // CJK extension A
+        | 0x4E00..=0x9FFF     // CJK unified ideographs
+        | 0xF900..=0xFAFF     // CJK compatibility ideographs
+        | 0xFF00..=0xFFEF     // halfwidth and fullwidth forms
+        | 0x20000..=0x2FA1F   // CJK extensions B-F and compatibility supplement
+        | 0x0E00..=0x0EFF     // Thai, Lao
+        | 0x1780..=0x17FF     // Khmer
+        | 0x1000..=0x109F     // Myanmar
+    )
+}
+
+/// Punctuation that closes what is before it and takes no space before itself.
+fn is_closing(c: char) -> bool {
+    matches!(c, ',' | '.' | '!' | '?' | ';' | ':' | ')' | ']' | '}' | '%' | '、' | '。' | '，' | '！' | '？' | '；' | '：' | '）' | '」' | '』' | '…')
 }
 
 fn segment_of(ws: Vec<Word>) -> Segment {
@@ -387,5 +430,17 @@ mod tests {
         let out = split_at_speaker_turns(segs, &[]);
         assert_eq!(out.len(), 2);
         assert!(out.iter().all(|(_, spk)| *spk == 0));
+    }
+
+    #[test]
+    fn languages_without_spaces_join_without_spaces() {
+        let zh = ["今天", "天", "气", "很好", ",", "我们", "一起", "去", "公", "园"];
+        assert_eq!(join_text(zh), "今天天气很好,我们一起去公园");
+        assert_eq!(join_text(["1945", "年", "の", "春", "。"]), "1945年の春。");
+        assert_eq!(join_text(["สวัสดี", "ครับ"]), "สวัสดีครับ");
+        assert_eq!(join_text(["我", "用", "Python", "写", "代码"]), "我用 Python 写代码");
+        assert_eq!(join_text(["Where's", "your", "uniform?", "Hair", "five", "inches"]), "Where's your uniform? Hair five inches");
+        assert_eq!(join_text(["Победа", "пришла", "весной", "1945", "года", "."]), "Победа пришла весной 1945 года.");
+        assert_eq!(texts(&zh.join(" ")), vec!["今天天气很好,我们一起去公园".to_string()]);
     }
 }

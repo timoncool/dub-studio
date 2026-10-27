@@ -19,6 +19,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "366ffbaa4442f4684d91e2cd7c5ea7c4ed8add41959a31447066e279e432b618"
 
 [[package]]
+name = "acpp-server"
+version = "2.0.0"
+dependencies = [
+ "base64 0.23.1",
+ "dub-core",
+ "dub-tcpp",
+ "hound",
+ "libc",
+ "reqwest 0.13.5",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "adler2"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -327,16 +342,6 @@ checksum = "5258faecf4edbe35ec483bda9b1f7438e6b391891819269c6b5461aeaa0e8d7d"
 dependencies = [
  "audio-codec-algorithms",
  "num-traits",
-]
-
-[[package]]
-name = "audiocpp"
-version = "2.0.0"
-dependencies = [
- "libloading 0.9.0",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -1407,6 +1412,7 @@ dependencies = [
 name = "dub-asr"
 version = "2.0.0"
 dependencies = [
+ "acpp-server",
  "audioadapter",
  "audioadapter-buffers",
  "dub-core",
@@ -1418,6 +1424,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1435,7 +1442,9 @@ dependencies = [
 name = "dub-core"
 version = "2.0.0"
 dependencies = [
+ "iced-x86",
  "libc",
+ "object",
  "serde",
  "serde_json",
 ]
@@ -1453,6 +1462,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1471,6 +1481,7 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+ "tracing",
 ]
 
 [[package]]
@@ -1491,17 +1502,18 @@ name = "dub-sep"
 version = "2.0.0"
 dependencies = [
  "dub-core",
- "hound",
  "thiserror 2.0.21",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
 name = "dub-server"
 version = "2.0.0"
 dependencies = [
+ "acpp-server",
  "anyhow",
  "async-stream",
- "audiocpp",
  "axum",
  "base64 0.23.1",
  "blake3",
@@ -1541,6 +1553,7 @@ dependencies = [
  "studio-hub-client",
  "sysinfo",
  "tar",
+ "tempfile",
  "tokenizers",
  "tokio",
  "tokio-stream",
@@ -1549,7 +1562,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "trash",
- "unicode-normalization",
  "ureq",
  "uuid",
  "windows-sys 0.61.2",
@@ -1560,6 +1572,7 @@ dependencies = [
 name = "dub-studio-desktop"
 version = "4.2.2"
 dependencies = [
+ "dub-core",
  "dub-server",
  "rfd 0.17.2",
  "serde",
@@ -2616,6 +2629,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "iced-x86"
+version = "1.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c447cff8c7f384a7d4f741cfcff32f75f3ad02b406432e8d6c878d56b1edf6b"
+dependencies = [
+ "lazy_static",
 ]
 
 [[package]]
@@ -3878,6 +3900,15 @@ dependencies = [
  "objc2-app-kit",
  "objc2-core-foundation",
  "objc2-foundation",
+]
+
+[[package]]
+name = "object"
+version = "0.40.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd229a0361b9d0d4396176e02d65897f487eebeab7caa6d443855ee152ca0b9c"
+dependencies = [
+ "memchr",
 ]
 
 [[package]]
@@ -6719,15 +6750,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
 
 [[package]]
-name = "unicode-normalization"
-version = "0.1.25"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5fd4f6878c9cb28d874b009da9e8d183b5abc80117c40bbd187a1fde336be6e8"
-dependencies = [
- "tinyvec",
-]
-
-[[package]]
 name = "unicode-normalization-alignments"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6772,6 +6794,7 @@ dependencies = [
  "percent-encoding",
  "rustls",
  "rustls-pki-types",
+ "rustls-platform-verifier",
  "socks",
  "ureq-proto",
  "utf8-zero",

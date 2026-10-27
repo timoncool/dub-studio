@@ -74,10 +74,12 @@ pub enum JobKind {
     Shorten,
     /// «Собрать глоссарий из текста» (кандидаты в итоге джобы).
     Glossary,
+    /// A library voice without noise (DPDFNet), as Speech Studio's `voice_clean` jobs.
+    VoiceClean,
 }
 
 impl JobKind {
-    const ALL: [JobKind; 14] = [
+    const ALL: [JobKind; 15] = [
         JobKind::Analyze,
         JobKind::Retranslate,
         JobKind::Remix,
@@ -92,6 +94,7 @@ impl JobKind {
         JobKind::DetectText,
         JobKind::Shorten,
         JobKind::Glossary,
+        JobKind::VoiceClean,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -110,6 +113,7 @@ impl JobKind {
             JobKind::DetectText => "detect_text",
             JobKind::Shorten => "shorten",
             JobKind::Glossary => "glossary",
+            JobKind::VoiceClean => "voice_clean",
         }
     }
 
@@ -126,7 +130,7 @@ impl JobKind {
             JobKind::DubAudio | JobKind::Render | JobKind::ExportLang => Some("audio"),
             JobKind::Separate => Some("separate"),
             JobKind::DetectText => Some("detect_text"),
-            JobKind::Download | JobKind::VoicesPack | JobKind::Frame => None,
+            JobKind::Download | JobKind::VoicesPack | JobKind::Frame | JobKind::VoiceClean => None,
         }
     }
 }
@@ -310,13 +314,28 @@ impl JobCtl {
     }
 }
 
-/// Убить процесс по pid (TerminateProcess на Windows). Pid берётся из учёта, пока хэндл процесса у
-/// владельца открыт, поэтому переиспользован другим процессом быть не может.
-fn kill_pid(pid: u32) -> bool {
-    let p = sysinfo::Pid::from_u32(pid);
-    let mut sys = sysinfo::System::new();
-    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[p]), true);
-    sys.process(p).map(|pr| pr.kill()).unwrap_or(false)
+/// Убить процесс по pid. Pid берётся из учёта, пока хэндл процесса у владельца открыт, поэтому переиспользован другим
+/// процессом быть не может. На Windows — TerminateProcess напрямую: `sysinfo::Process::kill` запускает taskkill.exe,
+/// а тот висит, когда висит WMI.
+pub(crate) fn kill_pid(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        use windows_sys::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+        unsafe {
+            let h = OpenProcess(PROCESS_TERMINATE, 0, pid);
+            if h.is_null() {
+                return false;
+            }
+            let ok = TerminateProcess(h, 1) != 0;
+            CloseHandle(h);
+            ok
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        unsafe { libc::kill(pid as libc::pid_t, libc::SIGKILL) == 0 }
+    }
 }
 
 thread_local! {

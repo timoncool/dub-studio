@@ -98,14 +98,15 @@ const NAMES = {
   "higgs-q4_k_m": "Higgs Audio v3 Q4_K_M",
   drama3: "Fish Audio Drama 3 Q4 + drama_engine (24 GB+ GPU)",
   "parakeet-ultra": "Parakeet Ultra 0.6B Q8_0 (Moondream, transcribe.cpp)",
-  "whisper-engine": "Whisper-Faster (faster-whisper standalone)",
-  "whisper-cuda": "Whisper CUDA (cuBLAS 11, cuDNN 8)",
-  "whisper-tiny": "Whisper tiny",
-  "whisper-base": "Whisper base",
-  "whisper-small": "Whisper small",
-  "whisper-medium": "Whisper medium",
-  "whisper-large-v3": "Whisper large-v3",
-  "whisper-large-v3-turbo": "Whisper large-v3-turbo",
+  "crisperwhisper-turbo": "CrisperWhisper 2.0 turbo (audio.cpp)",
+  "qwen3-tts-engine": "qwen.dll + ggml (Qwen3-TTS engine)",
+  "qwen3-tts": "Qwen3-TTS 1.7B Q4_K_M",
+  "qwen3-tts-q8_0": "Qwen3-TTS 1.7B Q8_0",
+  "qwen3-tts-ru-stress": "Qwen3-TTS Russian stress",
+  supertonic3: "Supertonic 3 int8",
+  ruaccent: "RUAccent",
+  "ruaccent-omograph-big": "RUAccent omograph big_poetry int8",
+  langid: "VoxLingua107 language id (transcribe.cpp)",
   sortformer: "Nemotron 3 Diarization",
   roformer: "Mel-Band Roformer voc_fv6 Q8_0",
   "roformer-q5": "Mel-Band Roformer voc_fv6 Q5_0",
@@ -153,6 +154,9 @@ function readManifest() {
   const consts = {};
   for (const m of src.matchAll(/const (\w+): &str =\s*"([^"]+)";/g)) consts[m[1]] = m[2];
   for (const m of windowsModule(src).matchAll(/const (\w+): &str =\s*"([^"]+)";/g)) consts[m[1]] = m[2];
+  // const NAME: FileSpec = FileSpec { ... }; named in `files: &[NAME, ...]`
+  const specs = {};
+  for (const m of src.matchAll(/const (\w+): FileSpec = (FileSpec \{[^\n]*\});/g)) specs[m[1]] = m[2];
   const at = src.indexOf("pub fn manifest()");
   if (at < 0) throw new Error("manifest() not found in setup.rs");
   const body = src.slice(at, src.indexOf("\n}\n", at));
@@ -167,7 +171,8 @@ function readManifest() {
     // files: CONST — a const array of setup.rs; files: platform::X.files — the Windows Parts X
     const listed = p.match(/files: ([A-Z][A-Z0-9_]+),/)?.[1];
     const parts = p.match(/files: platform::(\w+)\.files,/)?.[1];
-    const scope = listed ? constArray(src, listed) : parts ? windowsParts(src, parts) : p;
+    const own = p.replace(/files: &\[([A-Z0-9_, ]+)\]/, (_, list) => "files: &[" + list.split(",").map((x) => specs[x.trim()] ?? x).join(", ") + "]");
+    const scope = listed ? constArray(src, listed) : parts ? windowsParts(src, parts) : own;
     const files = [...scope.matchAll(/FileSpec \{ url: (?:"([^"]+)"|(\w+)), dest_rel: "([^"]+)", size: ([\d_]+),(?: sha256: "[0-9a-f]{64}",)? extract: Extract::(\w+) \}/g)].map((f) => {
       const url = f[1] ?? consts[f[2]];
       if (!url) throw new Error(`unknown URL constant ${f[2]} in component ${id}`);

@@ -366,6 +366,18 @@ fn op_recast(p: &mut Project, edit: &Value) -> PatchResult {
     Ok(())
 }
 
+/// emo_ref — the emotion reference of this project: on, off, or default (the setting decides).
+fn op_emo_ref(p: &mut Project, edit: &Value) -> PatchResult {
+    p.audio.voice.emo_ref = match s(edit, "value").as_deref() {
+        Some("on") => Some(true),
+        Some("off") => Some(false),
+        Some("default") => None,
+        other => return Err((400, format!("emo_ref value must be on, off or default, not {other:?}"))),
+    };
+    mark_all_dirty(p);
+    Ok(())
+}
+
 /// Новый нонс «перегенерировать»: входит в ключ синтеза сегмента, поэтому рендер синтезирует
 /// сегмент заново, даже если текст и голос не менялись (новый дубль вместо кэша).
 fn mark_regen(seg: &mut dub_core::Segment) {
@@ -810,6 +822,7 @@ pub fn apply(p: &mut Project, edit: &Value) -> PatchResult {
         "translate_style" => op_translate_style(p, edit),
         "rewrite" => op_rewrite(p, edit),
         "recast" => op_recast(p, edit),
+        "emo_ref" => op_emo_ref(p, edit),
         "regen" => op_regen(p, edit),
         "regen_all" => op_regen_all(p, edit),
         "gain" => op_gain(p, edit),

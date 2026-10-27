@@ -26,7 +26,13 @@ pub struct JobError {
 impl JobError {
     /// Код по сообщению тела джобы. Префикс ENGINE_STUCK ставит render::voice_clone_guarded.
     pub fn from_message(msg: &str) -> Self {
-        let code = if msg.starts_with("ENGINE_STUCK") { "engine_stuck" } else { "failed" };
+        let code = if msg.starts_with("ENGINE_STUCK") {
+            "engine_stuck"
+        } else if msg.starts_with("ENGINE_FAILED") {
+            "engine_failed"
+        } else {
+            "failed"
+        };
         JobError { code: code.into(), text: msg.to_string() }
     }
 }

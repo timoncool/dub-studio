@@ -263,10 +263,10 @@ mod tests {
     #[test]
     fn the_language_follows_the_window_and_counts_in_russian() {
         let _language = test_language("ru");
-        assert_eq!(t!("asr-windowed", speakers = 2), "транскрипция по окнам на GPU (2 спикера)");
-        assert_eq!(t!("asr-windowed", speakers = 5), "транскрипция по окнам на GPU (5 спикеров)");
+        assert_eq!(t!("asr-windowed", speakers = 2), "транскрипция по окнам (2 спикера)");
+        assert_eq!(t!("asr-windowed", speakers = 5), "транскрипция по окнам (5 спикеров)");
         set_language("en").unwrap();
-        assert_eq!(t!("asr-windowed", speakers = 1), "transcribing in windows on the GPU (1 speaker)");
+        assert_eq!(t!("asr-windowed", speakers = 1), "transcribing in windows (1 speaker)");
         assert!(set_language("xx").is_err());
     }
 }

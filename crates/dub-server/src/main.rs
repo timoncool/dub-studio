@@ -19,6 +19,7 @@ async fn main() -> anyhow::Result<()> {
     let repo_root = std::env::var("DUB_STUDIO_ROOT")
         .map(PathBuf::from)
         .unwrap_or_else(|_| std::env::current_dir().expect("cwd"));
+    dub_server::diagnostics::log_to_file(&repo_root);
     dub_server::ensure_library_path(&repo_root);
 
     let port = service::listen_port().map_err(anyhow::Error::msg)?;
@@ -39,6 +40,7 @@ async fn main() -> anyhow::Result<()> {
     init_proxy_route(&repo_root);
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();
     dub_server::set_ort_dylib_env(&repo_root, &exe_dir);
+    dub_server::ort_without_telemetry().map_err(anyhow::Error::msg)?;
 
     let state = AppState::new(&repo_root);
     dub_server::apply_faces_backend(&state.models_root);

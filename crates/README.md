@@ -100,7 +100,7 @@ cd desktop && npx tauri build --no-bundle      # -> desktop/src-tauri/target/rel
 замок не встают и запускаются рядом с установленной студией.
 Порт занят чужим процессом — 20 с повторов, затем диалог с причиной. Сайдкары живут в job object процесса
 (`dub_server::process_group`) и не переживают студию.
-Установщик (NSIS/MSI) — `npm run bundle` в `desktop/` (`tauri build --config src-tauri/tauri.bundle.conf.json`):
+Установщик (NSIS) — `npm run bundle` в `desktop/` (`tauri build --config src-tauri/tauri.bundle.conf.json`):
 `bundle.resources` из `staging/` подключаются только там, dev и `cargo build` оболочки работают без staging.
 Портатив: рантайм (onnxruntime.dll, models/) держится рядом с exe; WEBVIEW2_USER_DATA_FOLDER там же.
 

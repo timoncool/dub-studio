@@ -370,9 +370,7 @@ fn take_pack_from_neighbor(dir: &std::path::Path) -> Option<String> {
     None
 }
 
-/// Скачать пак голосов (VibeVoice) закреплённой ревизии, сверить SHA-256 и распаковать в `dir` (плоско, .mp3+.txt
-/// пары). Прогресс -> cb. Пак, который уже лежит у другой программы timoncool (Speech Studio), берётся у неё без закачки.
-pub fn download_pack(dir: &std::path::Path, cb: &dyn Fn(serde_json::Value)) -> Result<serde_json::Value, String> {
+pub fn download_pack(repo_root: &std::path::Path, dir: &std::path::Path, cb: &dyn Fn(serde_json::Value)) -> Result<serde_json::Value, String> {
     std::fs::create_dir_all(dir).map_err(|e| t!("common-create-dir", path = dir.display().to_string(), error = e.to_string()))?;
     if let Some(app) = take_pack_from_neighbor(dir) {
         let count = pack_files().count();
@@ -380,43 +378,40 @@ pub fn download_pack(dir: &std::path::Path, cb: &dyn Fn(serde_json::Value)) -> R
         cb(serde_json::json!({ "stage": "voicepack", "msg": msg, "pct": 100 }));
         return Ok(serde_json::json!({ "extracted": count, "taken_from": (!app.is_empty()).then_some(app) }));
     }
+    // The pack unpacks into the program's voices folder (VOICE_PACK.files); a voices folder moved elsewhere by
+    // DUBENGINE_VOICES does not get it.
+    if dir != repo_root.join("voices") {
+        return Err(t!("voices-pack-folder", path = dir.display().to_string()));
+    }
     cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-downloading"), "pct": 0 }));
-    let client = dub_llm::net::builder()
-        .timeout(None)
-        .build()
-        .map_err(|e| format!("http: {e}"))?;
-    let zip_path = dir.join("_voice-pack.zip");
-    let last = std::sync::Mutex::new(0u64);
-    fetch_checked(&client, VOICE_PACK_URL, &zip_path, VOICE_PACK_SIZE, Some(VOICE_PACK_SHA256), &|got| {
-        let mut last = last.lock().unwrap_or_else(|e| e.into_inner());
-        if got - *last >= 1 << 20 || got == VOICE_PACK_SIZE {
-            *last = got;
-            cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-downloading"), "pct": (got as f64 / VOICE_PACK_SIZE as f64 * 90.0) }));
-        }
-    })?;
-    cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-unpacking"), "pct": 92 }));
-    let zf = std::fs::File::open(&zip_path).map_err(|e| t!("voices-open-zip", error = e.to_string()))?;
-    let mut zip = zip::ZipArchive::new(zf).map_err(|e| format!("zip: {e}"))?;
-    let mut count = 0;
-    for i in 0..zip.len() {
-        let mut file = zip.by_index(i).map_err(|e| format!("zip[{i}]: {e}"))?;
-        if file.is_dir() { continue; }
-        let name = std::path::Path::new(file.name())
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(|s| s.to_string());
-        let Some(name) = name else { continue };
-        let out = dir.join(&name);
-        let mut o = std::fs::File::create(&out).map_err(|e| t!("voices-create-file", name = name.clone(), error = e.to_string()))?;
-        std::io::copy(&mut file, &mut o).map_err(|e| t!("voices-unpack-file", name = name.clone(), error = e.to_string()))?;
-        count += 1;
-    }
-    drop(zip);
-    if let Err(e) = std::fs::remove_file(&zip_path) {
-        tracing::warn!("{}: the pack archive was not removed after unpacking: {e}", zip_path.display());
-    }
+    let ctl = crate::jobs::current();
+    let cancel = move || ctl.as_ref().is_some_and(|c| c.is_cancelled());
+    crate::setup::download_extra(repo_root, &voice_pack(), &cancel, cb).map_err(|e| e.detail)?;
+    let count = pack_files().filter(|(name, _, _)| dir.join(name).is_file()).count();
     cb(serde_json::json!({ "stage": "voicepack", "msg": t!("voices-pack-done", count = count), "pct": 100 }));
     Ok(serde_json::json!({ "extracted": count }))
+}
+
+/// The voice pack as a download of the setup's loader: one pinned archive unpacked flat into `voices/`.
+fn voice_pack() -> crate::setup::Component {
+    const FILES: &[crate::setup::FileSpec] = &[crate::setup::FileSpec {
+        url: VOICE_PACK_URL,
+        dest_rel: "voices/_voice-pack.zip",
+        size: VOICE_PACK_SIZE,
+        sha256: VOICE_PACK_SHA256,
+        extract: crate::setup::Extract::Flat,
+    }];
+    crate::setup::Component {
+        id: "voice-pack",
+        name: "VibeVoice voice pack".into(),
+        purpose: String::new(),
+        requirement: crate::setup::Requirement::Optional,
+        delivery: crate::setup::Delivery::Download,
+        size: VOICE_PACK_SIZE,
+        files: FILES,
+        markers: &[],
+        external_url: None,
+    }
 }
 
 #[cfg(test)]
@@ -430,6 +425,37 @@ mod tests {
         assert!(files.iter().all(|(name, size, sha)| !name.is_empty() && *size > 0 && sha.len() == 64 && sha.bytes().all(|b| b.is_ascii_hexdigit())));
         let names: std::collections::HashSet<_> = files.iter().map(|f| f.0).collect();
         assert_eq!(names.len(), files.len());
+    }
+
+    /// The pack through the setup's loader in an empty program folder (DUB_STUDIO_PACK_ROOT): a download stopped half
+    /// way resumes from the chunks it has, and ends with the hundred voices unpacked.
+    #[test]
+    #[ignore]
+    fn the_voice_pack_resumes_after_a_stop() {
+        let Ok(root) = std::env::var("DUB_STUDIO_PACK_ROOT") else { return };
+        let root = std::path::PathBuf::from(root);
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let seen = |ev: serde_json::Value| {
+            let done = ev["downloaded"].as_u64().unwrap_or(0);
+            if done > VOICE_PACK_SIZE / 2 {
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        };
+        let first = crate::setup::download_extra(&root, &voice_pack(), &|| stop.load(std::sync::atomic::Ordering::SeqCst), &seen);
+        assert!(first.is_err(), "the first run is stopped half way");
+        let resumed = std::sync::Mutex::new(None::<u64>);
+        let seen = |ev: serde_json::Value| {
+            if let Some(done) = ev["downloaded"].as_u64() {
+                resumed.lock().unwrap().get_or_insert(done);
+            }
+        };
+        crate::setup::download_extra(&root, &voice_pack(), &|| false, &seen).map_err(|e| e.detail).unwrap();
+        let start = resumed.lock().unwrap().unwrap_or(0);
+        let voices = root.join("voices");
+        let unpacked = pack_files().filter(|(name, size, _)| voices.join(name).metadata().is_ok_and(|m| m.len() == *size)).count();
+        println!("[OK] resumed at {start} of {VOICE_PACK_SIZE} bytes; {unpacked} voices unpacked");
+        assert!(start > VOICE_PACK_SIZE / 4, "the second run starts from the chunks of the first");
+        assert_eq!(unpacked, 100);
     }
 
     #[test]

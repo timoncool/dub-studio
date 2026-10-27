@@ -223,7 +223,7 @@ pub async fn separate(State(st): State<AppState>, AxPath(pid): AxPath<String>) -
     if !model.is_file() {
         return (StatusCode::CONFLICT, format!("the voice separator's model is not installed ({}): models_status names it, models_download fetches it", model.display())).into_response();
     }
-    let cli = dub_sep::engine_cli(&st.repo_root, models::stage_backend(&st.models_root, "sep_backend"));
+    let cli = models::sep_cli(&st.repo_root, &st.models_root);
     let job = separation(dir, input, cli, model, st.repo_root.clone(), st.models_root.clone());
     enqueue(&st, jobs::JobKind::Separate, &pid, job).await
 }
@@ -240,8 +240,11 @@ fn separation(dir: PathBuf, input: PathBuf, cli: PathBuf, model: PathBuf, repo_r
         }
         media::drop_stale_separation(&dir)?;
         let cb = |ev: Value| progress(ev);
-        crate::ensure_job_components(&repo_root, &models_root, false, false, &cb)?;
+        crate::ensure_job_components(&repo_root, &models_root, crate::JobNeeds::default(), &cb)?;
         jobs::check_cancelled()?;
+        if let Some(why) = models::sep_unavailable(&models_root) {
+            return Err(why);
+        }
         if !cli.is_file() {
             return Err(format!("the voice separator's engine is not installed ({}): models_status names it, models_download fetches it", cli.display()));
         }

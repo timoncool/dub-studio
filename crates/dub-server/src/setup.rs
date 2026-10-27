@@ -15,8 +15,8 @@
 //! Классы источников:
 //!   • модели — прямые файлы HF (higgs-q8_0/*, gemma-4 + mmproj, parakeet-tdt int8, nemotron 3
 //!     diarization, roformer voc_fv6-Q8_0);
-//!   • сайдкары/движки — zip-релизы GitHub (BSRoformer.cpp v0.1.0, llama.cpp b11146 win-cuda-13.4,
-//!     onnxruntime 1.28.2, ffmpeg BtbN, deno 2.9.7) + audiocpp_engine.dll (своя сборка с sm_75, GitHub timoncool/Higgs-Ultimate) + yt-dlp.exe 2026.08.19;
+//!   • сайдкары/движки — zip-релизы GitHub (BSRoformer.cpp v0.1.0, llama.cpp b11900 win-cuda-13.4,
+//!     onnxruntime 1.28.2, ffmpeg BtbN, deno 2.9.8) + audiocpp_engine.dll (своя сборка с sm_75, GitHub timoncool/Higgs-Ultimate) + yt-dlp.exe 2026.10.21;
 //!   • CUDA-runtime — PyPI-wheel'ы NVIDIA (cudart 13.4.92 / cublas 13.8.0.4 / cuDNN 9.27.0.42) + redist cuFFT
 //!     12.4.0.43, распаковка *.dll плоско;
 //!   • VC++ runtime + OCR-модели — БАНДЛ (кладутся в релиз рядом с exe, как VC++ в Higgs); не качаются,
@@ -144,25 +144,98 @@ pub struct Parts {
     pub markers: &'static [Marker],
 }
 
-// Сборка llama.cpp одна на обе платформы (стабильный релиз v0.5.0 = билд b11146).
-const GH_LLAMA_BUILD: &str = "b11146";
+/// The archive of a build of the separation engine (dub_sep::asset) on a platform that has the build.
+const fn sep_file(build: dub_sep::asset::Build) -> FileSpec {
+    match build.engine() {
+        Some(a) => FileSpec { url: a.url, dest_rel: a.archive, size: a.size, sha256: a.sha256, extract: Extract::Flat },
+        None => panic!("this platform has no such build of the separation engine"),
+    }
+}
+
+// Сборка llama.cpp одна на обе платформы.
+const GH_LLAMA_BUILD: &str = "b11900";
+
+/// The llama.cpp build of this computer's card, as YuE2 and Speech Studio pick it: CUDA 13, CUDA 12, Vulkan on another
+/// card, the processor without one (the build «auto» of the engines, `acpp::build`).
+pub fn llama_parts(build: crate::acpp::Build) -> &'static Parts {
+    match build {
+        crate::acpp::Build::Cuda13 => &platform::LLAMA,
+        crate::acpp::Build::Cuda12 => &platform::LLAMA_CUDA12,
+        crate::acpp::Build::Vulkan => &platform::LLAMA_VULKAN,
+        crate::acpp::Build::Cpu | crate::acpp::Build::Metal => &platform::LLAMA_CPU,
+    }
+}
+
+/// The oldest glibc the upstream llama.cpp CUDA builds for Linux start on (b11900 needs GLIBC_2.38 and GLIBCXX_3.4.32).
+const LLAMA_CUDA_GLIBC: (u32, u32) = (2, 38);
+
+/// The llama.cpp build Gemma runs on: the card's build, except a CUDA one on a Linux whose glibc is older than the
+/// upstream CUDA builds need; the card then runs the Vulkan build.
+pub fn llama_build() -> crate::acpp::Build {
+    llama_build_for(crate::acpp::build(), glibc_version())
+}
+
+fn llama_build_for(card: crate::acpp::Build, glibc: Option<(u32, u32)>) -> crate::acpp::Build {
+    use crate::acpp::Build;
+    match (card, glibc) {
+        (Build::Cuda13 | Build::Cuda12, Some(version)) if version < LLAMA_CUDA_GLIBC => Build::Vulkan,
+        _ => card,
+    }
+}
+
+/// Why Gemma does not run the card's CUDA build, for Settings; None when it does.
+pub fn llama_note() -> Option<String> {
+    let glibc = glibc_version()?;
+    (llama_build() != crate::acpp::build()).then(|| {
+        t!(
+            "setup-llama-vulkan-glibc",
+            glibc = format!("{}.{}", glibc.0, glibc.1),
+            need = format!("{}.{}", LLAMA_CUDA_GLIBC.0, LLAMA_CUDA_GLIBC.1)
+        )
+    })
+}
+
+/// The C library version of this Linux (`gnu_get_libc_version`); None on other systems.
+pub fn glibc_version() -> Option<(u32, u32)> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        let text = unsafe { std::ffi::CStr::from_ptr(libc::gnu_get_libc_version()) };
+        parse_glibc(text.to_str().ok()?)
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        None
+    }
+}
+
+#[cfg(any(all(target_os = "linux", target_env = "gnu"), test))]
+fn parse_glibc(text: &str) -> Option<(u32, u32)> {
+    let mut parts = text.trim().split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.chars().take_while(char::is_ascii_digit).collect::<String>().parse().ok()?;
+    Some((major, minor))
+}
+
+/// The folder of a llama.cpp build: CUDA 13 in tools/llama, where former versions put it, the others beside it.
+pub fn llama_dir(repo_root: &Path, build: crate::acpp::Build) -> PathBuf {
+    let folder = match build {
+        crate::acpp::Build::Cuda13 => "llama",
+        crate::acpp::Build::Cuda12 => "llama-cuda12",
+        crate::acpp::Build::Vulkan => "llama-vulkan",
+        crate::acpp::Build::Cpu | crate::acpp::Build::Metal => "llama-cpu",
+    };
+    repo_root.join("tools").join(folder)
+}
 
 /// Windows x64: zip-релизы, PyPI-колёса win_amd64, redist NVIDIA windows-x86_64.
 #[cfg(windows)]
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
-    // GitHub: BSRoformer.cpp движок win-cuda-13.1.0 zip (chenmozhijin/BSRoformer.cpp v0.1.0).
-    const GH_BSROFORMER_ENGINE: &str =
-        "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-cuda-13.1.0.zip";
-    // GitHub: BSRoformer.cpp CPU-сборка (win-x64-msvc, без CUDA) — сепарация на процессоре: медленнее,
-    // но полная функция. Статический exe 671КБ; MSVC-рантайм уже вшит компонентом vcruntime.
-    const GH_BSROFORMER_ENGINE_CPU: &str =
-        "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-x64-msvc.zip";
-    // GitHub: llama.cpp win-cuda-13.4 (ggml-org/llama.cpp; пин на стабильный релиз v0.5.0 = билд b11146).
+    // GitHub: llama.cpp win-cuda-13.4 (ggml-org/llama.cpp, билд b11900).
     // ggml-cuda.dll импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
     const GH_LLAMA: &str =
-        "https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-bin-win-cuda-13.4-x64.zip";
+        "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-cuda-13.4-x64.zip";
     // GitHub: onnxruntime 1.28.2 win-x64 (microsoft/onnxruntime) — строго 1.28.x (ort rc.13 api-28; иначе дедлок).
     const GH_ORT: &str =
         "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-win-x64-1.28.2.zip";
@@ -175,7 +248,7 @@ mod platform {
     // GitHub: ffmpeg static win64 GPL (BtbN/FFmpeg-Builds), master-сборка последнего дня месяца: дневные
     // autobuild BtbN удаляет через пару недель, а сборки последнего дня месяца хранит, поэтому закреплена такая.
     const GH_FFMPEG: &str =
-        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-N-126342-gf88b741dbf-win64-gpl.zip";
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-N-127021-ge0c94b2d1c-win64-gpl.zip";
     // PyPI-wheel'ы NVIDIA CUDA 13 runtime (CUDA 13.4 Update 2: cudart 13.4.92, cuBLAS 13.8.0.4).
     // Дают cudart64_13.dll, cublas64_13.dll, cublasLt64_13.dll.
     const WHEEL_CUDART: &str = "https://files.pythonhosted.org/packages/86/00/d5436004268f049214193659ebc36550b5ef3925c3d13b4cc980e13be6f5/nvidia_cuda_runtime-13.4.92-py3-none-win_amd64.whl";
@@ -187,100 +260,158 @@ mod platform {
     // onnxruntime_providers_cuda.dll (сборка cuda13) грузит именно cufft64_12.dll — без него CUDA-EP не
     // грузится («CUDA not enabled»). cuFFT сохраняет soname 12 даже в CUDA 13. Извлекается как *.dll плоско.
     const REDIST_CUFFT: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcufft/windows-x86_64/libcufft-windows-x86_64-12.4.0.43-archive.zip";
-    // CUDA-либы для whisper-faster r192.3 (CTranslate2, собран под CUDA 11!): нужны РЯДОМ с exe
-    // (cublas64_11 + cudnn64_8), иначе GPU-режим Whisper падает «cublas64_11.dll not found» -> откат на CPU.
-    // ВАЖНО: не-XXL сборка = CUDA 11 (cublas64_11), XXL = CUDA 12 (cublas64_12) — РАЗНЫЕ. Версии те, что
-    // валидировал Purfview (cuBLAS 11.11.3.6 + cuDNN 8.9.7.29), но архивы у NVIDIA (Libs тянет библиотеки плоско).
-    const REDIST_WHISPER_CUBLAS: &str = "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/libcublas-windows-x86_64-11.11.3.6-archive.zip";
-    const REDIST_WHISPER_CUDNN: &str = "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip";
-    // GitHub: yt-dlp 2026.08.19 (yt-dlp/yt-dlp, SHA-256 из SHA2-256SUMS релиза) — загрузка видео по ссылке. Это опора:
+    // GitHub: yt-dlp 2026.10.21 (yt-dlp/yt-dlp, SHA-256 из SHA2-256SUMS релиза) — загрузка видео по ссылке. Это опора:
     // более свежие версии ставит рядом ytdlp::update, при их провале работает эта.
-    const GH_YTDLP: &str = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp.exe";
-    // GitHub: deno 2.9.7 (denoland/deno) — JS-рантайм, без которого yt-dlp не решает задачи YouTube (yt-dlp-ejs уже внутри
+    const GH_YTDLP: &str = "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.21/yt-dlp.exe";
+    // GitHub: deno 2.9.8 (denoland/deno) — JS-рантайм, без которого yt-dlp не решает задачи YouTube (yt-dlp-ejs уже внутри
     // yt-dlp.exe; вики yt-dlp EJS: deno не ниже 2.3.0).
-    const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-pc-windows-msvc.zip";
+    const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip";
     // transcribe.cpp (fork timoncool/transcribe.cpp, branch studio, scripts/build-engine-windows.cmd): libtranscribe and
     // ggml whole in one library. CUDA 13, sm 75/80/86/89/90/100/120 without PTX, cudart and cuBLAS from cuda-runtime;
-    // the CPU build for a computer without a card CUDA 13 runs on.
+    // the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's.
+    const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
+        let d = build.download();
+        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
+    }
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
-        size: 144_513_536,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine.dll", dest_rel: "models/transcribe-engine/transcribe_engine.dll", size: 144_513_536, sha256: "80b90f1294f7d63dfb658fb5ebc6e06627d3d97931a2552bb8553deb7eeb9b52", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: 144_513_536 }],
+        size: dub_asr::tcpp::Build::Cuda.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, "models/transcribe-engine/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda.download().size }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
-        size: 3_666_432,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-cpu.dll", dest_rel: "models/transcribe-engine-cpu/transcribe_engine.dll", size: 3_666_432, sha256: "92511dcc9490fb4deb75c0d31c78de21ee826e50d90db1ffbeeff23865602be4", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: 3_666_432 }],
+        size: dub_asr::tcpp::Build::Cpu.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, "models/transcribe-engine-cpu/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cpu.download().size }],
     };
-    pub const HIGGS_ENGINE: Parts = Parts {
-        size: 129_390_080,
+    // CUDA 12.9, sm 52-120a without PTX; cudart and cuBLAS from cuda12-runtime, whose folder is on PATH on such a card.
+    pub const TRANSCRIBE_ENGINE_CUDA12: Parts = Parts {
+        size: dub_asr::tcpp::Build::Cuda12.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, "models/transcribe-engine-cuda12/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine-cuda12/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda12.download().size }],
+    };
+    pub const TRANSCRIBE_ENGINE_VULKAN: Parts = Parts {
+        size: dub_asr::tcpp::Build::Vulkan.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/transcribe_engine.dll")],
+        markers: &[Marker { rel: "models/transcribe-engine-vulkan/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Vulkan.download().size }],
+    };
+    // audiocpp_server (acpp_server::asset: fork timoncool/audio.cpp, branch studio; model specs inside, AVX2 floor, no
+    // AVX-512) with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and
+    // cuFFT from cuda-runtime. CUDA 12.9: SASS 5.2-12.0a without PTX, its libraries from cuda12-runtime.
+    const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
+        FileSpec { url: asset.url, dest_rel: archive, size: asset.size, sha256: asset.sha256, extract: Extract::Flat }
+    }
+    const SERVER_CUDA13: Parts = Parts {
+        size: acpp_server::asset::SERVER_WIN_CUDA13.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_CUDA13, "tools/audiocpp/_server.zip")],
+        markers: &[Marker { rel: "tools/audiocpp/audiocpp_server.exe", expect: 0 }],
+    };
+    const SERVER_CUDA12: Parts = Parts {
+        size: acpp_server::asset::SERVER_WIN_CUDA12.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_CUDA12, "tools/audiocpp-cuda12/_server.zip")],
+        markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server.exe", expect: 0 }],
+    };
+    const SERVER_VULKAN: Parts = Parts {
+        size: acpp_server::asset::SERVER_WIN_VULKAN.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_VULKAN, "tools/audiocpp-vulkan/_server.zip")],
+        markers: &[Marker { rel: "tools/audiocpp-vulkan/audiocpp_server.exe", expect: 0 }],
+    };
+    const SERVER_CPU: Parts = Parts {
+        size: acpp_server::asset::SERVER_WIN_CPU.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_CPU, "tools/audiocpp-cpu/_server.zip")],
+        markers: &[Marker { rel: "tools/audiocpp-cpu/audiocpp_server.exe", expect: 0 }],
+    };
+
+    /// The download of a build of the server.
+    pub fn server_parts(build: acpp_server::asset::Build) -> &'static Parts {
+        match build {
+            acpp_server::asset::Build::Cuda13 => &SERVER_CUDA13,
+            acpp_server::asset::Build::Cuda12 => &SERVER_CUDA12,
+            acpp_server::asset::Build::Vulkan => &SERVER_VULKAN,
+            acpp_server::asset::Build::Cpu => &SERVER_CPU,
+            acpp_server::asset::Build::Metal => &Parts { size: 0, files: &[], markers: &[] },
+        }
+    }
+
+    // NVIDIA CUDA 12.9 runtime for the CUDA 12.9 builds (PyPI wheels: cudart 12.9.79, cuBLAS 12.9.2.10, cuFFT
+    // 11.4.1.4): cudart64_12, cublas64_12, cublasLt64_12, cufft64_11, in their own folder, on PATH only for a card that
+    // takes the CUDA 12 builds.
+    pub const CUDA12_RUNTIME: Parts = Parts {
+        size: 756_821_809,
         files: &[
-            FileSpec { url: "https://github.com/timoncool/Higgs-Ultimate/releases/download/engine-0.2.3-turing/audiocpp_engine.dll", dest_rel: "models/higgs-engine/audiocpp_engine.dll", size: 129_390_080, sha256: "c3608613bd54bdd41c85cc90412d4add67b928b07b32be24f26d91cb9626f46d", extract: Extract::None },
+            FileSpec { url: "https://files.pythonhosted.org/packages/59/df/e7c3a360be4f7b93cee39271b792669baeb3846c58a4df6dfcf187a7ffab/nvidia_cuda_runtime_cu12-12.9.79-py3-none-win_amd64.whl", dest_rel: "models/cuda12-runtime/_cudart.whl", size: 3_591_604, sha256: "8e018af8fa02363876860388bd10ccb89eb9ab8fb0aa749aaf58430a9f7c4891", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/20/e2/fc9a0e985249d873150276d5afb02e39a66817fedbf1a385724393e505ed/nvidia_cublas_cu12-12.9.2.10-py3-none-win_amd64.whl", dest_rel: "models/cuda12-runtime/_cublas.whl", size: 553_162_896, sha256: "623f43027d40d44ceadf0043f002bd25cf353e8f13ce90b9a87057019f560661", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/20/ee/29955203338515b940bd4f60ffdbc073428f25ef9bfbce44c9a066aedc5c/nvidia_cufft_cu12-11.4.1.4-py3-none-win_amd64.whl", dest_rel: "models/cuda12-runtime/_cufft.whl", size: 200_067_309, sha256: "8e5bfaac795e93f80611f807d42844e8e27e340e0cde270dcb6c65386d795b80", extract: Extract::Libs },
         ],
-        markers: &[Marker { rel: "models/higgs-engine/audiocpp_engine.dll", expect: 129_390_080 }],
+        markers: &[
+            Marker { rel: "models/cuda12-runtime/cudart64_12.dll", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/cublas64_12.dll", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/cublasLt64_12.dll", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/cufft64_11.dll", expect: 0 },
+        ],
     };
 
     // Движок Drama 3 (C ABI форка timoncool/drama-rs, capi), CUDA 13.3, sm 75/80/86/89/90/100/120 без PTX:
     // импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
     pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "https://github.com/timoncool/drama-rs/releases/download/engine-0.1.3/drama_engine.dll", dest_rel: "models/drama-engine/drama_engine.dll", size: 32_075_264, sha256: "677133f63605d72e3eceb148eb1fd3eee72f0aae02b65750da59bf60d041793f", extract: Extract::None };
 
-    // Движок Qwen3-TTS (форк timoncool/qwentts.cpp, ветка studio, ABI 7), CUDA 13, sm 75/80/86/89/90/100/120 без PTX;
-    // библиотеки ggml лежат рядом с qwen.dll, cudart и cuBLAS ставит cuda-runtime.
+    // Qwen3-TTS (timoncool/qwentts.cpp, branch studio, ABI 7, scripts/build-engine-windows.cmd): qwen.dll with ggml and
+    // its CPU backend, and the backend module of each other device beside it (GGML_BACKEND_DL), which the library loads
+    // when a model first runs on that device. CUDA 13: sm 75/80/86/89/90/100/120; CUDA 12.9: sm 52-90 and 120; no PTX;
+    // cuBLAS comes from cuda-runtime or cuda12-runtime.
     pub const QWEN_ENGINE: Parts = Parts {
-        size: 434_153_248,
-        files: &[
-            super::QWEN_CODEC,
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/qwen.dll", dest_rel: "models/qwen3-tts/qwen.dll", size: 425_984, sha256: "273bf728327071096d762d07ce798f6e26d933a9fba0d997ab8d3f02aee8224a", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml.dll", dest_rel: "models/qwen3-tts/ggml.dll", size: 62_976, sha256: "7606ca3960bb9797cdc1e28666eba96092619ad49db6df210f54ce0841fe238c", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-base.dll", dest_rel: "models/qwen3-tts/ggml-base.dll", size: 693_760, sha256: "9c81caefcca1646f67958d8f3c8d84fc59c5009dc922faae6bd7170a50547c41", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-cpu.dll", dest_rel: "models/qwen3-tts/ggml-cpu.dll", size: 1_010_176, sha256: "ecff58f5d620c827d02361562512e4611a01ad7b1251bde13ff3dea97e52c80c", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-cuda.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 140_809_728, sha256: "30fe1b38ca87499506313841fda1bf064b09422c3d9bc1506b94ec0063d9d1ce", extract: Extract::None },
-        ],
-        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/qwen.dll", expect: 425_984 }, Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 140_809_728 }],
+        size: super::QWEN_CODEC.size + 848_126,
+        files: &[super::QWEN_CODEC, FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/qwen-windows-x64.zip", dest_rel: "models/qwen3-tts/_engine.zip", size: 848_126, sha256: "adbc02c0a1e3e4bcb800287ecdf0f706515b9a1bcbdf28c8d14b1e23b56a749d", extract: Extract::Flat }],
+        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/qwen.dll", expect: 433_152 }, Marker { rel: "models/qwen3-tts/ggml-cpu.dll", expect: 983_040 }],
+    };
+    pub const QWEN_VULKAN: Parts = Parts {
+        size: 41_529_856,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/ggml-vulkan-windows-x64.dll", dest_rel: "models/qwen3-tts/ggml-vulkan.dll", size: 41_529_856, sha256: "a0d2ee540061584bdf57448de57a87257719307a29501e95c30d33fd0327535d", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/ggml-vulkan.dll", expect: 41_529_856 }],
+    };
+    pub const QWEN_CUDA13: Parts = Parts {
+        size: 142_189_568,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/ggml-cuda13-windows-x64.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 142_189_568, sha256: "bedda4c6bf25d2375d44ec63fe83d0088bd62f28be166784d657038457474d70", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 142_189_568 }],
+    };
+    pub const QWEN_CUDA12: Parts = Parts {
+        size: 170_425_344,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/ggml-cuda12-windows-x64.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 170_425_344, sha256: "c59460d1c50f7295fb56fb70d5847ea9de8697b58b6934afa7aeb69087967ed8", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 170_425_344 }],
     };
 
-    pub const WHISPER_ENGINE: Parts = Parts {
-        size: 87_654_143,
-        files: &[
-            FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r192.3_windows.zip", dest_rel: "tools/whisper/_whisper.zip", size: 87_654_143, sha256: "8150ad257fd8e46d817bb7e667260c2ce4c493d9e58973862e6409c592b44ba5", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/whisper/whisper-faster.exe", expect: 0 }],
-    };
-
-    pub const WHISPER_CUDA: Parts = Parts {
-        size: 1_125_090_089,
-        files: &[
-            FileSpec { url: REDIST_WHISPER_CUBLAS, dest_rel: "tools/whisper/_wcublas.zip", size: 420_850_025, sha256: "67b0934a6359e4ee26fff823c356021589d392c4fd49ca12624f570edc08e2b9", extract: Extract::Libs },
-            FileSpec { url: REDIST_WHISPER_CUDNN, dest_rel: "tools/whisper/_wcudnn.zip", size: 704_240_064, sha256: "5e45478efe71a96329e6c0d2a3a2f79c747c15b2a51fead4b84c89b02cbf1671", extract: Extract::Libs },
-        ],
-        markers: &[
-            Marker { rel: "tools/whisper/cublas64_11.dll", expect: 0 },
-            Marker { rel: "tools/whisper/cudnn64_8.dll", expect: 0 },
-        ],
-    };
-
-    pub const BSROFORMER: Parts = Parts {
-        size: 164_990_561,
-        files: &[
-            FileSpec { url: GH_BSROFORMER_ENGINE, dest_rel: "tools/bsroformer/_engine.zip", size: 164_990_561, sha256: "a7c330774c0a40ec4de09ca0613af48fdc23c28bd0d90212425697daf7b1db74", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli.exe", expect: 0 }],
-    };
-
-    pub const BSROFORMER_CPU: Parts = Parts {
-        size: 671_031,
-        files: &[
-            FileSpec { url: GH_BSROFORMER_ENGINE_CPU, dest_rel: "tools/bsroformer-cpu/_engine.zip", size: 671_031, sha256: "e002811d56605bce6a51c275cf8f9ba447a3707771289ea6fbcca7f4d3e9ba1f", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli.exe", expect: 0 }],
-    };
+    // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: CUDA 13 and 12.9 the studios' builds (cuBLAS from cuda-runtime /
+    // cuda12-runtime), Vulkan and the processor the author's (the processor's static, its VC++ runtime from vcruntime).
+    const SEP_CUDA13: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda13)];
+    const SEP_CUDA12: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda12)];
+    const SEP_VULKAN: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Vulkan)];
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
+    pub const BSROFORMER: Parts = Parts { size: SEP_CUDA13[0].size, files: &SEP_CUDA13, markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli.exe", expect: 0 }] };
+    pub const BSROFORMER_CUDA12: Parts = Parts { size: SEP_CUDA12[0].size, files: &SEP_CUDA12, markers: &[Marker { rel: "tools/bsroformer-cuda12/bs_roformer-cli.exe", expect: 0 }] };
+    pub const BSROFORMER_VULKAN: Parts = Parts { size: SEP_VULKAN[0].size, files: &SEP_VULKAN, markers: &[Marker { rel: "tools/bsroformer-vulkan/bs_roformer-cli.exe", expect: 0 }] };
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli.exe", expect: 0 }] };
 
     pub const LLAMA: Parts = Parts {
-        size: 149_758_833,
+        size: 164_721_212,
         files: &[
-            FileSpec { url: GH_LLAMA, dest_rel: "tools/llama/_llama.zip", size: 149_758_833, sha256: "b1866c0ce76bc7bfb0c24b33e9a37e9669f1be18539b12c74ce361f81c41f047", extract: Extract::Flat },
+            FileSpec { url: GH_LLAMA, dest_rel: "tools/llama/_llama.zip", size: 164_721_212, sha256: "0d75ad36367da00622c146a97e82fac3dcfcbe960afc2f0234eef026886b16f6", extract: Extract::Flat },
         ],
         markers: &[Marker { rel: "tools/llama/llama-server.exe", expect: 0 }],
+    };
+    // the same release's other builds: CUDA 12.4 (cudart and cuBLAS 12 from cuda12-runtime), Vulkan and the processor
+    pub const LLAMA_CUDA12: Parts = Parts {
+        size: 279_417_051,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-cuda-12.4-x64.zip", dest_rel: "tools/llama-cuda12/_llama.zip", size: 279_417_051, sha256: "387ad76c926cdb301971851a11df018165a7b4df4b1b7c64cf4b09a367ec82bc", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cuda12/llama-server.exe", expect: 0 }],
+    };
+    pub const LLAMA_VULKAN: Parts = Parts {
+        size: 37_051_563,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-vulkan-x64.zip", dest_rel: "tools/llama-vulkan/_llama.zip", size: 37_051_563, sha256: "baf0183b1906d7cc0cfe9a0bd3fae34ceb4048acecc371ff3b7a91456783d051", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-vulkan/llama-server.exe", expect: 0 }],
+    };
+    pub const LLAMA_CPU: Parts = Parts {
+        size: 24_228_419,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-cpu-x64.zip", dest_rel: "tools/llama-cpu/_llama.zip", size: 24_228_419, sha256: "d3bbbbb7d1b4979b72052fd73cdeeb5a4d5a4e6a3f52aeb40abd6f116558e323", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cpu/llama-server.exe", expect: 0 }],
     };
 
     pub const ORT: Parts = Parts {
@@ -301,22 +432,22 @@ mod platform {
     };
 
     pub const FFMPEG: Parts = Parts {
-        size: 170_732_198,
+        size: 198_589_424,
         files: &[
-            FileSpec { url: GH_FFMPEG, dest_rel: "tools/ffmpeg/_ffmpeg.zip", size: 170_732_198, sha256: "b4da332540eaebc6939181b59e267f163dd57407ef6596f7f3452845921d1d91", extract: Extract::Pick },
+            FileSpec { url: GH_FFMPEG, dest_rel: "tools/ffmpeg/_ffmpeg.zip", size: 198_589_424, sha256: "85c4a4636b93d681a07588ffa6f1d8f5c064d9c3fb0622066662906b6fd718a1", extract: Extract::Pick },
         ],
         markers: &[Marker { rel: "tools/ffmpeg/ffmpeg.exe", expect: 0 }, Marker { rel: "tools/ffmpeg/ffprobe.exe", expect: 0 }],
     };
 
     pub const YTDLP: Parts = Parts {
-        size: 60_470_620,
+        size: 60_797_583,
         files: &[
-            FileSpec { url: GH_YTDLP, dest_rel: "tools/yt-dlp/yt-dlp.exe", size: 17_840_399, sha256: "66674953fe251b89f4d08c5f0e35e0728679bd67ab3d7d05c0562af101dd3e7a", extract: Extract::None },
-            FileSpec { url: GH_DENO, dest_rel: "tools/yt-dlp/_deno.zip", size: 42_630_221, sha256: "a0c3101b4158d1dfb7d6a78a7bf0f3de80c96bb423c152beec8beb22786f2238", extract: Extract::Flat },
+            FileSpec { url: GH_YTDLP, dest_rel: "tools/yt-dlp/yt-dlp.exe", size: 17_880_111, sha256: "33121d192d706e62f684a06f80918e3f3a8ba52ac3a65213b6951c39c7d9f555", extract: Extract::None },
+            FileSpec { url: GH_DENO, dest_rel: "tools/yt-dlp/_deno.zip", size: 42_917_472, sha256: "cba84b26e0df5ae7f74fc66b86a95b866872a86292ebd84fa1e959927edd93bf", extract: Extract::Flat },
         ],
         markers: &[
-            Marker { rel: "tools/yt-dlp/yt-dlp.exe", expect: 17_840_399 },
-            Marker { rel: "tools/yt-dlp/deno.exe", expect: 97_462_048 },
+            Marker { rel: "tools/yt-dlp/yt-dlp.exe", expect: 17_880_111 },
+            Marker { rel: "tools/yt-dlp/deno.exe", expect: 98_081_568 },
         ],
     };
 
@@ -348,88 +479,159 @@ mod platform {
 
 /// Linux x86-64: tar-сборки GitHub, PyPI-колёса manylinux, redist NVIDIA linux-x86_64. Библиотеки CUDA ищутся
 /// через LD_LIBRARY_PATH, который ставит `ensure_library_path` на старте студии.
-#[cfg(not(windows))]
+#[cfg(target_os = "linux")]
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
-    // Движок Higgs, собранный под Linux из исходника (timoncool/Higgs-Ultimate, sm 75/80/86/89/90/120a): RUNPATH
-    // $ORIGIN, CUDA-библиотеки берёт из своего каталога (их кладёт cuda-runtime).
     // transcribe.cpp (fork timoncool/transcribe.cpp, scripts/build-engine-linux-docker.sh: Ubuntu 22.04). CUDA 13.3,
     // sm 75/80/86/89/90/100/120, RUNPATH $ORIGIN and ../higgs-engine, where libcudart and libcublas come from
-    // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on.
+    // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's.
+    const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
+        let d = build.download();
+        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
+    }
+    const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.so";
+    const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.so";
+    const TCPP_CUDA12: &str = "models/transcribe-engine-cuda12/libtranscribe_engine.so";
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
-        size: 160_931_720,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine.so", dest_rel: "models/transcribe-engine/libtranscribe_engine.so", size: 160_931_720, sha256: "1dff339818952e1cf547d85bb216dae36dccf1d8654612f2197f98a75950368e", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine/libtranscribe_engine.so", expect: 160_931_720 }],
+        size: dub_asr::tcpp::Build::Cuda.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, TCPP_CUDA)],
+        markers: &[Marker { rel: TCPP_CUDA, expect: dub_asr::tcpp::Build::Cuda.download().size }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
-        size: 5_002_200,
-        files: &[FileSpec { url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-cpu.so", dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", size: 5_002_200, sha256: "8120113acb4f9a7b4b6c623e5e758b9260883ab3467eed07f712d6cb28f66c4f", extract: Extract::None }],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.so", expect: 5_002_200 }],
+        size: dub_asr::tcpp::Build::Cpu.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, TCPP_CPU)],
+        markers: &[Marker { rel: TCPP_CPU, expect: dub_asr::tcpp::Build::Cpu.download().size }],
     };
-    pub const HIGGS_ENGINE: Parts = Parts {
-        size: 136_774_464,
+    // CUDA 12.9 with RUNPATH $ORIGIN and ../cuda12-runtime, where cuda12-runtime puts libcudart and libcublas.
+    pub const TRANSCRIBE_ENGINE_CUDA12: Parts = Parts {
+        size: dub_asr::tcpp::Build::Cuda12.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, TCPP_CUDA12)],
+        markers: &[Marker { rel: TCPP_CUDA12, expect: dub_asr::tcpp::Build::Cuda12.download().size }],
+    };
+    pub const TRANSCRIBE_ENGINE_VULKAN: Parts = Parts {
+        size: dub_asr::tcpp::Build::Vulkan.download().size,
+        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/libtranscribe_engine.so")],
+        markers: &[Marker { rel: "models/transcribe-engine-vulkan/libtranscribe_engine.so", expect: dub_asr::tcpp::Build::Vulkan.download().size }],
+    };
+    // audiocpp_server (acpp_server::asset): one archive a build with libgomp beside the program; RUNPATH $ORIGIN,
+    // ../../models/higgs-engine (CUDA 13 runtime of cuda-runtime) and ../../models/cuda12-runtime (CUDA 12.9).
+    const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
+        FileSpec { url: asset.url, dest_rel: archive, size: asset.size, sha256: asset.sha256, extract: Extract::Flat }
+    }
+    const SERVER_CUDA13: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_CUDA13.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_CUDA13, "tools/audiocpp/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp/audiocpp_server", expect: 0 }],
+    };
+    const SERVER_CUDA12: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_CUDA12.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_CUDA12, "tools/audiocpp-cuda12/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server", expect: 0 }],
+    };
+    const SERVER_VULKAN: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_VULKAN.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_VULKAN, "tools/audiocpp-vulkan/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp-vulkan/audiocpp_server", expect: 0 }],
+    };
+    const SERVER_CPU: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_CPU.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_CPU, "tools/audiocpp-cpu/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp-cpu/audiocpp_server", expect: 0 }],
+    };
+
+    /// The download of a build of the server.
+    pub fn server_parts(build: acpp_server::asset::Build) -> &'static Parts {
+        match build {
+            acpp_server::asset::Build::Cuda13 => &SERVER_CUDA13,
+            acpp_server::asset::Build::Cuda12 => &SERVER_CUDA12,
+            acpp_server::asset::Build::Vulkan => &SERVER_VULKAN,
+            acpp_server::asset::Build::Cpu => &SERVER_CPU,
+            acpp_server::asset::Build::Metal => &Parts { size: 0, files: &[], markers: &[] },
+        }
+    }
+
+    // CUDA 12.9 runtime for the CUDA 12.9 build (manylinux wheels of the Windows component's versions: cudart 12.9.79,
+    // cuBLAS 12.9.2.10, cuFFT 11.4.1.4), in their own folder the build's RUNPATH names.
+    pub const CUDA12_RUNTIME: Parts = Parts {
+        size: 785_610_881,
         files: &[
-            FileSpec { url: "https://github.com/timoncool/Higgs-Ultimate/releases/download/engine-0.2.3-turing/libaudiocpp_engine.so", dest_rel: "models/higgs-engine/libaudiocpp_engine.so", size: 136_774_464, sha256: "dae7b29111acf1e564f9afa541b2a4d360ba2cd6fc60eb4d5b8bdb9c04d722f6", extract: Extract::None },
+            FileSpec { url: "https://files.pythonhosted.org/packages/bc/46/a92db19b8309581092a3add7e6fceb4c301a3fd233969856a8cbf042cd3c/nvidia_cuda_runtime_cu12-12.9.79-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", dest_rel: "models/cuda12-runtime/_cudart.whl", size: 3_493_179, sha256: "25bba2dfb01d48a9b59ca474a1ac43c6ebf7011f1b0b8cc44f54eb6ac48a96c3", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/cb/c0/0a517bfe63ccd3b92eb254d264e28fca3c7cab75d07daea315250fb1bf73/nvidia_cublas_cu12-12.9.2.10-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/cuda12-runtime/_cublas.whl", size: 581_240_110, sha256: "e4f53a8ca8c5d6e8c492d0d0a3d565ecb59a751b19cfdaa4f6da0ab2104c1702", extract: Extract::Libs },
+            FileSpec { url: "https://files.pythonhosted.org/packages/95/f4/61e6996dd20481ee834f57a8e9dca28b1869366a135e0d42e2aa8493bdd4/nvidia_cufft_cu12-11.4.1.4-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", dest_rel: "models/cuda12-runtime/_cufft.whl", size: 200_877_592, sha256: "c67884f2a7d276b4b80eb56a79322a95df592ae5e765cf1243693365ccab4e28", extract: Extract::Libs },
         ],
-        markers: &[Marker { rel: "models/higgs-engine/libaudiocpp_engine.so", expect: 136_774_464 }],
+        markers: &[
+            Marker { rel: "models/cuda12-runtime/libcudart.so.12", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/libcublas.so.12", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/libcublasLt.so.12", expect: 0 },
+            Marker { rel: "models/cuda12-runtime/libcufft.so.11", expect: 0 },
+        ],
     };
 
     // Движок Drama 3 (форк timoncool/drama-rs, capi/build-linux-docker.sh: CUDA 13.3, Ubuntu 22.04, sm 75/80/86/89/90/
     // 100/120): RUNPATH $ORIGIN и ../higgs-engine, где libcudart и libcublas ставит cuda-runtime.
     pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "https://github.com/timoncool/drama-rs/releases/download/engine-0.1.3/libdrama_engine.so", dest_rel: "models/drama-engine/libdrama_engine.so", size: 32_642_032, sha256: "b9beb23321fd63025facb2fa1d90087d3dd03069475aa60ad60c3fb3c97892b4", extract: Extract::None };
 
-    // Сборки Qwen3-TTS для Linux пока нет: компонент ставит только кодек, движок остаётся недоступным с причиной.
-    pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
-
-    // Purfview faster-whisper r189.1 для Linux (последняя Linux-сборка не-XXL, CTranslate2 под CUDA 11).
-    pub const WHISPER_ENGINE: Parts = Parts {
-        size: 106_093_648,
-        files: &[
-            FileSpec { url: "https://github.com/Purfview/whisper-standalone-win/releases/download/faster-whisper/Whisper-Faster_r189.1_linux.zip", dest_rel: "tools/whisper/_whisper.zip", size: 106_093_648, sha256: "f32f5e7abbb53300e569ca5ab3e9dd286b63b5e212209c12d47bdd9c72f923dd", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/whisper/whisper-faster", expect: 0 }],
+    // Qwen3-TTS (timoncool/qwentts.cpp, branch studio, ABI 7, scripts/build-engine-linux-docker.sh, Ubuntu 22.04):
+    // libqwen.so with ggml, its CPU backend and libgomp, and the backend module of each other device beside it
+    // (GGML_BACKEND_DL); RUNPATH $ORIGIN, ../higgs-engine (CUDA 13 runtime) and ../cuda12-runtime.
+    pub const QWEN_ENGINE: Parts = Parts {
+        size: super::QWEN_CODEC.size + 1_235_196,
+        files: &[super::QWEN_CODEC, FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/qwen-linux-x64.tar.gz", dest_rel: "models/qwen3-tts/_engine.tar.gz", size: 1_235_196, sha256: "a2a5a4d355f8e4e58e87130f075c035aa0c62d0e43cec31da7c0c87c22880e8a", extract: Extract::Flat }],
+        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/libqwen.so", expect: 675_808 }, Marker { rel: "models/qwen3-tts/libggml-cpu.so", expect: 1_272_208 }],
+    };
+    pub const QWEN_VULKAN: Parts = Parts {
+        size: 42_242_640,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/libggml-vulkan-linux-x64.so", dest_rel: "models/qwen3-tts/libggml-vulkan.so", size: 42_242_640, sha256: "efce535b0ba4a3d7803ab2ec75f0a1a06693fb44699baebbdd61dbc032c2177d", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/libggml-vulkan.so", expect: 42_242_640 }],
+    };
+    pub const QWEN_CUDA13: Parts = Parts {
+        size: 157_457_144,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/libggml-cuda13-linux-x64.so", dest_rel: "models/qwen3-tts/libggml-cuda.so", size: 157_457_144, sha256: "ded156c13202ed4a27647eccde8ec7e30b139e5e948f8d98a9f67f0d8494d6eb", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/libggml-cuda.so", expect: 157_457_144 }],
+    };
+    pub const QWEN_CUDA12: Parts = Parts {
+        size: 181_025_560,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/libggml-cuda12-linux-x64.so", dest_rel: "models/qwen3-tts/libggml-cuda.so", size: 181_025_560, sha256: "bb4123ff8521c38ecf7704e71d2ee2814ae21704d44240b9489033ce56474837", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/libggml-cuda.so", expect: 181_025_560 }],
     };
 
-    // cuBLAS 11.11.3.6 и cuDNN 8.9.7.29 (CUDA 11) — те же версии, что на Windows, из redist NVIDIA.
-    pub const WHISPER_CUDA: Parts = Parts {
-        size: 1_361_648_788,
-        files: &[
-            FileSpec { url: "https://developer.download.nvidia.com/compute/cuda/redist/libcublas/linux-x86_64/libcublas-linux-x86_64-11.11.3.6-archive.tar.xz", dest_rel: "tools/whisper/_wcublas.tar.xz", size: 500_681_532, sha256: "045e6455c9f8789b1c7ced19957c7904d23c221f4d1d75bb574a2c856aebae98", extract: Extract::Libs },
-            FileSpec { url: "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/cudnn-linux-x86_64-8.9.7.29_cuda11-archive.tar.xz", dest_rel: "tools/whisper/_wcudnn.tar.xz", size: 860_967_256, sha256: "a3e2509028cecda0117ce5a0f42106346e82e86d390f4bb9475afc976c77402e", extract: Extract::Libs },
-        ],
-        markers: &[
-            Marker { rel: "tools/whisper/libcublas.so.11", expect: 0 },
-            Marker { rel: "tools/whisper/libcudnn.so.8", expect: 0 },
-        ],
-    };
+    // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: the studios' CUDA 13 and 12.9 builds (Ubuntu 22.04, libgomp
+    // beside the program, RUNPATH $ORIGIN, ../../models/higgs-engine and ../../models/cuda12-runtime), Vulkan and the
+    // processor the author's.
+    const SEP_CUDA13: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda13)];
+    const SEP_CUDA12: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cuda12)];
+    const SEP_VULKAN: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Vulkan)];
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
+    pub const BSROFORMER: Parts = Parts { size: SEP_CUDA13[0].size, files: &SEP_CUDA13, markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli", expect: 0 }] };
+    pub const BSROFORMER_CUDA12: Parts = Parts { size: SEP_CUDA12[0].size, files: &SEP_CUDA12, markers: &[Marker { rel: "tools/bsroformer-cuda12/bs_roformer-cli", expect: 0 }] };
+    pub const BSROFORMER_VULKAN: Parts = Parts { size: SEP_VULKAN[0].size, files: &SEP_VULKAN, markers: &[Marker { rel: "tools/bsroformer-vulkan/bs_roformer-cli", expect: 0 }] };
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
 
-    // BSRoformer.cpp v0.1.0 linux-cuda-13.1.0: RUNPATH указывает на каталог CI, свои libggml берёт через
-    // LD_LIBRARY_PATH запуска (dub-sep).
-    pub const BSROFORMER: Parts = Parts {
-        size: 239_527_692,
-        files: &[
-            FileSpec { url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-cuda-13.1.0.tar.xz", dest_rel: "tools/bsroformer/_engine.tar.xz", size: 239_527_692, sha256: "6d7e543f2985b785cfef2baf0b217fc2f891e6b5a03804ce2657b4eb70379126", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer/bs_roformer-cli", expect: 0 }],
-    };
-
-    pub const BSROFORMER_CPU: Parts = Parts {
-        size: 640_204,
-        files: &[
-            FileSpec { url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-x64-cpu.tar.xz", dest_rel: "tools/bsroformer-cpu/_engine.tar.xz", size: 640_204, sha256: "bc0f20237b9ed263582ebd0844dfc7dbb61309a67c31f4a8d7ba156e21292c77", extract: Extract::Flat },
-        ],
-        markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }],
-    };
-
-    // llama.cpp b11146 ubuntu-cuda-13.4: RUNPATH $ORIGIN для своих библиотек, cudart/cuBLAS 13 — из cuda-runtime,
+    // llama.cpp b11900 ubuntu-cuda-13.4: RUNPATH $ORIGIN для своих библиотек, cudart/cuBLAS 13 — из cuda-runtime,
     // libssl.so.3 — системная.
     pub const LLAMA: Parts = Parts {
-        size: 149_265_156,
+        size: 163_678_003,
         files: &[
-            FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11146/llama-b11146-bin-ubuntu-cuda-13.4-x64.tar.gz", dest_rel: "tools/llama/_llama.tar.gz", size: 149_265_156, sha256: "1603d9c00a4b6eac8298c5c7868cdb080a3ac31948ab1e457441d71ce274dd7e", extract: Extract::Flat },
+            FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-cuda-13.4-x64.tar.gz", dest_rel: "tools/llama/_llama.tar.gz", size: 163_678_003, sha256: "925078bca4277d495e7fc07cfd20aa1a9ed57640b218bce3ad49de9bcc1c5799", extract: Extract::Flat },
         ],
         markers: &[Marker { rel: "tools/llama/llama-server", expect: 0 }],
+    };
+    // the same release's other builds: CUDA 12.8 (cudart and cuBLAS 12 from cuda12-runtime), Vulkan and the processor
+    pub const LLAMA_CUDA12: Parts = Parts {
+        size: 182_211_176,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-cuda-12.8-x64.tar.gz", dest_rel: "tools/llama-cuda12/_llama.tar.gz", size: 182_211_176, sha256: "618c17e4e4ccc11953f21452ca34e4786a1554dc405e98a2c4d53d7c2ed5b415", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cuda12/llama-server", expect: 0 }],
+    };
+    pub const LLAMA_VULKAN: Parts = Parts {
+        size: 35_162_561,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-vulkan-x64.tar.gz", dest_rel: "tools/llama-vulkan/_llama.tar.gz", size: 35_162_561, sha256: "111ee8d3f61723859e57195bb9ba21241eb598163621840aaf3b5c066950c092", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-vulkan/llama-server", expect: 0 }],
+    };
+    pub const LLAMA_CPU: Parts = Parts {
+        size: 22_497_562,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-x64.tar.gz", dest_rel: "tools/llama-cpu/_llama.tar.gz", size: 22_497_562, sha256: "3effcc3009af64d6f30c217827d7982b3934577d282feb243b11fb6789ed124e", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cpu/llama-server", expect: 0 }],
     };
 
     pub const ORT: Parts = Parts {
@@ -452,22 +654,22 @@ mod platform {
 
     // ffmpeg static linux64 GPL (BtbN), та же сборка последнего дня месяца, что на Windows.
     pub const FFMPEG: Parts = Parts {
-        size: 128_065_756,
+        size: 154_317_776,
         files: &[
-            FileSpec { url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-31-13-27/ffmpeg-N-126342-gf88b741dbf-linux64-gpl.tar.xz", dest_rel: "tools/ffmpeg/_ffmpeg.tar.xz", size: 128_065_756, sha256: "d1cf19f669510448f18a4cffcdbd8fa9592ee7c15c92feb5b96ad7e9ccc30114", extract: Extract::Pick },
+            FileSpec { url: "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-30-13-08/ffmpeg-N-127021-ge0c94b2d1c-linux64-gpl.tar.xz", dest_rel: "tools/ffmpeg/_ffmpeg.tar.xz", size: 154_317_776, sha256: "3a2a94e704752287833604501a79505c2319ad1d8b2f5577c63f2b1b7a6f2b66", extract: Extract::Pick },
         ],
         markers: &[Marker { rel: "tools/ffmpeg/ffmpeg", expect: 0 }, Marker { rel: "tools/ffmpeg/ffprobe", expect: 0 }],
     };
 
     pub const YTDLP: Parts = Parts {
-        size: 82_043_018,
+        size: 82_532_144,
         files: &[
-            FileSpec { url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.08.19/yt-dlp_linux", dest_rel: "tools/yt-dlp/yt-dlp", size: 40_446_224, sha256: "58162f9bfdc27458ea47bfcb311cf47028f17d8154a8bf7d689861d46399230a", extract: Extract::None },
-            FileSpec { url: "https://github.com/denoland/deno/releases/download/v2.9.7/deno-x86_64-unknown-linux-gnu.zip", dest_rel: "tools/yt-dlp/_deno.zip", size: 41_596_794, sha256: "c6527f24f4b16031d3ae4fa9f658d5f11534c8d84ce7dc8502420280919c3490", extract: Extract::Flat },
+            FileSpec { url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.21/yt-dlp_linux", dest_rel: "tools/yt-dlp/yt-dlp", size: 40_569_080, sha256: "d8bd33fca9d5b23bd5b9952b3fca36db5c46331933fda9f598a3da14ce2c243f", extract: Extract::None },
+            FileSpec { url: "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-unknown-linux-gnu.zip", dest_rel: "tools/yt-dlp/_deno.zip", size: 41_963_064, sha256: "e890975bc2549807bbcc0b584ffafda72cc7c93349dd99c80483dd784f6c4609", extract: Extract::Flat },
         ],
         markers: &[
-            Marker { rel: "tools/yt-dlp/yt-dlp", expect: 40_446_224 },
-            Marker { rel: "tools/yt-dlp/deno", expect: 95_830_104 },
+            Marker { rel: "tools/yt-dlp/yt-dlp", expect: 40_569_080 },
+            Marker { rel: "tools/yt-dlp/deno", expect: 96_055_992 },
         ],
     };
 
@@ -496,6 +698,123 @@ mod platform {
             FileSpec { url: "https://files.pythonhosted.org/packages/af/75/96ea5c5368eb595c39d629cde08a66227a864e71ccb0e593add2612bb952/nvidia_cudnn_cu13-9.27.0.42-py3-none-manylinux_2_27_x86_64.whl", dest_rel: "models/higgs-engine/_cudnn.whl", size: 536_771_498, sha256: "9677e76f21862eb5da7ee5ed69d544738b2d8b5c3ce7e5ec125c5592e6cdbdc8", extract: Extract::Libs },
         ],
         markers: &[Marker { rel: "models/higgs-engine/libcudnn.so.9", expect: 0 }],
+    };
+}
+
+#[cfg(all(target_os = "macos", not(target_arch = "aarch64")))]
+compile_error!("Dub Studio for macOS is built for Apple silicon only: ONNX Runtime 1.28.2 has no Intel build");
+
+/// macOS on Apple silicon: one build of each engine, Metal and the processor in it, in the processor build's folders
+/// (a stage set to the processor or to «auto» runs it); no CUDA, no Vulkan, no Drama 3 and no Qwen3-TTS engine. The pins
+/// are Speech Studio's.
+#[cfg(target_os = "macos")]
+mod platform {
+    use super::{Extract, FileSpec, Marker, Parts};
+
+    const NONE: Parts = Parts { size: 0, files: &[], markers: &[] };
+
+    // transcribe.cpp (dub_tcpp's pin): Metal and the processor in one library, in the processor build's folder.
+    pub const TRANSCRIBE_ENGINE: Parts = NONE;
+    pub const TRANSCRIBE_ENGINE_CUDA12: Parts = NONE;
+    pub const TRANSCRIBE_ENGINE_VULKAN: Parts = NONE;
+    pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
+        size: dub_asr::tcpp::Build::Cpu.download().size,
+        files: &[FileSpec {
+            url: dub_asr::tcpp::Build::Cpu.download().url,
+            dest_rel: "models/transcribe-engine-cpu/libtranscribe_engine.dylib",
+            size: dub_asr::tcpp::Build::Cpu.download().size,
+            sha256: dub_asr::tcpp::Build::Cpu.download().sha256,
+            extract: Extract::None,
+        }],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe_engine.dylib", expect: dub_asr::tcpp::Build::Cpu.download().size }],
+    };
+
+    // audiocpp_server (acpp_server::asset::SERVER_MACOS): Metal and the processor in one program.
+    const SERVER_METAL: Parts = Parts {
+        size: acpp_server::asset::SERVER_MACOS.size,
+        files: &[FileSpec {
+            url: acpp_server::asset::SERVER_MACOS.url,
+            dest_rel: "tools/audiocpp-metal/_server.tar.gz",
+            size: acpp_server::asset::SERVER_MACOS.size,
+            sha256: acpp_server::asset::SERVER_MACOS.sha256,
+            extract: Extract::Flat,
+        }],
+        markers: &[Marker { rel: "tools/audiocpp-metal/audiocpp_server", expect: 0 }],
+    };
+
+    /// The download of a build of the server: a Mac has its one Metal build.
+    pub fn server_parts(build: acpp_server::asset::Build) -> &'static Parts {
+        match build {
+            acpp_server::asset::Build::Metal => &SERVER_METAL,
+            _ => &NONE,
+        }
+    }
+
+    pub const CUDA12_RUNTIME: Parts = NONE;
+    pub const CUDA_RUNTIME: Parts = NONE;
+    pub const CUDNN: Parts = NONE;
+    pub const ORT_GPU: Parts = NONE;
+
+    // Drama 3 is a CUDA engine: macOS does not offer it (`models::drama_unavailable`).
+    pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "", dest_rel: "models/drama-engine/libdrama_engine.dylib", size: 0, sha256: "", extract: Extract::None };
+
+    // Qwen3-TTS (timoncool/qwentts.cpp engine-0.2.1, scripts/build-engine-macos.sh, ABI 7): libqwen.dylib with ggml,
+    // the CPU backend and Metal linked in, no backend modules.
+    pub const QWEN_ENGINE: Parts = Parts {
+        size: super::QWEN_CODEC.size + QWEN_MACOS_SIZE,
+        files: &[super::QWEN_CODEC, FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.1/qwen-macos-arm64.tar.gz", dest_rel: "models/qwen3-tts/_engine.tar.gz", size: QWEN_MACOS_SIZE, sha256: "116a8ff3686375974fe9a0f8d39970b36aa86e12e65e02dd4b7b3ee502afa9e7", extract: Extract::Flat }],
+        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/libqwen.dylib", expect: 594_416 }],
+    };
+    const QWEN_MACOS_SIZE: u64 = 1_953_301;
+    pub const QWEN_VULKAN: Parts = NONE;
+    pub const QWEN_CUDA13: Parts = NONE;
+    pub const QWEN_CUDA12: Parts = NONE;
+
+    // BSRoformer.cpp v0.1.0, dub_sep::asset's one Mac build (the author's: Metal and the processor).
+    pub const BSROFORMER: Parts = NONE;
+    pub const BSROFORMER_CUDA12: Parts = NONE;
+    pub const BSROFORMER_VULKAN: Parts = NONE;
+    const SEP_CPU: [FileSpec; 1] = [super::sep_file(dub_sep::asset::Build::Cpu)];
+    pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
+
+    // llama.cpp b11900 macos-arm64: Metal and the processor, rpath @loader_path.
+    pub const LLAMA: Parts = NONE;
+    pub const LLAMA_CUDA12: Parts = NONE;
+    pub const LLAMA_VULKAN: Parts = NONE;
+    pub const LLAMA_CPU: Parts = Parts {
+        size: 16_295_973,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-macos-arm64.tar.gz", dest_rel: "tools/llama-cpu/_llama.tar.gz", size: 16_295_973, sha256: "6d3af8649e687b288395ee79f4423a21376892edb94520fa6320bfd3eb81700b", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cpu/llama-server", expect: 0 }],
+    };
+
+    pub const ORT: Parts = Parts {
+        size: 32_093_967,
+        files: &[
+            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.28.2/onnxruntime-osx-arm64-1.28.2.tgz", dest_rel: "models/runtime/_ort.tgz", size: 32_093_967, sha256: "c4fceacfc53765d0869dc9180c31ec91054d149017a99d1e80ffe28dc79596de", extract: Extract::Tree },
+        ],
+        markers: &[Marker { rel: "models/runtime/onnxruntime-osx-arm64-1.28.2/lib/libonnxruntime.1.28.2.dylib", expect: 0 }],
+    };
+
+    // ffmpeg 9.0.2 of ffmpeg.martin-riedl.de (static, signed): ffmpeg and ffprobe, a zip each.
+    pub const FFMPEG: Parts = Parts {
+        size: 56_713_400,
+        files: &[
+            FileSpec { url: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip", dest_rel: "tools/ffmpeg/_ffmpeg.zip", size: 28_395_699, sha256: "c8ed4c4e6978a03c485edbfe4e0a5dc2380f8a30bba5150531b31b094492d924", extract: Extract::Pick },
+            FileSpec { url: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffprobe.zip", dest_rel: "tools/ffmpeg/_ffprobe.zip", size: 28_317_701, sha256: "fcbe839537485eaee7a7a8bc5cbc0f90d53617e80943e8a5b2e31cb851197ea6", extract: Extract::Pick },
+        ],
+        markers: &[Marker { rel: "tools/ffmpeg/ffmpeg", expect: 66_332_880 }, Marker { rel: "tools/ffmpeg/ffprobe", expect: 66_158_064 }],
+    };
+
+    pub const YTDLP: Parts = Parts {
+        size: 75_951_531,
+        files: &[
+            FileSpec { url: "https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.21/yt-dlp_macos", dest_rel: "tools/yt-dlp/yt-dlp", size: 37_180_736, sha256: "7a6fe71d7d680f1fb0ac18d4949873d77db2859e90017c0f44bd94b23be4ee40", extract: Extract::None },
+            FileSpec { url: "https://github.com/denoland/deno/releases/download/v2.9.8/deno-aarch64-apple-darwin.zip", dest_rel: "tools/yt-dlp/_deno.zip", size: 38_770_795, sha256: "9f0bf660393da2eaff044cdc7444cb08c73f235849b61d224d825a194ce7c98e", extract: Extract::Flat },
+        ],
+        markers: &[
+            Marker { rel: "tools/yt-dlp/yt-dlp", expect: 37_180_736 },
+            Marker { rel: "tools/yt-dlp/deno", expect: 81_512_928 },
+        ],
     };
 }
 
@@ -645,9 +964,9 @@ pub fn manifest() -> Vec<Component> {
             purpose: t!("setup-comp-higgs-engine-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: platform::HIGGS_ENGINE.size,
-            files: platform::HIGGS_ENGINE.files,
-            markers: platform::HIGGS_ENGINE.markers,
+            size: platform::server_parts(crate::acpp::build()).size,
+            files: platform::server_parts(crate::acpp::build()).files,
+            markers: platform::server_parts(crate::acpp::build()).markers,
             external_url: None,
         },
         Component {
@@ -743,6 +1062,28 @@ pub fn manifest() -> Vec<Component> {
             size: platform::TRANSCRIBE_ENGINE_CPU.size,
             files: platform::TRANSCRIBE_ENGINE_CPU.files,
             markers: platform::TRANSCRIBE_ENGINE_CPU.markers,
+            external_url: None,
+        },
+        Component {
+            id: "transcribe-engine-cuda12",
+            name: "transcribe.cpp (CUDA 12)".into(),
+            purpose: t!("setup-comp-transcribe-engine-cuda12-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::TRANSCRIBE_ENGINE_CUDA12.size,
+            files: platform::TRANSCRIBE_ENGINE_CUDA12.files,
+            markers: platform::TRANSCRIBE_ENGINE_CUDA12.markers,
+            external_url: None,
+        },
+        Component {
+            id: "transcribe-engine-vulkan",
+            name: "transcribe.cpp (Vulkan)".into(),
+            purpose: t!("setup-comp-transcribe-engine-vulkan-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::TRANSCRIBE_ENGINE_VULKAN.size,
+            files: platform::TRANSCRIBE_ENGINE_VULKAN.files,
+            markers: platform::TRANSCRIBE_ENGINE_VULKAN.markers,
             external_url: None,
         },
         // Альтернативные кванты TTS Higgs (выбор в настройках; своя папка на квант, aux те же).
@@ -903,130 +1244,68 @@ pub fn manifest() -> Vec<Component> {
             markers: &[Marker { rel: "models/asr-gguf-parakeet-ultra/parakeet-ultra-Q8_0.gguf", expect: 740_363_168 }],
             external_url: None,
         },
-        // ── АЛЬТЕРНАТИВНЫЙ ASR-ДВИЖОК: Whisper (Purfview standalone faster-whisper) ──────────
-        // Бинарь-onefile (CTranslate2 CPU из коробки; GPU опц. с CUDA11-либами). Выбор в настройках:
-        // движок Parakeet/Whisper + РАЗНЫЕ модели (tiny…large-v3-turbo) + РАЗНЫЕ кванты (compute_type).
+        // ── Whisper: CrisperWhisper 2.0 turbo (nyralabs, лицензия nyra health Non-Commercial, LICENSE.md рядом) ──
+        // Репозиторий Hugging Face как есть, ревизия закреплена: audio.cpp читает папку. Идёт в audiocpp_server студии.
         Component {
-            id: "whisper-engine",
-            name: t!("setup-comp-whisper-engine-name"),
-            purpose: t!("setup-comp-whisper-engine-purpose"),
+            id: "crisperwhisper-turbo",
+            name: "CrisperWhisper 2.0 turbo".into(),
+            purpose: t!("setup-comp-crisperwhisper-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: platform::WHISPER_ENGINE.size,
-            files: platform::WHISPER_ENGINE.files,
-            markers: platform::WHISPER_ENGINE.markers,
-            external_url: None,
-        },
-        // CUDA-либы для GPU-режима Whisper (cuBLAS 12 + cuDNN 8) РЯДОМ с whisper-faster.exe. Без них
-        // whisper-faster (CTranslate2) не видит CUDA и падает на CPU — «GPU выбран, а работает на CPU».
-        // Качается по запросу, когда стартует Whisper-джоба на GPU (см. ensure_job_components).
-        Component {
-            id: "whisper-cuda",
-            name: t!("setup-comp-whisper-cuda-name"),
-            purpose: t!("setup-comp-whisper-cuda-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: platform::WHISPER_CUDA.size,
-            files: platform::WHISPER_CUDA.files,
-            markers: platform::WHISPER_CUDA.markers,
-            external_url: None,
-        },
-        Component {
-            id: "whisper-tiny",
-            name: t!("setup-comp-whisper-tiny-name"),
-            purpose: t!("setup-comp-whisper-tiny-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 78_203_619,
+            size: 1_623_586_704,
             files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/model.bin", dest_rel: "models/whisper/faster-whisper-tiny/model.bin", size: 75_538_270, sha256: "dcb76c6586fc06cbdac6dd21f14cfd129cc4cdd9dce19bf4ffa62e59cbe6e6d1", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/config.json", dest_rel: "models/whisper/faster-whisper-tiny/config.json", size: 2_249, sha256: "a73a28cdfe1c43ccc7202fa333d1f89c202477271407ae9a7f19afa52039cac8", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/tokenizer.json", dest_rel: "models/whisper/faster-whisper-tiny/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-tiny/resolve/d90ca5fe260221311c53c58e660288d3deb8d356/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-tiny/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/LICENSE.md", dest_rel: "models/crisperwhisper2-turbo/LICENSE.md", size: 17_784, sha256: "42f43bf4dc72ef422f91f6ca143f4514e21a68b353940d99091c1addcd0aee79", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/README.md", dest_rel: "models/crisperwhisper2-turbo/README.md", size: 10_974, sha256: "ddc82a301a1b59035eefcc1a8b2ec90d56257104df7365b00493c58135a6b029", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/added_tokens.json", dest_rel: "models/crisperwhisper2-turbo/added_tokens.json", size: 35_319, sha256: "228ddf33a2c2b94033dc0fad8e7847b554b1c9f7d2054f5455ffd562b6a30dc7", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/config.json", dest_rel: "models/crisperwhisper2-turbo/config.json", size: 1_211, sha256: "9d823d0eacddfc5ee920fac73897abfd29fbecac7d9e49b5d8e7f0bd63a56144", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/generation_config.json", dest_rel: "models/crisperwhisper2-turbo/generation_config.json", size: 3_880, sha256: "e20fb70a44ce2b3cb3b2bbbea852e064638563b072719640a286d2a6865066e1", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/merges.txt", dest_rel: "models/crisperwhisper2-turbo/merges.txt", size: 493_869, sha256: "2df2990a395e35e8dfbc7511e08c12d56018d8d04691e0133e5d63b21e154dc6", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/model.safetensors", dest_rel: "models/crisperwhisper2-turbo/model.safetensors", size: 1_617_907_538, sha256: "0121a185b87ada7497f22dfbcd6c86b5f599b69dfcc8676e37f36447caf0b630", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/normalizer.json", dest_rel: "models/crisperwhisper2-turbo/normalizer.json", size: 52_666, sha256: "bf1c507dc8724ca9cf9903640dacfb69dae2f00edee4f21ceba106a7392f26dd", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/preprocessor_config.json", dest_rel: "models/crisperwhisper2-turbo/preprocessor_config.json", size: 357, sha256: "654cf18d3e163b948ceaf9766da56ce0b52de265d58673cf61c9376f126bd499", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/special_tokens_map.json", dest_rel: "models/crisperwhisper2-turbo/special_tokens_map.json", size: 2_186, sha256: "baea4ea09372eb4fca86b4e4346139fd73cb807d5087e9de0948e971739c3e74", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/tokenizer.json", dest_rel: "models/crisperwhisper2-turbo/tokenizer.json", size: 3_937_105, sha256: "00e6dce8d06acafefaea8d5d1e57e89c69b3237d08ecbe2bf6eb7124e248bcde", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/tokenizer_config.json", dest_rel: "models/crisperwhisper2-turbo/tokenizer_config.json", size: 288_287, sha256: "3089ab61ce4745667a41e91620081cd3e7d61a9ae1f79fdf91b1bc8983916f4e", extract: Extract::None },
+                FileSpec { url: "https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo/resolve/de0369c8a68025b7f6e86387b6eb5a3b369787c8/vocab.json", dest_rel: "models/crisperwhisper2-turbo/vocab.json", size: 835_528, sha256: "6788c80b082e9b0d1393147d3a3e62ba19285ac0c82ace8e5ef00f37ead58971", extract: Extract::None },
             ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-tiny/model.bin", expect: 75_538_270 }, Marker { rel: "models/whisper/faster-whisper-tiny/tokenizer.json", expect: 2_203_239 }],
+            markers: &[Marker { rel: "models/crisperwhisper2-turbo/model.safetensors", expect: 1_617_907_538 }],
             external_url: None,
         },
+        // Noise suppression of a library voice and of a recording to transcribe (DPDFNet, ONNX), as in Speech Studio.
         Component {
-            id: "whisper-base",
-            name: t!("setup-comp-whisper-base-name"),
-            purpose: t!("setup-comp-whisper-base-purpose"),
-            requirement: Requirement::Optional,
+            id: "dpdfnet",
+            name: t!("setup-comp-dpdfnet-name"),
+            purpose: t!("setup-comp-dpdfnet-purpose"),
+            requirement: Requirement::Recommended,
             delivery: Delivery::Download,
-            size: 147_882_941,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/model.bin", dest_rel: "models/whisper/faster-whisper-base/model.bin", size: 145_217_532, sha256: "d01c3014881c9c6f3133c182f3d2887eb6ca1c789a7538c5c007196857a0a6a9", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/config.json", dest_rel: "models/whisper/faster-whisper-base/config.json", size: 2_309, sha256: "56a6d8110d311f19c8f0471e562832c7527f146b567275bfca59fcf7c184da9a", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/tokenizer.json", dest_rel: "models/whisper/faster-whisper-base/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-base/resolve/ebe41f70d5b6dfa9166e2c581c45c9c0cfc57b66/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-base/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-base/model.bin", expect: 145_217_532 }, Marker { rel: "models/whisper/faster-whisper-base/tokenizer.json", expect: 2_203_239 }],
+            size: 10_493_337,
+            files: &[FileSpec { url: "https://huggingface.co/Ceva-IP/DPDFNet/resolve/dd6818d00f50c836fed43a6243ebe49116de5964/onnx/dpdfnet2_48khz_hr.onnx", dest_rel: "models/dpdfnet/dpdfnet2_48khz_hr.onnx", size: 10_493_337, sha256: "7f0575a5cec0ba4ffd8f8bd657e06d007e4ccdd955d76faab922b9d3291dc14b", extract: Extract::None }],
+            markers: &[Marker { rel: "models/dpdfnet/dpdfnet2_48khz_hr.onnx", expect: 10_493_337 }],
             external_url: None,
         },
+        // Where the speech is (Silero VAD v6.2 on transcribe.cpp): a long recording goes to Parakeet Ultra in pieces cut
+        // at the pauses, as in Speech Studio.
         Component {
-            id: "whisper-small",
-            name: t!("setup-comp-whisper-small-name"),
-            purpose: t!("setup-comp-whisper-small-purpose"),
-            requirement: Requirement::Optional,
+            id: "silero-vad",
+            name: t!("setup-comp-silero-vad-name"),
+            purpose: t!("setup-comp-silero-vad-purpose"),
+            requirement: Requirement::Recommended,
             delivery: Delivery::Download,
-            size: 486_212_372,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/model.bin", dest_rel: "models/whisper/faster-whisper-small/model.bin", size: 483_546_902, sha256: "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/config.json", dest_rel: "models/whisper/faster-whisper-small/config.json", size: 2_370, sha256: "b55496ac7940a7ae47d2c01eab40edfd8701feec1229d9cce3b40014383fb828", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/tokenizer.json", dest_rel: "models/whisper/faster-whisper-small/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-small/resolve/536b0662742c02347bc0e980a01041f333bce120/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-small/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-small/model.bin", expect: 483_546_902 }, Marker { rel: "models/whisper/faster-whisper-small/tokenizer.json", expect: 2_203_239 }],
+            size: 1_241_056,
+            files: &[FileSpec { url: "https://huggingface.co/handy-computer/silero-vad-v6.2-gguf/resolve/a9b2d61c20ae4ddf3644edb34969e8185a485448/silero-vad-v6.2-F32.gguf", dest_rel: "models/silero-vad/silero-vad-v6.2-F32.gguf", size: 1_241_056, sha256: "0d871a800c420fdd5d1b17a3aea4296d1c39608f0ff4a9295eb76457eb1c88e6", extract: Extract::None }],
+            markers: &[Marker { rel: "models/silero-vad/silero-vad-v6.2-F32.gguf", expect: 1_241_056 }],
             external_url: None,
         },
+        // Определение языка речи (VoxLingua107, transcribe.cpp): язык оригинала «авто» для CrisperWhisper.
         Component {
-            id: "whisper-medium",
-            name: t!("setup-comp-whisper-medium-name"),
-            purpose: t!("setup-comp-whisper-medium-purpose"),
+            id: "langid",
+            name: "VoxLingua107 ECAPA (Q8_0, transcribe.cpp)".into(),
+            purpose: t!("setup-comp-langid-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
-            size: 1_530_571_735,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/model.bin", dest_rel: "models/whisper/faster-whisper-medium/model.bin", size: 1_527_906_378, sha256: "9b45e1009dcc4ab601eff815b61d80e60ce3fd8c74c1a14f4a282258286b51ae", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/config.json", dest_rel: "models/whisper/faster-whisper-medium/config.json", size: 2_257, sha256: "3622a2ddc41ec0e0fd4e68c13c6830f03b90c38d89aaad184de02c8c642cf807", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/tokenizer.json", dest_rel: "models/whisper/faster-whisper-medium/tokenizer.json", size: 2_203_239, sha256: "fb7b63191e9bb045082c79fd742a3106a12c99513ab30df4a0d47fa6cb6fd0ab", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-medium/resolve/08e178d48790749d25932bbc082711ddcfdfbc4f/vocabulary.txt", dest_rel: "models/whisper/faster-whisper-medium/vocabulary.txt", size: 459_861, sha256: "34ce3fe1c5041027b3f8d42912270993f986dbc4bb34cf27f951e34a1e453913", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-medium/model.bin", expect: 1_527_906_378 }, Marker { rel: "models/whisper/faster-whisper-medium/tokenizer.json", expect: 2_203_239 }],
-            external_url: None,
-        },
-        Component {
-            id: "whisper-large-v3",
-            name: t!("setup-comp-whisper-large-v3-name"),
-            purpose: t!("setup-comp-whisper-large-v3-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 3_090_835_702,
-            files: &[
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/model.bin", dest_rel: "models/whisper/faster-whisper-large-v3/model.bin", size: 3_087_284_237, sha256: "69f74147e3334731bc3a76048724833325d2ec74642fb52620eda87352e3d4f1", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/config.json", dest_rel: "models/whisper/faster-whisper-large-v3/config.json", size: 2_394, sha256: "a9306624f5ec14270a014b647e5c316b6e03a662c369758d1b90697a7b0655b9", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/preprocessor_config.json", dest_rel: "models/whisper/faster-whisper-large-v3/preprocessor_config.json", size: 340, sha256: "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/tokenizer.json", dest_rel: "models/whisper/faster-whisper-large-v3/tokenizer.json", size: 2_480_617, sha256: "6d8cbd7cd0d8d5815e478dac67b85a26bbe77c1f5e0c6d76d1ce2abc0e5f21ca", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/Systran/faster-whisper-large-v3/resolve/edaa852ec7e145841d8ffdb056a99866b5f0a478/vocabulary.json", dest_rel: "models/whisper/faster-whisper-large-v3/vocabulary.json", size: 1_068_114, sha256: "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-large-v3/model.bin", expect: 3_087_284_237 }, Marker { rel: "models/whisper/faster-whisper-large-v3/tokenizer.json", expect: 2_480_617 }],
-            external_url: None,
-        },
-        Component {
-            id: "whisper-large-v3-turbo",
-            name: t!("setup-comp-whisper-large-v3-turbo-name"),
-            purpose: t!("setup-comp-whisper-large-v3-turbo-purpose"),
-            requirement: Requirement::Optional,
-            delivery: Delivery::Download,
-            size: 1_621_665_983,
-            files: &[
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/model.bin", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/model.bin", size: 1_617_884_929, sha256: "e76620f83d5f5b69efd3d87e3dc180c1bd21df9fbebacfd4335e5e1efcc018da", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/config.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/config.json", size: 2_263, sha256: "b0253ea6c0d3bea6b1e19e91a02acfd3b53f4467362efcb5a3e6b16c9b3a9b7e", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/preprocessor_config.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/preprocessor_config.json", size: 340, sha256: "7ccc62c6f2765af1f3b46c00c9b5894426835a05021c8b9c01eecb6dfb542711", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/tokenizer.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/tokenizer.json", size: 2_710_337, sha256: "297b13372ac43916285644fb9687add3cc62ee2a1adb60da3dc25cc94c1871fd", extract: Extract::None },
-                FileSpec { url: "https://huggingface.co/deepdml/faster-whisper-large-v3-turbo-ct2/resolve/4df90f75321148c3a29a9e2351b7ddf8f5b115a8/vocabulary.json", dest_rel: "models/whisper/faster-whisper-large-v3-turbo/vocabulary.json", size: 1_068_114, sha256: "c69260f2ab26d659b7c398f9a2b2b48ed0df16c3b47d7326782fd9cba71690c1", extract: Extract::None },
-            ],
-            markers: &[Marker { rel: "models/whisper/faster-whisper-large-v3-turbo/model.bin", expect: 1_617_884_929 }, Marker { rel: "models/whisper/faster-whisper-large-v3-turbo/tokenizer.json", expect: 2_710_337 }],
+            size: 26_693_632,
+            files: &[FileSpec { url: "https://huggingface.co/handy-computer/lang-id-voxlingua107-ecapa-gguf/resolve/e59f0f3847e77723b7d58447ef9456fa0c7e9436/lang-id-voxlingua107-ecapa-Q8_0.gguf", dest_rel: "models/langid-voxlingua107/lang-id-voxlingua107-ecapa-Q8_0.gguf", size: 26_693_632, sha256: "063e6cb0af3d53085fc7d68356dfde5ecee2ffa7bc79855f7e4ff930081bfe3a", extract: Extract::None }],
+            markers: &[Marker { rel: "models/langid-voxlingua107/lang-id-voxlingua107-ecapa-Q8_0.gguf", expect: 26_693_632 }],
             external_url: None,
         },
         // Диаризация. Маркер — только файл Nemotron: у старых установок лежит лишь Sortformer v2
@@ -1144,15 +1423,26 @@ pub fn manifest() -> Vec<Component> {
             external_url: None,
         },
         Component {
+            id: "bsroformer-engine-vulkan",
+            name: format!("{} · Vulkan", t!("setup-comp-bsroformer-engine-name")),
+            purpose: t!("setup-comp-bsroformer-engine-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::BSROFORMER_VULKAN.size,
+            files: platform::BSROFORMER_VULKAN.files,
+            markers: platform::BSROFORMER_VULKAN.markers,
+            external_url: None,
+        },
+        Component {
             id: "llama",
             name: t!("setup-comp-llama-name"),
             purpose: t!("setup-comp-llama-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
             // Размер сжатого zip (для прогресса закачки); распакованный footprint ~183 МБ.
-            size: platform::LLAMA.size,
-            files: platform::LLAMA.files,
-            markers: platform::LLAMA.markers,
+            size: llama_parts(llama_build()).size,
+            files: llama_parts(llama_build()).files,
+            markers: llama_parts(llama_build()).markers,
             external_url: None,
         },
         Component {
@@ -1273,6 +1563,96 @@ pub fn manifest() -> Vec<Component> {
     if !cfg!(windows) {
         all.retain(|c| c.id != "vcruntime");
     }
+    // Drama 3 is a CUDA engine: a Mac has none to run it
+    if cfg!(target_os = "macos") {
+        all.retain(|c| c.id != "drama3");
+    }
+    // the server's other builds this computer can be set to, fetched when a stage is set to their device: the card's
+    // CUDA build, Vulkan and the processor (none on a Mac, whose one build is the server component)
+    let card = crate::acpp::build_for("gpu").ok();
+    for build in [crate::acpp::Build::Cuda13, crate::acpp::Build::Cuda12, crate::acpp::Build::Vulkan, crate::acpp::Build::Cpu] {
+        let cuda = matches!(build, crate::acpp::Build::Cuda13 | crate::acpp::Build::Cuda12);
+        if build == crate::acpp::build() || (cuda && Some(build) != card) {
+            continue;
+        }
+        let label = match build {
+            crate::acpp::Build::Cuda13 => "CUDA 13",
+            crate::acpp::Build::Cuda12 => "CUDA 12.9",
+            crate::acpp::Build::Vulkan => "Vulkan",
+            crate::acpp::Build::Cpu => "CPU",
+            crate::acpp::Build::Metal => "Metal",
+        };
+        let parts = platform::server_parts(build);
+        all.push(Component {
+            id: crate::acpp::component(build),
+            name: t!("setup-comp-audiocpp-build-name", build = label),
+            purpose: t!("setup-comp-audiocpp-build-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: parts.size,
+            files: parts.files,
+            markers: parts.markers,
+            external_url: None,
+        });
+    }
+    // Qwen3-TTS's backend modules, fetched when voicing is set to their device: Vulkan, and the CUDA one of this
+    // computer's card (macOS: Metal is in the engine itself, and these have no files there)
+    all.push(Component {
+        id: "qwen3-tts-vulkan",
+        name: format!("{} · Vulkan", t!("setup-comp-qwen3-tts-engine-name")),
+        purpose: t!("setup-comp-audiocpp-build-purpose"),
+        requirement: Requirement::Optional,
+        delivery: Delivery::Download,
+        size: platform::QWEN_VULKAN.size,
+        files: platform::QWEN_VULKAN.files,
+        markers: platform::QWEN_VULKAN.markers,
+        external_url: None,
+    });
+    let qwen_cuda = match card {
+        Some(crate::acpp::Build::Cuda13) => Some(("CUDA 13", &platform::QWEN_CUDA13)),
+        Some(crate::acpp::Build::Cuda12) => Some(("CUDA 12.9", &platform::QWEN_CUDA12)),
+        _ => None,
+    };
+    if let Some((label, parts)) = qwen_cuda {
+        all.push(Component {
+            id: "qwen3-tts-cuda",
+            name: format!("{} · {label}", t!("setup-comp-qwen3-tts-engine-name")),
+            purpose: t!("setup-comp-audiocpp-build-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: parts.size,
+            files: parts.files,
+            markers: parts.markers,
+            external_url: None,
+        });
+    }
+    if crate::acpp::cuda_build() == crate::hw::CudaBuild::Cuda12 {
+        all.push(Component {
+            id: "cuda12-runtime",
+            name: "CUDA 12.9 runtime (cudart + cuBLAS + cuFFT)".into(),
+            purpose: t!("setup-comp-cuda-runtime-purpose"),
+            requirement: Requirement::Required,
+            delivery: Delivery::Download,
+            size: platform::CUDA12_RUNTIME.size,
+            files: platform::CUDA12_RUNTIME.files,
+            markers: platform::CUDA12_RUNTIME.markers,
+            external_url: None,
+        });
+        // the separation engine's CUDA 12.9 build, for the card that takes it
+        all.push(Component {
+            id: "bsroformer-engine-cuda12",
+            name: format!("{} · CUDA 12.9", t!("setup-comp-bsroformer-engine-name")),
+            purpose: t!("setup-comp-bsroformer-engine-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: platform::BSROFORMER_CUDA12.size,
+            files: platform::BSROFORMER_CUDA12.files,
+            markers: platform::BSROFORMER_CUDA12.markers,
+            external_url: None,
+        });
+    }
+    // a build this platform has not got (a Mac's separation engine is the processor's alone)
+    all.retain(|c| c.delivery != Delivery::Download || !c.files.is_empty());
     all
 }
 
@@ -1435,9 +1815,9 @@ fn resumed_bytes(part: &Path, total: u64) -> u64 {
 // ── Запись об установке архива ───────────────────────────────────────────────
 
 #[derive(Serialize, serde::Deserialize)]
-struct ArchiveRecord {
-    sha256: String,
-    url: String,
+pub(crate) struct ArchiveRecord {
+    pub(crate) sha256: String,
+    pub(crate) url: String,
     files: Vec<RecordedFile>,
 }
 
@@ -1452,7 +1832,7 @@ fn record_path(repo_root: &Path, f: &FileSpec) -> PathBuf {
     with_suffix(&repo_root.join(f.dest_rel), ".json")
 }
 
-fn read_record(repo_root: &Path, f: &FileSpec) -> Option<ArchiveRecord> {
+pub(crate) fn read_record(repo_root: &Path, f: &FileSpec) -> Option<ArchiveRecord> {
     let p = record_path(repo_root, f);
     let text = std::fs::read_to_string(&p).ok()?;
     match serde_json::from_str(&text) {
@@ -1475,14 +1855,55 @@ fn archive_installed(repo_root: &Path, f: &FileSpec) -> bool {
     })
 }
 
-fn file_installed(repo_root: &Path, f: &FileSpec) -> bool {
+/// A program in one file (engine, CLI): builds with other flags can match in size, only sha256 tells them apart.
+fn is_program(f: &FileSpec) -> bool {
+    f.extract == Extract::None && (f.dest_rel.starts_with("tools/") || [".dll", ".so", ".dylib", ".exe"].iter().any(|ext| f.dest_rel.ends_with(ext)))
+}
+
+/// A program counts when it has the pinned size and its record names the pinned sha256. A file without a record
+/// (laid down before records or taken from a neighbouring program) is hashed once and the record keeps its real
+/// sha256, so a foreign build stays not installed and is not hashed again.
+fn program_installed(repo_root: &Path, f: &FileSpec) -> bool {
+    let dest = repo_root.join(f.dest_rel);
+    if !file_ok(&dest, f.size) {
+        return false;
+    }
+    if let Some(r) = read_record(repo_root, f) {
+        return r.sha256 == f.sha256;
+    }
+    match sha256_file(&dest, &|| false) {
+        Ok(Some(h)) => {
+            if h != f.sha256 {
+                tracing::warn!("{} is not the pinned build (sha256 {h}, pinned {}); it counts as not installed", f.dest_rel, f.sha256);
+            }
+            if let Err(e) = write_record_of(repo_root, f, &h, &[dest]) {
+                tracing::error!("[ERROR] the install record of {}: {e}", f.dest_rel);
+                return false;
+            }
+            h == f.sha256
+        }
+        Ok(None) => false,
+        Err(e) => {
+            tracing::error!("[ERROR] {}: {e}", f.dest_rel);
+            false
+        }
+    }
+}
+
+pub(crate) fn file_installed(repo_root: &Path, f: &FileSpec) -> bool {
     match f.extract {
+        Extract::None if is_program(f) => program_installed(repo_root, f),
         Extract::None => file_ok(&repo_root.join(f.dest_rel), f.size),
         _ => archive_installed(repo_root, f),
     }
 }
 
 fn write_record(repo_root: &Path, f: &FileSpec, written: &[PathBuf]) -> Result<(), DlError> {
+    write_record_of(repo_root, f, f.sha256, written)
+}
+
+/// The record with the sha256 the file on disk has, which is the pinned one unless the file is another build.
+fn write_record_of(repo_root: &Path, f: &FileSpec, sha256: &str, written: &[PathBuf]) -> Result<(), DlError> {
     let files = written
         .iter()
         .map(|p| RecordedFile {
@@ -1490,7 +1911,7 @@ fn write_record(repo_root: &Path, f: &FileSpec, written: &[PathBuf]) -> Result<(
             size: file_len(p),
         })
         .collect();
-    let rec = ArchiveRecord { sha256: f.sha256.to_string(), url: f.url.to_string(), files,
+    let rec = ArchiveRecord { sha256: sha256.to_string(), url: f.url.to_string(), files,
     };
     let path = record_path(repo_root, f);
     let tmp = with_suffix(&path, ".tmp");
@@ -1511,7 +1932,7 @@ pub(crate) fn ffmpeg_on_path() -> bool {
         if found.len() != names.len() {
             return false;
         }
-        let help = dub_core::proc::output(std::process::Command::new(&found[0]).args(["-hide_banner", "-h", "filter=amix"]));
+        let help = dub_core::proc::output(dub_core::proc::host_command(&found[0]).args(["-hide_banner", "-h", "filter=amix"]));
         let mixes = help.is_ok_and(|out| String::from_utf8_lossy(&out.stdout).contains("normalize"));
         if !mixes {
             tracing::warn!("{} is too old for the studio (its amix has no normalize): the studio's own ffmpeg is needed", found[0].display());
@@ -1639,21 +2060,39 @@ pub struct ImportReport {
 
 /// Положить src на место dest: жёсткая ссылка (тот же том — мгновенно и без второй копии гигабайт), иначе
 /// копия через .part + rename (частичной копии под финальным именем не бывает). Без `copy` — только ссылка:
-/// автоподхват у соседних программ не тратит гигабайты места молча.
+/// автоподхват у соседних программ не тратит гигабайты места молча. The file already at dest is replaced only by
+/// a finished link or copy: a link that fails (another drive) leaves it as it was, and a folder made for it goes.
 pub(crate) fn adopt_file(src: &Path, dest: &Path, copy: bool) -> std::io::Result<()> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
+    let made = match dest.parent() {
+        Some(parent) if !parent.exists() => {
+            std::fs::create_dir_all(parent)?;
+            Some(parent)
+        }
+        _ => None,
+    };
+    let adopted = (|| {
+        let tmp = with_suffix(dest, ".import");
+        if tmp.exists() {
+            std::fs::remove_file(&tmp)?;
+        }
+        if let Err(e) = std::fs::hard_link(src, &tmp) {
+            if !copy {
+                return Err(e);
+            }
+            std::fs::copy(src, &tmp)?;
+        }
+        std::fs::rename(&tmp, dest).inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
+    })();
+    if adopted.is_err() {
+        if let Some(parent) = made {
+            if let Err(e) = std::fs::remove_dir(parent) {
+                tracing::warn!("{} stays after a failed import: {e}", parent.display());
+            }
+        }
     }
-    if dest.exists() {
-        std::fs::remove_file(dest)?;
-    }
-    let linked = std::fs::hard_link(src, dest);
-    if linked.is_ok() || !copy {
-        return linked;
-    }
-    let tmp = with_suffix(dest, ".import");
-    std::fs::copy(src, &tmp)?;
-    std::fs::rename(&tmp, dest)
+    adopted
 }
 
 /// Импорт готовых весов из папки без закачки: для каждого недостающего ПРЯМОГО файла компонента ищем в src_dir
@@ -1691,6 +2130,15 @@ pub fn import_from_dir(repo_root: &Path, src_dir: &Path, only: Option<&str>, cop
             let Some(src) = src else { continue };
             match adopt_file(src, &dest, copy) {
                 Ok(()) => {
+                    // the record of the build the file replaced would keep it uninstalled; without one the file is
+                    // hashed once and recorded as what it is
+                    if is_program(f) {
+                        if let Err(e) = std::fs::remove_file(record_path(repo_root, f)) {
+                            if e.kind() != std::io::ErrorKind::NotFound {
+                                report.errors.push(format!("{}: {e}", record_path(repo_root, f).display()));
+                            }
+                        }
+                    }
                     let part = part_path(repo_root, f);
                     let _ = std::fs::remove_file(done_manifest_path(&part));
                     let _ = std::fs::remove_file(&part);
@@ -1752,7 +2200,7 @@ pub fn import_from_neighbors(repo_root: &Path, neighbors: &[(String, PathBuf)], 
 // ── Место на диске ───────────────────────────────────────────────────────────
 
 /// Свободное место на томе пути (для пользователя, с учётом квот), байт. Путь может ещё не существовать —
-/// берём ближайший существующий каталог. None — ОС не ответила (или не Windows): место тогда не проверяем.
+/// берём ближайший существующий каталог. None — ОС не ответила: место тогда не проверяем.
 #[cfg(windows)]
 pub fn free_bytes(path: &Path) -> Option<u64> {
     use std::os::windows::ffi::OsStrExt;
@@ -1772,8 +2220,13 @@ extern "system" {
 }
 
 #[cfg(not(windows))]
-pub fn free_bytes(_path: &Path) -> Option<u64> {
-    None
+pub fn free_bytes(path: &Path) -> Option<u64> {
+    use std::os::unix::ffi::OsStrExt;
+    let dir = path.ancestors().find(|p| p.is_dir())?;
+    let c_path = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let ok = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) } == 0;
+    ok.then(|| stat.f_bavail as u64 * stat.f_frsize as u64)
 }
 
 /// Отказ, если на томе моделей меньше места, чем нужно под докачку `need` байт.
@@ -1862,6 +2315,8 @@ pub struct SetupStatus {
     pub driver_ok: bool,
     /// build-строки для диагностики (llama-билд и т.п.).
     pub llama_build: String,
+    /// Why Gemma runs another build than the card's (a CUDA build the system cannot start); None when it does not.
+    pub llama_note: Option<String>,
     /// Папка моделей (куда кладёт «Первый запуск»).
     pub models_dir: String,
     /// Свободно на томе моделей, байт; None — ОС не ответила, место не проверяется.
@@ -1941,7 +2396,7 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
         }
         let is_gemma = c.id.starts_with("gemma") || c.id == "llama";
         let is_higgs = c.id.starts_with("higgs");
-        let is_asr = c.id.starts_with("parakeet") || c.id.starts_with("whisper") || c.id.starts_with("transcribe-engine");
+        let is_asr = c.id.starts_with("parakeet") || c.id.starts_with("crisperwhisper") || c.id == "langid" || c.id.starts_with("transcribe-engine");
         if (cloud_llm && is_gemma) || (cloud_tts && is_higgs) || (cloud_asr && is_asr) {
             c.requirement = Requirement::Optional;
         }
@@ -1951,20 +2406,16 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
     // первом запуске), а CUDA-движок + CUDA-рантайм — необязательными (не тянем лишние гигабайты).
     // В GPU-режиме наоборот: CPU-движок не нужен.
     let backend = crate::models::local_backend(&mroot);
-    let asr_cpu = crate::models::tcpp_build(&mroot) == dub_asr::tcpp::Build::Cpu;
+    let asr_engine = crate::models::tcpp_build(&mroot).dir();
+    let sep_engine = crate::models::sep_build(&mroot).component();
     for c in comps.iter_mut() {
-        if !cloud_asr && c.id == "transcribe-engine" {
-            c.requirement = if asr_cpu { Requirement::Optional } else { Requirement::Required };
-        } else if !cloud_asr && c.id == "transcribe-engine-cpu" {
-            c.requirement = if asr_cpu { Requirement::Required } else { Requirement::Optional };
+        if !cloud_asr && ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-cpu"].contains(&c.id.as_str()) {
+            c.requirement = if c.id == asr_engine { Requirement::Required } else { Requirement::Optional };
         }
-        if backend == "cpu" {
-            if c.id == "bsroformer-engine-cpu" {
-                c.requirement = Requirement::Recommended;
-            } else if c.id == "bsroformer-engine" || c.id == "cuda-runtime" || c.id == "onnxruntime-gpu" || c.id == "cudnn" {
-                c.requirement = Requirement::Optional;
-            }
-        } else if c.id == "bsroformer-engine-cpu" {
+        // the separation engine of the separation device is the recommended one, its other builds are optional
+        if c.id.starts_with("bsroformer-engine") {
+            c.requirement = if c.id == sep_engine { Requirement::Recommended } else { Requirement::Optional };
+        } else if backend == "cpu" && (c.id == "cuda-runtime" || c.id == "onnxruntime-gpu" || c.id == "cudnn") {
             c.requirement = Requirement::Optional;
         }
     }
@@ -1990,6 +2441,7 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
         download_pending,
         driver_ok: gpu.nvidia,
         llama_build: GH_LLAMA_BUILD.to_string(),
+        llama_note: llama_note(),
         models_dir: mroot.to_string_lossy().to_string(),
         free_bytes: free_bytes(&mroot),
         gpu,
@@ -2056,6 +2508,7 @@ pub fn remove_components(repo_root: &Path, ids: &[String]) -> Result<RemovalRepo
             drop_file(&done_manifest_path(&part), &mut report);
             if f.extract == Extract::None {
                 drop_file(&repo_root.join(f.dest_rel), &mut report);
+                drop_file(&record_path(repo_root, f), &mut report);
             } else {
                 if let Some(rec) = read_record(repo_root, f) {
                     for x in &rec.files {
@@ -2374,13 +2827,27 @@ fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn
     }
 }
 
+static DOWNLOADS_FORBIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// No component is downloaded in this process from now on: a download that would start fails with the code
+/// `downloads_forbidden`. For tests, whose roots have none of the studio's models and must not fetch them.
+pub fn forbid_downloads() {
+    DOWNLOADS_FORBIDDEN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Построить ureq-агента для закачки. Статусы 4xx/5xx читаем сами (429 и заголовки ожидания). Прокси из
 /// active.json — все запросы через него; иначе Config::default берёт HTTP(S)_PROXY из env.
 fn dl_agent() -> Result<ureq::Agent, DlError> {
+    if DOWNLOADS_FORBIDDEN.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(DlError::new("downloads_forbidden", "downloads are forbidden in this process"));
+    }
     let mut cfg = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_connect(Some(Duration::from_secs(30)))
-        .timeout_recv_response(Some(Duration::from_secs(60)));
+        .timeout_recv_response(Some(Duration::from_secs(60)))
+        // certificates by the system's store, as reqwest does: a proxy or antivirus that re-signs HTTPS with its own
+        // root installed in Windows is trusted there, not in the bundled webpki roots
+        .tls_config(ureq::tls::TlsConfig::builder().root_certs(ureq::tls::RootCerts::PlatformVerifier).build());
     // Маршрут прокси для Hugging Face, откуда идут модели (свой / как в Windows / напрямую). ureq не спрашивает
     // прокси на каждый запрос, поэтому агент строится на каждую закачку — смена прокси действует со следующей.
     if let Some(url) = dub_llm::net::proxy_url_for("https://huggingface.co/") {
@@ -2637,24 +3104,50 @@ fn download_whole(
 
 /// Потоковый SHA-256 файла блоками по 1 МиБ. None — остановлено (stop): пауза не ждёт конца хэширования 12 ГБ.
 pub(crate) fn sha256_file(path: &Path, stop: &dyn Fn() -> bool) -> std::io::Result<Option<String>> {
+    sha256_file_with(path, stop, &|_| {})
+}
+
+/// [`sha256_file`] that tells `hashed` how many bytes it has read, every 64 MiB and at the end.
+fn sha256_file_with(path: &Path, stop: &dyn Fn() -> bool, hashed: &dyn Fn(u64)) -> std::io::Result<Option<String>> {
     use sha2::{Digest, Sha256};
     let mut file = File::open(path)?;
     let mut digest = Sha256::new();
     let mut buf = vec![0u8; 1 << 20];
     let mut blocks = 0u32;
+    let mut read = 0u64;
     loop {
         let n = file.read(&mut buf)?;
         if n == 0 {
             break;
         }
         digest.update(&buf[..n]);
+        read += n as u64;
         blocks += 1;
-        if blocks.is_multiple_of(64) && stop() {
-            return Ok(None);
+        if blocks.is_multiple_of(64) {
+            hashed(read);
+            if stop() {
+                return Ok(None);
+            }
         }
     }
+    hashed(read);
     Ok(Some(digest.finalize().iter().map(|b| format!("{b:02x}")).collect(),
     ))
+}
+
+/// The bar of a download while its files are checked: `done` of `total` bytes hashed.
+fn verify_progress(progress: &ProgressCb, f: &FileSpec, done: u64, total: u64) {
+    let pct = if total > 0 { (done as f64 / total as f64 * 100.0).min(100.0) } else { 0.0 };
+    progress(json!({
+        "stage": "download",
+        "phase": "verify",
+        "file": f.dest_rel,
+        "msg": t!("setup-verifying", file = f.dest_rel),
+        "downloaded": done,
+        "total": total,
+        "speed_bps": 0,
+        "pct": pct,
+    }));
 }
 
 fn discard_part(part: &Path) {
@@ -2664,7 +3157,8 @@ fn discard_part(part: &Path) {
 
 /// Проверить скачанный .part (размер и SHA-256 против закреплённых) и опубликовать: прямой файл — rename в
 /// финал, архив — распаковка + запись об установке. Несовпадение — .part удаляется, следующая попытка с нуля.
-fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> bool, progress: &ProgressCb,
+/// `checked` — сколько байт из `check_total` уже проверено до этого файла: полоса идёт по проверке, а не стоит на 100 %.
+fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> bool, progress: &ProgressCb, checked: u64, check_total: u64,
 ) -> Result<(), DlError> {
     let size = file_len(part);
     if size != f.size {
@@ -2674,9 +3168,8 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
             t!("setup-size-mismatch", file = f.dest_rel, got = size, want = f.size),
         ));
     }
-    progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": t!("setup-verifying", file = f.dest_rel) }),
-    );
-    let hash = sha256_file(part, cancel).map_err(|e| DlError::new("io", t!("common-read", path = part.display().to_string(), error = e.to_string())))?;
+    let hashed = |n: u64| verify_progress(progress, f, checked + n, check_total);
+    let hash = sha256_file_with(part, cancel, &hashed).map_err(|e| DlError::new("io", t!("common-read", path = part.display().to_string(), error = e.to_string())))?;
     let Some(hash) = hash else { return Err(cancelled());
     };
     if hash != f.sha256 {
@@ -2706,6 +3199,9 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
                 })?;
             }
             let _ = std::fs::remove_file(done_manifest_path(part));
+            if is_program(f) {
+                write_record(repo_root, f, &[dest])?;
+            }
             return Ok(());
         }
         extract => extract_archive(part, f.dest_rel, extract, dir),
@@ -2719,6 +3215,8 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
 /// Итог закачки: статус каждого компонента; скачанный вариант модели становится активным (models/active.json),
 /// иначе резолв взял бы дефолт и альт-квант бы не применился.
 fn finish(repo_root: &Path, selected: &[&Component]) -> Value {
+    #[cfg(unix)]
+    make_programs_executable(repo_root, selected);
     let mroot = crate::models_root(repo_root);
     let mut results = Vec::new();
     for c in selected {
@@ -2737,6 +3235,29 @@ fn finish(repo_root: &Path, selected: &[&Component]) -> Value {
     }
     let overall = setup_status(repo_root);
     json!({ "components": results, "ready": overall.ready })
+}
+
+/// A marker naming a program: a file under tools/ without an extension, as Linux and macOS name programs.
+#[cfg(any(unix, test))]
+fn is_program_marker(rel: &str) -> bool {
+    rel.starts_with("tools/") && Path::new(rel).extension().is_none()
+}
+
+/// The programs of the components (their markers) are made executable: an archive packed on Windows carries no
+/// execute bit, and the program would answer «Permission denied».
+#[cfg(unix)]
+fn make_programs_executable(repo_root: &Path, selected: &[&Component]) {
+    use std::os::unix::fs::PermissionsExt;
+    for m in selected.iter().flat_map(|c| c.markers).filter(|m| is_program_marker(m.rel)) {
+        let path = repo_root.join(m.rel);
+        let Ok(meta) = std::fs::metadata(&path) else { continue };
+        let mode = meta.permissions().mode();
+        if mode & 0o111 != 0o111 {
+            if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode | 0o755)) {
+                tracing::error!("[ERROR] {} was not made executable: {e}", path.display());
+            }
+        }
+    }
 }
 
 /// Скачать набор компонентов по id (идемпотентно: целые файлы закреплённой версии пропускаются, уже лежащий
@@ -2771,6 +3292,21 @@ fn fetch_components(
         return Err(DlError::new("nothing_to_download", t!("downloads-nothing-to-download"),
         ));
     }
+    fetch_selected(repo_root, selected, cancel, progress)
+}
+
+/// Downloads a component that is not on the setup screen (the voice pack) with the same chunks, retries, resume and
+/// install record as the screen's components.
+pub fn download_extra(repo_root: &Path, c: &Component, cancel: &dyn Fn() -> bool, progress: &ProgressCb) -> Result<Value, DlError> {
+    fetch_selected(repo_root, vec![c], cancel, progress)
+}
+
+fn fetch_selected(
+    repo_root: &Path,
+    selected: Vec<&Component>,
+    cancel: &dyn Fn() -> bool,
+    progress: &ProgressCb,
+) -> Result<Value, DlError> {
     let selected_ids: Vec<String> = selected.iter().map(|c| c.id.to_string()).collect();
     let _claim = claim(&selected_ids, cancel, &|| {
         progress(json!({ "stage": "download", "phase": "waiting", "msg": t!("setup-waiting-other") }),
@@ -2795,7 +3331,8 @@ fn fetch_components(
                 if file_ok(&dest, f.size) {
                     progress(json!({ "stage": "download", "phase": "verify", "file": f.dest_rel, "msg": t!("setup-verifying", file = f.dest_rel) }),
                     );
-                    let hash = sha256_file(&dest, cancel).map_err(|e| {
+                    let hashed = |n: u64| verify_progress(progress, f, n, f.size);
+                    let hash = sha256_file_with(&dest, cancel, &hashed).map_err(|e| {
                         DlError::new("io", t!("common-read", path = dest.display().to_string(), error = e.to_string()))
                     })?;
                     match hash {
@@ -3001,8 +3538,12 @@ fn fetch_components(
 
     // Проверка и публикация каждого файла; удачные публикуются, даже если соседний не сошёлся.
     let mut first_err: Option<DlError> = None;
+    let check_total: u64 = planned.iter().map(|p| p.f.size).sum();
+    let mut checked = 0u64;
     for p in &planned {
-        match publish(repo_root, p.f, &p.part, cancel, progress) {
+        let result = publish(repo_root, p.f, &p.part, cancel, progress, checked, check_total);
+        checked += p.f.size;
+        match result {
             Ok(()) => {}
             Err(e) if e.code == CANCELLED => return Err(e),
             Err(e) => {
@@ -3168,19 +3709,15 @@ fn extract_archive(archive: &Path, name: &str, extract: Extract, dir: &Path) -> 
     Ok(written)
 }
 
-/// Как `ldconfig -n`: библиотеке `libX.so.0.15.1` без соседней `libX.so.0` поставить эту ссылку — по ней
-/// её ищет загрузчик (CPU-сборка BSRoformer для Linux приходит одними полными именами).
+/// Как `ldconfig -n`: библиотеке, пришедшей одним полным именем (`libX.so.0.15.1`, `libX.0.15.1.dylib`), без
+/// соседней ссылки по имени, которое просит загрузчик, поставить эту ссылку (CPU-сборка BSRoformer для Linux, его
+/// сборка для macOS).
 #[cfg(unix)]
 fn add_soname_links(written: &mut Vec<PathBuf>) -> Result<(), String> {
     let mut added = Vec::new();
     for path in written.iter() {
         let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
-        let Some(at) = name.find(".so.") else { continue };
-        let version: Vec<&str> = name[at + 4..].split('.').collect();
-        if version.len() < 2 || !version.iter().all(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit())) {
-            continue;
-        }
-        let soname = format!("{}.so.{}", &name[..at], version[0]);
+        let Some(soname) = soname_of(name) else { continue };
         let link = path.with_file_name(&soname);
         if link.exists() || written.contains(&link) || added.contains(&link) {
             continue;
@@ -3190,6 +3727,23 @@ fn add_soname_links(written: &mut Vec<PathBuf>) -> Result<(), String> {
     }
     written.extend(added);
     Ok(())
+}
+
+/// The name the loader asks for of a library named by its full version: `libX.so.0.15.1` → `libX.so.0`,
+/// `libX.0.15.1.dylib` → `libX.0.dylib`; None for a name without one.
+#[cfg(any(unix, test))]
+fn soname_of(name: &str) -> Option<String> {
+    let numeric = |parts: &[&str]| parts.len() >= 2 && parts.iter().all(|v| !v.is_empty() && v.bytes().all(|b| b.is_ascii_digit()));
+    if let Some(at) = name.find(".so.") {
+        let version: Vec<&str> = name[at + 4..].split('.').collect();
+        return numeric(&version).then(|| format!("{}.so.{}", &name[..at], version[0]));
+    }
+    let stem = name.strip_suffix(".dylib")?;
+    let mut parts: Vec<&str> = stem.split('.').collect();
+    let base = parts.remove(0);
+    let first = parts.iter().position(|p| p.bytes().all(|b| b.is_ascii_digit()))?;
+    let (named, version) = parts.split_at(first);
+    numeric(version).then(|| format!("{}.{}.dylib", std::iter::once(base).chain(named.iter().copied()).collect::<Vec<_>>().join("."), version[0]))
 }
 
 /// Записать элемент архива в файл через .part+rename (атомарно); на Linux — с правами из архива (бит запуска).
@@ -3213,26 +3767,154 @@ fn write_entry(entry: &mut impl Read, out: &Path, mode: Option<u32>) -> Result<(
     Ok(())
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-/// Models of a former version that nothing reads any more (Dub Studio 4.3 and earlier: Parakeet on ONNX Runtime), under the models folder.
-const RETIRED: &[&str] = &["tdt", "tdt-fp32", "tdt-ultra", "tdt-ultra-int8"];
 
-/// Removes the retired models, so they do not keep gigabytes that no row of the setup screen shows. A link (another
-/// program's folder linked in) loses only the link; a hard-linked file stays with the program that shares it.
-pub fn remove_retired(models_root: &Path) {
-    for rel in RETIRED {
-        let path = models_root.join(rel);
+// ═══════════════════════════════════════════════════════════════════════════
+/// Models of a former version that nothing reads any more, under the models folder: Parakeet on ONNX Runtime (Dub
+/// Studio 4.3 and earlier) and the Faster-Whisper models (4.4 and earlier).
+const RETIRED: &[&str] = &["tdt", "tdt-fp32", "tdt-ultra", "tdt-ultra-int8", "whisper"];
+
+/// Programs of a former version that nothing runs any more, under the program folder: the OpenRouter helper (Dub Studio
+/// 4.2 and earlier), the Higgs library (Higgs runs in audiocpp_server now) and ONNX Runtime 1.24.2 (before 1.28.2).
+const RETIRED_TOOLS: &[&str] = &[
+    "tools/openrouter-helper",
+    "models/higgs-engine/audiocpp_engine.dll",
+    "models/higgs-engine/libaudiocpp_engine.so",
+    "models/runtime/onnxruntime-win-x64-1.24.2",
+    "models/runtime/onnxruntime-win-x64-gpu-1.24.2",
+];
+
+/// The studio's own downloads it no longer runs are deleted for good: hundreds of megabytes of runtimes have no place
+/// in the person's recycle bin, which keeps their projects.
+fn delete(path: &Path) -> Result<(), String> {
+    if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) }.map_err(|e| e.to_string())
+}
+
+/// Removes what former versions left (`leftovers`): the last step of the update screen, after the downloads that
+/// take their place. A link (another program's folder linked in) loses only the link; a hard-linked file stays with
+/// the program that shares it.
+pub fn remove_leftovers(repo_root: &Path, models_root: &Path) {
+    retire(models_root, RETIRED, &delete);
+    retire_whisper(repo_root, &delete);
+    retire(repo_root, RETIRED_TOOLS, &delete);
+}
+
+/// What former versions left on disk, each under the name the update screen's table of changes knows it by: a
+/// retired model folder (RETIRED, under the models folder), a retired program (RETIRED_TOOLS) and the former
+/// Whisper's files ("tools/whisper").
+pub(crate) fn leftovers(repo_root: &Path, models_root: &Path) -> Vec<(&'static str, Vec<PathBuf>)> {
+    let mut found = Vec::new();
+    for (root, retired) in [(models_root, RETIRED), (repo_root, RETIRED_TOOLS)] {
+        for rel in retired {
+            let path = root.join(rel);
+            if std::fs::symlink_metadata(&path).is_ok() {
+                found.push((*rel, vec![path]));
+            }
+        }
+    }
+    let whisper = whisper_leftovers(repo_root);
+    if !whisper.is_empty() {
+        found.push(("tools/whisper", whisper));
+    }
+    found
+}
+
+/// The bytes removing `path` frees: a link frees nothing, a folder what lies in it.
+pub(crate) fn tree_size(path: &Path) -> u64 {
+    let Ok(meta) = std::fs::symlink_metadata(path) else { return 0 };
+    if meta.file_type().is_symlink() {
+        return 0;
+    }
+    if !meta.is_dir() {
+        return meta.len();
+    }
+    match std::fs::read_dir(path) {
+        Ok(entries) => entries.flatten().map(|entry| tree_size(&entry.path())).sum(),
+        Err(e) => {
+            tracing::warn!("{} is not readable, its size is not counted: {e}", path.display());
+            0
+        }
+    }
+}
+
+fn retire(root: &Path, retired: &[&str], discard: &dyn Fn(&Path) -> Result<(), String>) {
+    for rel in retired {
+        let path = root.join(rel);
         let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
         let removed = if meta.file_type().is_symlink() {
-            std::fs::remove_dir(&path).or_else(|_| std::fs::remove_file(&path))
-        } else if meta.is_dir() {
-            std::fs::remove_dir_all(&path)
+            std::fs::remove_dir(&path).or_else(|_| std::fs::remove_file(&path)).map_err(|e| e.to_string())
         } else {
-            std::fs::remove_file(&path)
+            discard(&path)
         };
         match removed {
-            Ok(()) => tracing::info!("removed the retired models {}", path.display()),
-            Err(e) => tracing::error!("[ERROR] could not remove the retired models {}: {e}", path.display()),
+            Ok(()) => tracing::info!("removed the retired {}", path.display()),
+            Err(e) => tracing::error!("[ERROR] could not remove the retired {}: {e}", path.display()),
+        }
+    }
+}
+
+/// Install records of the Whisper-Faster r192.3/r189.1 program and its CUDA 11 cuBLAS and cuDNN 8 (Dub Studio 4.4 and
+/// earlier), which lay flat in tools/whisper; Whisper is CrisperWhisper in audiocpp_server now.
+const RETIRED_WHISPER_RECORDS: &[&str] = &[
+    "tools/whisper/_whisper.zip.json",
+    "tools/whisper/_wcublas.zip.json",
+    "tools/whisper/_wcudnn.zip.json",
+    "tools/whisper/_wcublas.tar.xz.json",
+    "tools/whisper/_wcudnn.tar.xz.json",
+];
+
+/// The former Whisper program and the CUDA 11 cuBLAS and cuDNN 8 it brought, as an install without records left them
+/// in tools/whisper.
+const RETIRED_WHISPER_FILES: &[&str] = &[
+    "whisper-faster.exe",
+    "whisper-faster",
+    "cublas64_11.dll",
+    "cublasLt64_11.dll",
+    "nvblas64_11.dll",
+    "cudnn64_8.dll",
+    "cudnn_adv_infer64_8.dll",
+    "cudnn_adv_train64_8.dll",
+    "cudnn_cnn_infer64_8.dll",
+    "cudnn_cnn_train64_8.dll",
+    "cudnn_ops_infer64_8.dll",
+    "cudnn_ops_train64_8.dll",
+    "license.txt",
+    "_models",
+];
+
+/// The former Whisper program and its CUDA 11 libraries on disk: what their install records list, and an older
+/// install without records (the program, the cuBLAS and cuDNN libraries, its licence and the models it downloaded
+/// for itself lying directly in tools/whisper).
+fn whisper_leftovers(repo_root: &Path) -> Vec<PathBuf> {
+    let dir = repo_root.join("tools").join("whisper");
+    let mut doomed: Vec<PathBuf> = Vec::new();
+    for rel in RETIRED_WHISPER_RECORDS {
+        let record = repo_root.join(rel);
+        let Ok(text) = std::fs::read_to_string(&record) else { continue };
+        match serde_json::from_str::<ArchiveRecord>(&text) {
+            Ok(r) => doomed.extend(r.files.iter().filter(|x| x.path.starts_with("tools/whisper/")).map(|x| repo_root.join(&x.path))),
+            Err(e) => tracing::error!("[ERROR] the install record {} is unreadable: {e}", record.display()),
+        }
+        doomed.push(record);
+    }
+    doomed.extend(RETIRED_WHISPER_FILES.iter().map(|name| dir.join(name)));
+    doomed.sort();
+    doomed.dedup();
+    doomed.retain(|p| p.is_file() || p.is_dir());
+    doomed
+}
+
+fn retire_whisper(repo_root: &Path, discard: &dyn Fn(&Path) -> Result<(), String>) {
+    for path in whisper_leftovers(repo_root) {
+        match discard(&path) {
+            Ok(()) => tracing::info!("removed the retired Whisper file {}", path.display()),
+            Err(e) => tracing::error!("[ERROR] could not remove the retired Whisper file {}: {e}", path.display()),
+        }
+    }
+    // the folder was the former program's alone: it goes once nothing is left in it
+    let dir = repo_root.join("tools").join("whisper");
+    if std::fs::read_dir(&dir).is_ok_and(|mut entries| entries.next().is_none()) {
+        if let Err(e) = std::fs::remove_dir(&dir) {
+            tracing::error!("[ERROR] could not remove the empty {}: {e}", dir.display());
         }
     }
 }
@@ -3256,10 +3938,60 @@ mod tests {
         let kept = root.path().join("asr-gguf-parakeet-v3").join("parakeet-tdt-0.6b-v3-Q8_0.gguf");
         std::fs::create_dir_all(kept.parent().unwrap()).unwrap();
         std::fs::write(&kept, b"x").unwrap();
-        remove_retired(root.path());
+        let gone = |p: &Path| if p.is_dir() { std::fs::remove_dir_all(p) } else { std::fs::remove_file(p) }.map_err(|e| e.to_string());
+        retire(root.path(), RETIRED, &gone);
         assert!(RETIRED.iter().all(|rel| !root.path().join(rel).exists()));
         assert!(kept.is_file());
-        remove_retired(root.path());
+        retire(root.path(), RETIRED, &gone);
+        for rel in RETIRED_TOOLS {
+            std::fs::create_dir_all(root.path().join(rel)).unwrap();
+            std::fs::write(root.path().join(rel).join("x.dll"), b"x").unwrap();
+        }
+        let current = root.path().join("models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll");
+        std::fs::create_dir_all(current.parent().unwrap()).unwrap();
+        std::fs::write(&current, b"x").unwrap();
+        retire(root.path(), RETIRED_TOOLS, &gone);
+        assert!(RETIRED_TOOLS.iter().all(|rel| !root.path().join(rel).exists()));
+        assert!(current.is_file());
+    }
+
+    /// An installed studio (DUB_STUDIO_CHECK_ROOT, read only): every component with a file on disk that is not the
+    /// pinned one, which the next job or the first-run screen downloads again.
+    #[test]
+    #[ignore]
+    fn an_installed_studio_names_the_files_an_update_replaces() {
+        let Ok(root) = std::env::var("DUB_STUDIO_CHECK_ROOT") else { return };
+        let root = PathBuf::from(root);
+        for c in manifest() {
+            let st = component_status(&root, &c);
+            let present: Vec<&str> = c.markers.iter().map(|m| m.rel).filter(|rel| root.join(rel).is_file()).collect();
+            if !st.installed && !present.is_empty() {
+                let found: Vec<String> = present.iter().map(|rel| format!("{rel} {} bytes", file_len(&root.join(rel)))).collect();
+                println!("[REPLACE] {}: on disk {} | missing {}", c.id, found.join(", "), st.missing.join(", "));
+            } else if st.installed {
+                println!("[OK] {}", c.id);
+            }
+        }
+    }
+
+    /// A program folder (DUB_STUDIO_SWAP_ROOT) holding an engine of a former release: the component counts as missing,
+    /// and its download puts the pinned file in its place.
+    #[test]
+    #[ignore]
+    fn a_former_engine_is_replaced_by_the_pinned_one() {
+        let Ok(root) = std::env::var("DUB_STUDIO_SWAP_ROOT") else { return };
+        let (root, id) = (PathBuf::from(root), std::env::var("DUB_STUDIO_SWAP_COMPONENT").unwrap_or_else(|_| "transcribe-engine".into()));
+        let c = manifest().into_iter().find(|c| c.id == id).unwrap();
+        let file = root.join(c.files[0].dest_rel);
+        let before = file_len(&file);
+        assert!(!component_status(&root, &c).installed, "{} of {before} bytes counts as installed", file.display());
+        let progress = |_: Value| {};
+        download_components(&root, &[id.clone()], &|| false, &progress).map_err(|e| e.detail).unwrap();
+        assert!(component_status(&root, &c).installed);
+        if c.files[0].extract == Extract::None {
+            assert_eq!(file_len(&file), c.files[0].size);
+        }
+        println!("[OK] {id}: {before} bytes -> {} bytes, {}", file_len(&file), file.display());
     }
     use super::*;
 
@@ -3407,6 +4139,22 @@ mod tests {
     }
 
     #[test]
+    fn a_linux_older_than_glibc_2_38_runs_gemma_on_vulkan_instead_of_cuda() {
+        use crate::acpp::Build;
+        assert_eq!(parse_glibc("2.35"), Some((2, 35)));
+        assert_eq!(parse_glibc("2.39\n"), Some((2, 39)));
+        assert_eq!(parse_glibc("2.38-ubuntu"), Some((2, 38)));
+        assert_eq!(parse_glibc("x"), None);
+        for card in [Build::Cuda13, Build::Cuda12] {
+            assert_eq!(llama_build_for(card, Some((2, 35))), Build::Vulkan);
+            assert_eq!(llama_build_for(card, Some((2, 38))), card);
+            assert_eq!(llama_build_for(card, None), card);
+        }
+        assert_eq!(llama_build_for(Build::Cpu, Some((2, 35))), Build::Cpu);
+        assert_eq!(llama_build_for(Build::Vulkan, Some((2, 35))), Build::Vulkan);
+    }
+
+    #[test]
     fn manifest_ids_unique_and_nonempty() {
         let m = manifest();
         assert!(!m.is_empty());
@@ -3537,7 +4285,21 @@ mod tests {
             assert_eq!((f.url, f.size, f.sha256), (m.download.url, m.download.size, m.download.sha256), "{id}");
             assert_eq!(std::path::Path::new(f.dest_rel), std::path::Path::new("models").join(m.dir).join(m.file), "{id}");
         }
-        for b in dub_asr::tcpp::Build::ALL.into_iter().filter(|b| *b != dub_asr::tcpp::Build::Vulkan) {
+        for b in dub_sep::asset::Build::ALL {
+            let Some(c) = manifest().into_iter().find(|c| c.id == b.component()) else { continue };
+            let a = b.engine().expect("a component only for a build this platform has");
+            let [f] = c.files else { panic!("{b:?}: one archive") };
+            assert_eq!((f.url, f.dest_rel, f.size, f.sha256), (a.url, a.archive, a.size, a.sha256), "{b:?}");
+            let cli = dub_sep::engine_cli_of(Path::new(""), b.name());
+            assert!(c.markers.iter().any(|m| Path::new(m.rel) == cli), "{b:?}: the marker is the program dub_sep runs");
+        }
+        // a Mac has the processor build alone (Metal in it)
+        let builds: &[dub_asr::tcpp::Build] = if cfg!(target_os = "macos") {
+            &[dub_asr::tcpp::Build::Cpu]
+        } else {
+            &[dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Cpu]
+        };
+        for &b in builds {
             let d = b.download();
             let [f] = comp(b.dir()).files else { panic!("{b:?}: one file") };
             assert_eq!((f.url, f.size, f.sha256), (d.url, d.size, d.sha256), "{b:?}");
@@ -3560,6 +4322,7 @@ mod tests {
     /// Архив установлен, только если его запись называет закреплённый sha256 и файлы на месте: у обновившихся
     /// пользователей CUDA-DLL прошлой версии (того же имени и даже размера) дают «недостающий компонент».
     #[test]
+    #[cfg(not(target_os = "macos"))]
     fn an_archive_counts_only_with_the_pinned_version_recorded() {
         let root = temp_root("record");
         let all = manifest();
@@ -3661,6 +4424,109 @@ mod tests {
     }
 
     #[test]
+    fn the_free_space_of_a_folder_not_yet_made_is_read_from_its_volume() {
+        let root = temp_root("free");
+        let free = free_bytes(&root.join("models").join("not-yet"));
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(free.is_some_and(|b| b > 0), "{free:?}");
+    }
+
+    #[test]
+    fn a_library_by_its_full_version_gets_the_name_the_loader_asks_for() {
+        assert_eq!(soname_of("libggml-base.so.0.15.1").as_deref(), Some("libggml-base.so.0"));
+        assert_eq!(soname_of("libggml-base.0.15.1.dylib").as_deref(), Some("libggml-base.0.dylib"));
+        assert_eq!(soname_of("libllama-common.0.7.0.dylib").as_deref(), Some("libllama-common.0.dylib"));
+        for name in ["libggml.0.dylib", "libqwen.dylib", "libggml.so.0", "libfoo.so", "bs_roformer-cli", "libonnxruntime.dylib"] {
+            assert_eq!(soname_of(name), None, "{name}");
+        }
+    }
+
+    #[test]
+    fn the_check_of_a_download_moves_the_bar() {
+        let root = temp_root("verify-bar");
+        std::fs::create_dir_all(&root).unwrap();
+        let file = root.join("big.bin");
+        std::fs::write(&file, vec![7u8; 70 << 20]).unwrap();
+        let seen = std::sync::Mutex::new(Vec::new());
+        let hash = sha256_file_with(&file, &|| false, &|n| seen.lock().unwrap().push(n)).unwrap();
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(hash.is_some());
+        assert_eq!(*seen.lock().unwrap(), vec![64 << 20, 70 << 20], "every 64 MiB and at the end");
+    }
+
+    #[test]
+    fn a_program_counts_only_as_the_pinned_build() {
+        const ENGINE: FileSpec = FileSpec { url: "https://example.invalid/e.dll", dest_rel: "models/eng/e.dll", size: 3, sha256: "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", extract: Extract::None };
+        assert!(is_program(&ENGINE));
+        let root = temp_root("program");
+        let dll = root.join(ENGINE.dest_rel);
+        std::fs::create_dir_all(dll.parent().unwrap()).unwrap();
+
+        std::fs::write(&dll, b"abd").unwrap();
+        assert!(!file_installed(&root, &ENGINE), "другая сборка того же размера");
+        assert_eq!(read_record(&root, &ENGINE).unwrap().sha256, "a52d159f262b2c6ddb724a61840befc36eb30c88877a4030b65cbe86298449c9");
+        assert!(!file_installed(&root, &ENGINE), "запись о другой сборке, без повторного хэша");
+
+        std::fs::write(&dll, b"abc").unwrap();
+        std::fs::remove_file(record_path(&root, &ENGINE)).unwrap();
+        assert!(file_installed(&root, &ENGINE), "файл без записи хэшируется один раз");
+        assert_eq!(read_record(&root, &ENGINE).unwrap().sha256, ENGINE.sha256);
+
+        std::fs::write(&dll, b"ab").unwrap();
+        assert!(!file_installed(&root, &ENGINE), "не тот размер");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn a_program_marker_is_a_file_under_tools_without_an_extension() {
+        assert!(is_program_marker("tools/audiocpp/audiocpp_server"));
+        assert!(is_program_marker("tools/bsroformer/bs_roformer-cli"));
+        assert!(!is_program_marker("tools/audiocpp/audiocpp_server.exe"));
+        assert!(!is_program_marker("tools/llama/libggml.so"));
+        assert!(!is_program_marker("models/higgs-engine/libcudart.so.13"));
+        assert!(!is_program_marker("models/eng/engine"));
+    }
+
+    /// A Linux archive packed on Windows (no execute bit on its program) still installs a program that runs.
+    #[cfg(unix)]
+    #[test]
+    fn a_program_unpacked_without_its_execute_bit_is_made_executable() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = temp_root("exec-bit");
+        let dir = root.join("tools/srv");
+        std::fs::create_dir_all(&dir).unwrap();
+        let archive = dir.join("_server.tar.gz");
+        {
+            let gz = flate2::write::GzEncoder::new(std::fs::File::create(&archive).unwrap(), flate2::Compression::fast());
+            let mut tar = tar::Builder::new(gz);
+            let mut h = tar::Header::new_gnu();
+            h.set_size(4);
+            h.set_mode(0o644);
+            h.set_cksum();
+            tar.append_data(&mut h, "srv/prog", &b"#!/x"[..]).unwrap();
+            tar.into_inner().unwrap().finish().unwrap();
+        }
+        let written = extract_archive(&archive, "tools/srv/_server.tar.gz", Extract::Flat, &dir).unwrap();
+        let prog = dir.join("prog");
+        assert!(written.contains(&prog), "{written:?}");
+        assert_eq!(std::fs::metadata(&prog).unwrap().permissions().mode() & 0o111, 0, "the archive's own mode");
+        let c = Component {
+            id: "srv",
+            name: "srv".into(),
+            purpose: String::new(),
+            requirement: Requirement::Required,
+            delivery: Delivery::Download,
+            size: 0,
+            files: &[],
+            markers: &[Marker { rel: "tools/srv/prog", expect: 0 }],
+            external_url: None,
+        };
+        make_programs_executable(&root, &[&c]);
+        assert_eq!(std::fs::metadata(&prog).unwrap().permissions().mode() & 0o777, 0o755);
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
     fn resumed_bytes_come_from_the_chunk_manifest() {
         let root = temp_root("resume");
         let part = root.join("x.part");
@@ -3677,22 +4543,22 @@ mod tests {
     fn removal_frees_the_files_and_the_partial_download() {
         let root = temp_root("remove");
         let all = manifest();
-        let tiny = all.iter().find(|c| c.id == "whisper-tiny").unwrap();
+        let tiny = all.iter().find(|c| c.id == "langid").unwrap();
         for f in tiny.files {
             sized(&root.join(f.dest_rel), f.size);
         }
-        let leftover = part_path(&root, &all.iter().find(|c| c.id == "whisper-base").unwrap().files[0],
+        let leftover = part_path(&root, &all.iter().find(|c| c.id == "roformer-q4").unwrap().files[0],
         );
         sized(&leftover, 1000);
         assert!(component_status(&root, tiny).installed);
 
-        let r = remove_components(&root, &["whisper-tiny".to_string(), "whisper-base".to_string()],
+        let r = remove_components(&root, &["langid".to_string(), "roformer-q4".to_string()],
         ).unwrap();
-        assert_eq!(r.removed, vec!["whisper-tiny".to_string(), "whisper-base".to_string()]);
+        assert_eq!(r.removed, vec!["langid".to_string(), "roformer-q4".to_string()]);
         assert_eq!(r.freed_bytes, tiny.size + 1000);
         assert!(r.errors.is_empty(), "{:?}", r.errors);
         assert!(!component_status(&root, tiny).installed);
-        assert!(!root.join("models/whisper/faster-whisper-tiny").exists(), "пустой каталог модели снят");
+        assert!(!root.join("models/langid-voxlingua107").exists(), "пустой каталог модели снят");
         assert!(root.join("models").is_dir(), "models/ остаётся");
         std::fs::remove_dir_all(&root).ok();
     }
@@ -3703,8 +4569,8 @@ mod tests {
         assert_eq!(remove_components(&root, &["ocr".to_string()]).unwrap_err().code, "not_removable");
         assert_eq!(remove_components(&root, &["nvidia-driver".to_string()]).unwrap_err().code, "not_removable");
         assert_eq!(remove_components(&root, &["nope".to_string()]).unwrap_err().code, "unknown_component");
-        let _busy = try_claim(&["whisper-small".to_string()]).unwrap();
-        assert_eq!(remove_components(&root, &["whisper-small".to_string()]).unwrap_err().code, "busy");
+        let _busy = try_claim(&["roformer-q5".to_string()]).unwrap();
+        assert_eq!(remove_components(&root, &["roformer-q5".to_string()]).unwrap_err().code, "busy");
         std::fs::remove_dir_all(&root).ok();
     }
 
@@ -3713,15 +4579,15 @@ mod tests {
         let root = temp_root("import-dst");
         let src = temp_root("import-src");
         let all = manifest();
-        let tiny = all.iter().find(|c| c.id == "whisper-tiny").unwrap();
+        let tiny = all.iter().find(|c| c.id == "langid").unwrap();
         for f in tiny.files {
             let name = Path::new(f.dest_rel).file_name().unwrap();
             sized(&src.join("nested").join(name), f.size);
         }
         sized(&src.join(".hidden").join("model.bin"), 1);
         sized(&src.join("other").join("config.json"), 7);
-        let r = import_from_dir(&root, &src, Some("whisper-tiny"), true, false);
-        assert_eq!(r.imported, vec!["whisper-tiny".to_string()]);
+        let r = import_from_dir(&root, &src, Some("langid"), true, false);
+        assert_eq!(r.imported, vec!["langid".to_string()]);
         assert_eq!(r.files, tiny.files.len());
         assert!(r.errors.is_empty(), "{:?}", r.errors);
         assert!(component_status(&root, tiny).installed);
@@ -3742,7 +4608,7 @@ mod tests {
     fn a_model_another_program_has_is_linked_in_and_says_where_from() {
         let root = temp_root("neighbor-dst");
         let other = temp_root("neighbor-src");
-        let tiny = manifest().into_iter().find(|c| c.id == "whisper-tiny").unwrap();
+        let tiny = manifest().into_iter().find(|c| c.id == "langid").unwrap();
         // the neighbour keeps the model in a folder of the same name, under its own layout
         let in_neighbor = |rel: &str| {
             let rel = Path::new(rel);
@@ -3759,7 +4625,7 @@ mod tests {
         assert!(import_from_neighbors(&root, &[("ace".to_string(), decoy.clone())], false, None).is_empty());
 
         let took = import_from_neighbors(&root, &[("yue2".to_string(), other.clone())], false, None);
-        assert!(took.contains(&("whisper-tiny".to_string(), "yue2".to_string())));
+        assert!(took.contains(&("langid".to_string(), "yue2".to_string())));
         let status = component_status(&root, &tiny);
         assert!(status.installed);
         assert_eq!(status.taken_from.as_deref(), Some("yue2"));
@@ -3872,5 +4738,156 @@ mod tests {
         let tree = tmp.path().join("tree");
         extract_archive(&archive, "pkg.tar.gz", Extract::Tree, &tree).unwrap();
         assert_eq!(std::fs::read(tree.join("pkg/include/foo.h")).unwrap(), b"header");
+    }
+
+    /// Прежний Whisper уходит: всё, что назвала его запись, и россыпь CUDA 11 без записи; чужое остаётся.
+    #[test]
+    fn the_former_whisper_goes_and_other_files_stay() {
+        let root = tempfile::tempdir().unwrap();
+        let w = root.path().join("tools/whisper");
+        std::fs::create_dir_all(&w).unwrap();
+        for f in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "notes.txt"] {
+            std::fs::write(w.join(f), b"x").unwrap();
+        }
+        std::fs::write(w.join("old-extra.dll"), b"x").unwrap();
+        std::fs::write(
+            w.join("_whisper.zip.json"),
+            r#"{"sha256":"s","url":"u","files":[{"path":"tools/whisper/old-extra.dll","size":1},{"path":"models/elsewhere.bin","size":1}]}"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.path().join("models")).unwrap();
+        std::fs::write(root.path().join("models/elsewhere.bin"), b"x").unwrap();
+        std::fs::write(w.join("license.txt"), b"x").unwrap();
+        std::fs::create_dir_all(w.join("_models/faster-whisper-small")).unwrap();
+        std::fs::write(w.join("_models/faster-whisper-small/model.bin"), b"x").unwrap();
+        retire_whisper(root.path(), &delete);
+        for gone in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "old-extra.dll", "_whisper.zip.json", "license.txt", "_models"] {
+            assert!(!w.join(gone).exists(), "{gone}");
+        }
+        for kept in ["notes.txt"] {
+            assert!(w.join(kept).is_file(), "{kept}");
+        }
+        assert!(root.path().join("models/elsewhere.bin").is_file());
+        std::fs::remove_file(w.join("notes.txt")).unwrap();
+        std::fs::write(w.join("license.txt"), b"x").unwrap();
+        retire_whisper(root.path(), &delete);
+        assert!(!w.exists(), "the emptied folder goes");
+    }
+
+    /// A neighbour's file that cannot be linked (another drive) leaves the program's own file in place.
+    #[test]
+    fn a_link_that_fails_keeps_the_file_it_was_to_replace() {
+        let root = tempfile::tempdir().unwrap();
+        let dest = root.path().join("tools/yt-dlp/yt-dlp.exe");
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::write(&dest, b"older build").unwrap();
+        assert!(adopt_file(&root.path().join("nowhere/yt-dlp.exe"), &dest, false).is_err());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"older build");
+        let src = root.path().join("neighbour.exe");
+        std::fs::write(&src, b"pinned build").unwrap();
+        adopt_file(&src, &dest, false).unwrap();
+        assert_eq!(std::fs::read(&dest).unwrap(), b"pinned build");
+        assert!(!with_suffix(&dest, ".import").exists());
+    }
+
+    /// A link that fails leaves no folder made for it (a neighbour's engine on another drive), and a folder that was
+    /// there stays.
+    #[test]
+    fn a_link_that_fails_leaves_no_empty_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let dest = root.path().join("models/transcribe-engine-vulkan/transcribe_engine.dll");
+        assert!(adopt_file(&root.path().join("nowhere/transcribe_engine.dll"), &dest, false).is_err());
+        assert!(!dest.parent().unwrap().exists());
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        assert!(adopt_file(&root.path().join("nowhere/transcribe_engine.dll"), &dest, false).is_err());
+        assert!(dest.parent().unwrap().is_dir());
+    }
+
+    /// A program taken from another folder replaces one of another build: the record of that build goes with it, so
+    /// the new file is hashed and recorded as what it is instead of counting as the old build for good.
+    #[test]
+    fn a_program_taken_from_a_neighbour_drops_the_record_of_the_build_it_replaced() {
+        let c = manifest().into_iter().find(|c| c.id == "transcribe-engine-cpu").unwrap();
+        let f = &c.files[0];
+        let root = tempfile::tempdir().unwrap();
+        let dest = root.path().join(f.dest_rel);
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        std::fs::File::create(&dest).unwrap().set_len(f.size - 2048).unwrap();
+        write_record_of(root.path(), f, "stale", &[dest.clone()]).unwrap();
+        let neighbour = tempfile::tempdir().unwrap();
+        let src = neighbour.path().join(Path::new(f.dest_rel).file_name().unwrap());
+        std::fs::write(&src, vec![7u8; f.size as usize]).unwrap();
+        let report = import_from_dir(root.path(), neighbour.path(), Some(c.id), true, false);
+        assert_eq!(report.files, 1, "{:?}", report.errors);
+        assert!(!component_status(root.path(), &c).installed, "not the pinned build");
+        let record = read_record(root.path(), f).expect("recorded again");
+        assert_ne!(record.sha256, "stale", "the record names the file now in place");
+    }
+
+    /// Vendor libraries the studio downloads whose AVX-512 the vendor picks at run time (they run on every x86-64
+    /// processor their vendor supports) and that carry no symbols: NVIDIA's CUDA libraries, Microsoft's VC++ runtime and
+    /// ONNX Runtime (MLAS picks its kernels by the processor), denoland's deno (V8 and simdutf do the same), and the
+    /// Widevine module WebView2 downloads into the window's profile (webview-data) itself.
+    const VENDOR_DISPATCHED: &[&str] = &[
+        "cublas64_", "cublaslt64_", "cufft64_", "cufftw64_", "cudnn", "cudart64_", "nvblas64_", "vcruntime140", "msvcp140", "vcomp140",
+        "onnxruntime", "libonnxruntime", "deno", "widevinecdm",
+    ];
+    /// What a package brings that the studio never loads: ONNX Runtime's TensorRT provider (the studio takes its CUDA
+    /// one), which imports TensorRT.
+    const NEVER_LOADED: &[&str] = &["onnxruntime_providers_tensorrt.dll", "libonnxruntime_providers_tensorrt.so"];
+
+    /// Every binary of a program folder (DUB_COMPAT_ROOT: a dev root or an installed or unpacked release, read only)
+    /// against the release checks of dub_core::compat: AVX-512 outside CPUID dispatchers, the Ubuntu 22.04 limits and
+    /// RUNPATH of Linux libraries, imports Windows cannot resolve (the folders the studio puts on PATH count), and the
+    /// execute bit of the components' programs. DUB_COMPAT_MAPS: link maps of stripped binaries, `name=path` joined by
+    /// `;` (`Dub-Studio.exe=D:/…/Dub-Studio.map`).
+    #[test]
+    #[ignore]
+    fn a_program_folder_passes_the_release_checks() {
+        let Ok(root) = std::env::var("DUB_COMPAT_ROOT") else { return };
+        let root = PathBuf::from(root);
+        let mut maps = std::collections::BTreeMap::new();
+        for pair in std::env::var("DUB_COMPAT_MAPS").unwrap_or_default().split(';').filter(|p| !p.is_empty()) {
+            let (name, path) = pair.split_once('=').expect("name=path");
+            let text = std::fs::read_to_string(path).unwrap_or_else(|e| panic!("{path}: {e}"));
+            maps.insert(name.to_string(), dub_core::compat::Functions::from_link_map(&text));
+        }
+        // the VC++ runtime the studio takes from the system folder when it is there instead of downloading it
+        let system = system_dir();
+        let from_system: Vec<String> = manifest()
+            .into_iter()
+            .filter(|c| FOUND_IN_SYSTEM_DIR.contains(&c.id))
+            .flat_map(|c| c.markers)
+            .filter(|m| !root.join(m.rel).is_file())
+            .filter_map(|m| Path::new(m.rel).file_name().map(|n| n.to_string_lossy().into_owned()))
+            .filter(|name| system.as_ref().is_some_and(|dir| dir.join(name).is_file()))
+            .collect();
+        let provided: Vec<&str> = from_system.iter().map(String::as_str).collect();
+        let how = dub_core::compat::Tree {
+            path_folders: &["tools/ffmpeg", "tools/llama", "models/cuda12-runtime", "models/higgs-engine"],
+            provided: &provided,
+            maps,
+            vendor_dispatched: VENDOR_DISPATCHED,
+            unused: NEVER_LOADED,
+        };
+        let found = dub_core::compat::check_tree(&root, &how).unwrap();
+        let mut lines: Vec<String> = Vec::new();
+        for (path, problems) in &found {
+            let rel = path.strip_prefix(&root).unwrap_or(path).display().to_string();
+            lines.extend(problems.iter().map(|p| format!("{rel}: {p}")));
+        }
+        for c in manifest() {
+            for m in c.markers.iter().filter(|m| is_program_marker(m.rel)) {
+                let path = root.join(m.rel);
+                if path.is_file() && !dub_core::compat::executable(&path).unwrap() {
+                    lines.push(format!("{}: {}", m.rel, dub_core::compat::Problem::NotExecutable));
+                }
+            }
+        }
+        for line in &lines {
+            println!("[ERROR] {line}");
+        }
+        assert!(lines.is_empty(), "{} problems in {}", lines.len(), root.display());
+        println!("[OK] {}", root.display());
     }
 }

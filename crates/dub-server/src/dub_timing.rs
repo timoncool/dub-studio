@@ -147,7 +147,7 @@ pub fn record(
         }
         if !todo.is_empty() {
             let files: Vec<PathBuf> = todo.iter().map(|t| t.2.clone()).collect();
-            let mut engine = crate::models::build_engine(choice);
+            let mut engine = crate::models::build_engine(choice)?;
             let heard = engine.transcribe_many_words(&files, lang);
             let mut failed: Vec<String> = Vec::new();
             for ((id, key, _), r) in todo.into_iter().zip(heard) {

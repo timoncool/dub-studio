@@ -64,8 +64,13 @@ impl OnnxModel {
     /// Модель на видеокарте, когда DUB_FACES_BACKEND=gpu (сервер ставит его из выбора бэкенда локальных
     /// стадий): CUDA-провайдер с error_on_failure — недоступная CUDA становится ошибкой, а не тихим CPU.
     pub fn load(path: &Path) -> Result<Self, FacesError> {
+        Self::load_on(path, std::env::var("DUB_FACES_BACKEND").is_ok_and(|v| v == "gpu"))
+    }
+
+    /// [`OnnxModel::load`] on the device the caller names: a stage with its own device setting (the speaker voices
+    /// of diarization) does not take the casting's.
+    pub fn load_on(path: &Path, gpu: bool) -> Result<Self, FacesError> {
         ensure_ort_dylib();
-        let gpu = std::env::var("DUB_FACES_BACKEND").is_ok_and(|v| v == "gpu");
         let mut builder = Session::builder().map_err(|e| FacesError::Ort(format!("ort builder: {e}")))?;
         if gpu {
             builder = builder
@@ -75,6 +80,7 @@ impl OnnxModel {
         let session = builder
             .commit_from_file(path)
             .map_err(|e| FacesError::Ort(format!("commit_from_file {}: {e}", path.display())))?;
+        tracing::info!("onnxruntime {}: {}", path.display(), if gpu { "CUDA" } else { "CPU" });
         Ok(Self { session })
     }
 

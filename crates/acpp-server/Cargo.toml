@@ -1,0 +1,37 @@
+[package]
+name = "acpp-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Client of audiocpp_server (audio.cpp): the process, Higgs speech as a stream, Parakeet and CrisperWhisper recognition"
+
+[dependencies]
+reqwest = { version = "0.13", default-features = false, features = ["blocking", "json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+base64 = "0.23"
+hound = "3"
+thiserror = { workspace = true }
+# The processor floor the server is built for, and with `langid` the language CrisperWhisper hears for «auto»
+# (VoxLingua107 on transcribe.cpp).
+dub-tcpp = { path = "../dub-tcpp" }
+# The speaking pace of a language (dub_core::fit::table_cps), which the runaway length of a Higgs phrase follows.
+dub-core = { path = "../dub-core" }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+# tests/package.rs: the published package downloaded, checked and unpacked as a studio does it.
+[dev-dependencies]
+ureq = "3"
+sha2 = "0.11"
+
+[target.'cfg(windows)'.dev-dependencies]
+zip = { version = "8", default-features = false, features = ["deflate"] }
+
+[target.'cfg(unix)'.dev-dependencies]
+tar = "0.4"
+flate2 = "1"
+
+[features]
+langid = []

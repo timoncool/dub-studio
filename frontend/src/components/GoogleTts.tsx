@@ -52,9 +52,39 @@ export default function GoogleTts({model,mode,onChange}: {model:string;mode:stri
       <select value={mode || "standard"} onChange={e=>onChange("google_tts_mode",e.target.value)} className="block w-full mt-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md p-1">
         <option value="standard">{t("google.standard")}</option>
         <option value="batch" disabled={!!choice && !supportsBatch}>{t("google.batch")}</option>
+        <option value="auto" disabled={!!choice && !supportsBatch}>{t("google.auto")}</option>
       </select>
     </label>
-    <p className="text-[11px] text-[var(--color-muted)]">{t(mode === "batch" ? "google.batchHint" : "google.standardHint")}</p>
+    <p className="text-[11px] text-[var(--color-muted)]">{t(mode === "batch" ? "google.batchHint" : mode === "auto" ? "google.autoHint" : "google.standardHint")}</p>
+    {error && <div role="alert" className="text-[11px] text-[var(--color-warn)]">{t("google.error",{detail:error})}</div>}
+    <CloudSpend onChange={onChange} />
+  </div>;
+}
+
+/** What the cloud voicing cost and the daily limit for agents and programs, as Speech Studio's cloud settings show it. */
+function CloudSpend({ onChange }: { onChange: (key: string, value: string) => void }) {
+  const { t } = useTranslation();
+  const [spend, setSpend] = useState<Awaited<ReturnType<typeof api.cloudSpend>> | null>(null);
+  const [limit, setLimit] = useState("");
+  const [error, setError] = useState("");
+  const load = () => api.cloudSpend().then((s) => { setSpend(s); setLimit(String(s.daily_limit_usd ?? 0)); }).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+  useEffect(() => { void load(); }, []);
+  const money = (usd: number) => `$${usd.toFixed(2)}`;
+  return <div className="space-y-1.5 rounded-lg border border-[var(--color-border)] p-2.5">
+    <div className="text-[12px] font-medium">{t("google.spendTitle")}</div>
+    {spend && <>
+      <p className="text-[11px]">{t("google.spendTotals", { total: money(spend.total), today: money(spend.today) })}{spend.unpriced ? ` · ${t("google.spendUnpriced", { n: spend.unpriced })}` : ""}</p>
+      {spend.providers.length > 0 && <ul className="text-[11px] text-[var(--color-muted)] space-y-0.5">
+        {spend.providers.map((g) => <li key={g.key}>{g.key}: {money(g.usd)} · {t("google.runs", { n: g.runs })}</li>)}
+      </ul>}
+    </>}
+    <label className="flex flex-wrap items-center gap-2 text-[12px]">
+      {t("google.limit")}
+      <input type="number" min={0} max={10000} step="0.5" value={limit} onChange={(e) => setLimit(e.target.value)}
+        onBlur={() => { onChange("cloud_daily_limit_usd", limit.trim() === "" ? "0" : limit.trim()); void load(); }}
+        className="w-24 px-2 py-1 rounded-md bg-[var(--color-surface)] border border-[var(--color-border)] text-[12px]" />
+      <span className="text-[11px] text-[var(--color-muted)]">{t("google.limitHint")}</span>
+    </label>
     {error && <div role="alert" className="text-[11px] text-[var(--color-warn)]">{t("google.error",{detail:error})}</div>}
   </div>;
 }

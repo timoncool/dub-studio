@@ -3,10 +3,11 @@ name = "dub-asr"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Распознавание (transcribe.cpp, faster-whisper) и диаризация над parakeet-rs (Nemotron 3 Diarization)"
+description = "Распознавание (audio.cpp: Parakeet-TDT и CrisperWhisper; transcribe.cpp) и диаризация над parakeet-rs (Nemotron 3 Diarization)"
 
 [dependencies]
 dub-core = { path = "../dub-core" }
+tracing = { workspace = true }
 # load-dynamic: onnxruntime подгружается из onnxruntime.dll в рантайме, а не линкуется статически.
 # Это обходит рассинхрон MSVC STL (статическая libort_sys собрана новее локального тулчейна) и заодно
 # делает движок портативным (DLL кладётся рядом с бинарём / ищется по ORT_DYLIB_PATH).
@@ -24,6 +25,7 @@ parakeet-rs = { version = "=0.4.0", default-features = false, features = ["sortf
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "tracing", "api-28"] }
 hound = "3.5"
 dub-tcpp = { path = "../dub-tcpp" }
+acpp-server = { path = "../acpp-server", features = ["langid"] }
 # Ресемплинг с ограничением полосы (FFT-ресемплер, как audio-post студий).
 rubato = "5.0"
 audioadapter = "5.0"

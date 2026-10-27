@@ -7,6 +7,7 @@ description = "Кастинг персонажей: детект лиц (SCRFD) 
 
 [dependencies]
 dub-core = { path = "../dub-core" }
+tracing = { workspace = true }
 # ort строго той же версии, что dub-asr/dub-ocr (=2.0.0-rc.13, load-dynamic + api-28): ДВЕ разные версии
 # ort в одном бинаре = рассинхрон OrtApi -> дедлок (тот же трап, что чужая system32 DLL). ensure_ort_dylib()
 # тут повторяет паттерн dub-ocr: ORT_DYLIB_PATH -> onnxruntime 1.28.2. ndarray (версия = та, что у ort)

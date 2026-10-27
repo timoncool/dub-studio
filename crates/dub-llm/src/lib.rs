@@ -35,6 +35,10 @@ pub enum LlmError {
     ExitedEarly { status: String, stderr: String },
     #[error("llama-server did not come up in {secs}s (port {port}); stderr: {stderr}")]
     NotReady { secs: u64, port: u16, stderr: String },
+    /// The build sees no graphics card to put the model's layers on (`--list-devices` names none); `detail` is what the
+    /// build said about it.
+    #[error("llama-server sees no GPU device: {detail}")]
+    NoGpuDevice { detail: String },
     #[error("http: {0}")]
     Http(String),
     #[error("api: {0}")]
@@ -63,6 +67,7 @@ impl LlmError {
             LlmError::LogFile { .. } => "llm_log_file",
             LlmError::ExitedEarly { .. } => "llm_exited_early",
             LlmError::NotReady { .. } => "llm_not_ready",
+            LlmError::NoGpuDevice { .. } => "llm_no_gpu_device",
             LlmError::Http(_) => "llm_http",
             LlmError::Api(_) => "llm_api",
             LlmError::Rejected { .. } => "llm_rejected",

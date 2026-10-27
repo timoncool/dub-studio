@@ -43,7 +43,7 @@ jobs:
           ffmpeg-version: release
 
       # models\higgs-engine and models\ocr are not in git. The VC++ runtime comes from the runner's Visual
-      # Studio redistributable, the PP-OCR models from the installer of the last published release.
+      # Studio redistributable, the PP-OCR models from the portable build of the last published release.
       - name: Bundled files
         shell: pwsh
         run: |
@@ -61,14 +61,13 @@ jobs:
             Get-ChildItem -File -Filter *.dll | Copy-Item -Destination $higgs
 
           $tag = gh release view --repo $env:GITHUB_REPOSITORY --json tagName --jq .tagName
-          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*.msi' --dir $env:RUNNER_TEMP
-          if ($LASTEXITCODE -ne 0) { throw "could not download the MSI of $tag" }
-          $msi = Get-ChildItem $env:RUNNER_TEMP -File -Filter *.msi | Select-Object -First 1
-          $unpacked = Join-Path $env:RUNNER_TEMP 'msi'
-          $p = Start-Process msiexec.exe -ArgumentList '/a', "`"$($msi.FullName)`"", '/qn', "TARGETDIR=`"$unpacked`"" -Wait -PassThru
-          if ($p.ExitCode -ne 0) { throw "msiexec /a $($msi.Name) exited with $($p.ExitCode)" }
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern '*-portable-windows-x64.zip' --dir $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw "could not download the portable build of $tag" }
+          $portable = Get-ChildItem $env:RUNNER_TEMP -File -Filter *-portable-windows-x64.zip | Select-Object -First 1
+          $unpacked = Join-Path $env:RUNNER_TEMP 'portable'
+          Expand-Archive -LiteralPath $portable.FullName -DestinationPath $unpacked
           $det = Get-ChildItem $unpacked -Recurse -File -Filter det.onnx | Where-Object { $_.Directory.Name -eq 'ocr' } | Select-Object -First 1
-          if (-not $det) { throw "no models\ocr in the $tag installer" }
+          if (-not $det) { throw "no models\ocr in the $tag portable build" }
           Get-ChildItem $det.Directory -File | Copy-Item -Destination $ocr
 
           Get-ChildItem $higgs, $ocr -File | Select-Object FullName, Length | Format-Table -AutoSize | Out-String -Width 300 | Write-Host

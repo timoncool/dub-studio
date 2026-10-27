@@ -121,8 +121,8 @@ if ($DryRun) {
     Write-Host '[PLAN] cargo test --workspace'
     Write-Host '[PLAN] cargo test --manifest-path desktop/src-tauri/Cargo.toml'
     Write-Host "[PLAN] stage into $stagingRoot"
-    Write-Host "[PLAN] tauri build --config $bundleConfigPath (NSIS + MSI, signed)"
-    Write-Host "[PLAN] release\${Version}: setup.exe (+.sig), msi (+.sig), portable zip, latest.json"
+    Write-Host "[PLAN] tauri build --config $bundleConfigPath (NSIS, signed)"
+    Write-Host "[PLAN] release\${Version}: setup.exe (+.sig), portable zip, latest.json, SHA256SUMS.txt"
     Write-Host '[OK] dry run finished, nothing was built'
     return
 }
@@ -186,19 +186,14 @@ try {
     # Exact version in the filter: a bundle folder keeps installers of earlier builds.
     $nsisInstaller = Get-ChildItem -Recurse -File (Join-Path $bundleRoot 'nsis') -Filter "*_$($Version)_x64-setup.exe" | Select-Object -First 1
     if (-not $nsisInstaller) { Fail "the NSIS installer for $Version is missing in $bundleRoot" }
-    $msiInstaller = Get-ChildItem -Recurse -File (Join-Path $bundleRoot 'msi') -Filter "*_$($Version)_x64_*.msi" | Select-Object -First 1
-    if (-not $msiInstaller) { Fail "the MSI for $Version is missing in $bundleRoot" }
 
     # GitHub replaces spaces in asset names with dots; the manifest must name the asset as it is served.
-    $assets = @{}
-    foreach ($installer in $nsisInstaller, $msiInstaller) {
-        $signaturePath = "$($installer.FullName).sig"
-        if (-not (Test-Path $signaturePath)) { Fail "the updater signature is missing: $signaturePath" }
-        $assetName = $installer.Name -replace ' ', '.'
-        Copy-Item $installer.FullName (Join-Path $releaseDir $assetName) -Force
-        Copy-Item $signaturePath (Join-Path $releaseDir "$assetName.sig") -Force
-        $assets[$installer.Extension] = @{ name = $assetName; signature = (Get-Content -Raw $signaturePath).Trim() }
-    }
+    $signaturePath = "$($nsisInstaller.FullName).sig"
+    if (-not (Test-Path $signaturePath)) { Fail "the updater signature is missing: $signaturePath" }
+    $installerName = $nsisInstaller.Name -replace ' ', '.'
+    Copy-Item $nsisInstaller.FullName (Join-Path $releaseDir $installerName) -Force
+    Copy-Item $signaturePath (Join-Path $releaseDir "$installerName.sig") -Force
+    $installerSignature = (Get-Content -Raw $signaturePath).Trim()
 
     # Portable: the executable, the bundle beside it, and the marker that makes the copy portable.
     $builtExe = Join-Path $targetRoot "release\$binaryName.exe"
@@ -233,16 +228,12 @@ try {
         pub_date = (Get-Date).ToUniversalTime().ToString('o')
         platforms = [ordered]@{
             'windows-x86_64' = [ordered]@{
-                signature = $assets['.exe'].signature
-                url = "$downloadBase/$($assets['.exe'].name)"
+                signature = $installerSignature
+                url = "$downloadBase/$installerName"
             }
             'windows-x86_64-nsis' = [ordered]@{
-                signature = $assets['.exe'].signature
-                url = "$downloadBase/$($assets['.exe'].name)"
-            }
-            'windows-x86_64-msi' = [ordered]@{
-                signature = $assets['.msi'].signature
-                url = "$downloadBase/$($assets['.msi'].name)"
+                signature = $installerSignature
+                url = "$downloadBase/$installerName"
             }
         }
     }
@@ -252,6 +243,10 @@ try {
         ($latest | ConvertTo-Json -Depth 8),
         (New-Object System.Text.UTF8Encoding($false))
     )
+    $sums = foreach ($file in (Join-Path $releaseDir $installerName), $portableZip) {
+        "$((Get-FileHash -Algorithm SHA256 -LiteralPath $file).Hash.ToLowerInvariant()) *$(Split-Path -Leaf $file)"
+    }
+    [System.IO.File]::WriteAllText((Join-Path $releaseDir 'SHA256SUMS.txt'), (($sums -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
     Get-ChildItem $releaseDir -File | Select-Object Name, Length | Format-Table | Out-Host
     Write-Host "[OK] release $Version is in $releaseDir; upload the files to GitHub release v$Version (not a pre-release)"
 }

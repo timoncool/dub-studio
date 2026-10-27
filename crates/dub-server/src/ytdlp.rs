@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 /// Компонент менеджера моделей.
 pub const COMPONENT: &str = "ytdlp";
 /// Версия yt-dlp.exe из манифеста (setup.rs, GH_YTDLP).
-pub const PINNED_VERSION: &str = "2026.08.19";
+pub const PINNED_VERSION: &str = "2026.10.21";
 const DIR: &str = "tools/yt-dlp";
 /// Файл yt-dlp на диске и ассет релиза, который его даёт (в SHA2-256SUMS он под тем же именем).
 #[cfg(windows)]
@@ -26,7 +26,9 @@ const EXE: &str = "yt-dlp.exe";
 const ASSET: &str = "yt-dlp.exe";
 #[cfg(not(windows))]
 const EXE: &str = "yt-dlp";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+const ASSET: &str = "yt-dlp_macos";
+#[cfg(all(not(windows), not(target_os = "macos")))]
 const ASSET: &str = "yt-dlp_linux";
 const SUFFIX: &str = std::env::consts::EXE_SUFFIX;
 #[cfg(windows)]
@@ -453,7 +455,7 @@ fn fetch_verified(client: &reqwest::blocking::Client, url: &str, dest: &Path, wa
 }
 
 fn run_version(exe: &Path) -> Result<String, String> {
-    let mut cmd = Command::new(exe);
+    let mut cmd = dub_core::proc::host_command(exe);
     cmd.arg("--version");
     let out = run_captured(cmd, &|| false, Some(Duration::from_secs(120))).map_err(|e| e.detail)?;
     if !out.success {
@@ -520,7 +522,7 @@ impl Tool {
     /// PYTHONIOENCODING/PYTHONUTF8 и пишет в канал в кодовой странице системы. `work` — папка этого вызова:
     /// прокси с паролем ложится туда файлом (proxy_args).
     pub fn command(&self, url: &str, work: &Path) -> Result<Command, UrlError> {
-        let mut cmd = Command::new(&self.exe);
+        let mut cmd = dub_core::proc::host_command(&self.exe);
         cmd.args(base_args(&self.deno, &self.ffmpeg, &self.cache))
             .args(proxy_args(dub_llm::net::proxy_url_for(url), work)?)
             .stdin(Stdio::null());
@@ -641,9 +643,7 @@ pub fn kill_tree(pid: u32) {
         i += 1;
     }
     for p in family.iter().skip(1).rev() {
-        if let Some(proc_) = sys.process(*p) {
-            proc_.kill();
-        }
+        crate::jobs::kill_pid(p.as_u32());
     }
     let deadline = Instant::now() + Duration::from_secs(3);
     while Instant::now() < deadline {
@@ -653,8 +653,8 @@ pub fn kill_tree(pid: u32) {
         }
         std::thread::sleep(Duration::from_millis(100));
     }
-    if let Some(proc_) = sys.process(root) {
-        proc_.kill();
+    if sys.process(root).is_some() {
+        crate::jobs::kill_pid(pid);
     }
 }
 
@@ -1201,10 +1201,10 @@ mod tests {
         let a = active(root.path(), &none);
         assert_eq!((a.version.as_str(), a.updated, a.problem.is_none()), (PINNED_VERSION, false, true));
         std::fs::create_dir_all(updates_dir(root.path())).unwrap();
-        std::fs::write(updates_dir(root.path()).join("yt-dlp-2026.09.30.exe"), b"exe!").unwrap();
-        let rec = UpdateRecord { version: Some("2026.09.30".into()), file: Some("yt-dlp-2026.09.30.exe".into()), size: Some(4), ..Default::default() };
+        std::fs::write(updates_dir(root.path()).join("yt-dlp-2026.11.30.exe"), b"exe!").unwrap();
+        let rec = UpdateRecord { version: Some("2026.11.30".into()), file: Some("yt-dlp-2026.11.30.exe".into()), size: Some(4), ..Default::default() };
         let a = active(root.path(), &rec);
-        assert_eq!((a.version.as_str(), a.updated), ("2026.09.30", true));
+        assert_eq!((a.version.as_str(), a.updated), ("2026.11.30", true));
         write_record(root.path(), &rec).unwrap();
         assert_eq!(read_record(root.path()), rec, "the record survives a restart");
         let torn = UpdateRecord { size: Some(5), ..rec.clone() };

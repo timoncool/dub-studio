@@ -25,10 +25,20 @@ type LogTail = Arc<Mutex<VecDeque<String>>>;
 
 type LogFile = Option<Arc<Mutex<std::fs::File>>>;
 
-fn drain_to_tail<R: std::io::Read + Send + 'static>(reader: R, tail: LogTail, file: LogFile) {
+/// The lines where llama-server (at `--log-verbosity 4`) names where the model went: the device, the layers offloaded
+/// to it and the weights on each buffer. The same filter as the other studios' llama-server.
+type DeviceLines = Arc<Mutex<Vec<String>>>;
+const DEVICE_MARKERS: [&str; 3] = ["using device", "offloaded", "model buffer size"];
+
+fn drain_to_tail<R: std::io::Read + Send + 'static>(reader: R, tail: LogTail, file: LogFile, devices: DeviceLines) {
     std::thread::spawn(move || {
         let r = BufReader::new(reader);
         for line in r.lines().map_while(Result::ok) {
+            if DEVICE_MARKERS.iter().any(|m| line.contains(m)) {
+                if let Ok(mut d) = devices.lock() {
+                    d.push(line.trim().to_string());
+                }
+            }
             if let Some(f) = &file {
                 if let Ok(mut f) = f.lock() {
                     let _ = writeln!(f, "{line}");
@@ -130,6 +140,26 @@ fn free_port() -> Result<u16, LlmError> {
     Ok(p)
 }
 
+/// The devices the llama-server build can put layers on (`--list-devices`: `  CUDA0: <card> (<total> MiB, <free> MiB
+/// free)`), and what it said when it found none: its ggml init lines, or its whole answer.
+fn list_devices(bin: &Path) -> Result<(Vec<String>, String), LlmError> {
+    let mut cmd = Command::new(bin);
+    cmd.arg("--list-devices");
+    let out = dub_core::proc::output(&mut cmd).map_err(|e| LlmError::Spawn(format!("llama-server --list-devices: {e}")))?;
+    let text = format!("{}\n{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let lines: Vec<&str> = text.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    let devices: Vec<String> = lines
+        .iter()
+        .skip_while(|l| !l.starts_with("Available devices"))
+        .skip(1)
+        .take_while(|l| l.split_once(':').is_some_and(|(id, _)| !id.is_empty() && !id.contains(' ')))
+        .map(|l| l.to_string())
+        .collect();
+    let said: Vec<&str> = lines.iter().copied().filter(|l| l.contains("ggml_cuda_init") || l.contains("ggml_vulkan")).collect();
+    let detail = if said.is_empty() { lines.join(" | ") } else { said.join(" | ") };
+    Ok((devices, detail))
+}
+
 impl LlamaServer {
     /// Поднять сервер и дождаться готовности (/health -> ok). Ошибка если бинарь/модель отсутствуют,
     /// процесс упал или не поднялся за ready_timeout_secs.
@@ -140,6 +170,14 @@ impl LlamaServer {
         if !opts.model.is_file() {
             return Err(LlmError::ModelMissing(opts.model.clone()));
         }
+        let ngl = std::env::var("DUB_STUDIO_LLAMA_NGL").ok().and_then(|s| s.trim().parse::<i32>().ok()).unwrap_or(opts.n_gpu_layers);
+        if ngl != 0 {
+            let (devices, detail) = list_devices(&opts.bin)?;
+            if devices.is_empty() {
+                return Err(LlmError::NoGpuDevice { detail });
+            }
+            tracing::info!("llama-server {}: devices {}", opts.bin.display(), devices.join("; "));
+        }
         let port = free_port()?;
         // Env-оверрайды памяти для слабых машин (баг-репорт: OOM «prefill graph» на 32ГБ RAM — на 64ГБ
         // тот же клип проходит). Дают подобрать без пересборки:
@@ -148,7 +186,6 @@ impl LlamaServer {
         //   DUB_STUDIO_LLAMA_UBATCH/_BATCH — размер батча prefill: ПРЯМОЙ рычаг против «prefill graph»
         //   (граф вычислений prefill масштабируется от ubatch; меньше ubatch = меньше пиковый буфер).
         let ctx = env_u32_pos("DUB_STUDIO_LLAMA_CTX").unwrap_or(opts.ctx_size);
-        let ngl = std::env::var("DUB_STUDIO_LLAMA_NGL").ok().and_then(|s| s.trim().parse::<i32>().ok()).unwrap_or(opts.n_gpu_layers);
         let mut cmd = Command::new(&opts.bin);
         cmd.arg("-m")
             .arg(&opts.model)
@@ -169,7 +206,11 @@ impl LlamaServer {
             // ОБЯЗАТЕЛЬНО: Jinja-движок шаблонов. Без него llama-server игнорирует chat_template_kwargs
             // (enable_thinking:false из client.rs) -> Gemma-4 «думает», сжигает max_tokens на reasoning_content,
             // а content приходит ПУСТЫМ -> перевод/rewrite молча откатываются на оригинал (сломан весь MT).
-            .arg("--jinja");
+            .arg("--jinja")
+            .arg("--log-verbosity")
+            .arg("4")
+            .arg("--log-colors")
+            .arg("off");
         // Лимит батча prefill против OOM «prefill graph» на слабой RAM. Приоритет: настройка UI
         // (opts.ubatch) -> env DUB_STUDIO_LLAMA_UBATCH -> дефолт llama (не передаём флаг).
         let ubatch = opts.ubatch.or_else(|| env_u32_pos("DUB_STUDIO_LLAMA_UBATCH"));
@@ -224,11 +265,12 @@ impl LlamaServer {
 
         let base_url = format!("http://127.0.0.1:{port}");
         let log_tail: LogTail = Arc::new(Mutex::new(VecDeque::new()));
+        let devices: DeviceLines = Arc::new(Mutex::new(Vec::new()));
         if let Some(out) = child.stdout.take() {
-            drain_to_tail(out, log_tail.clone(), log_file.clone());
+            drain_to_tail(out, log_tail.clone(), log_file.clone(), devices.clone());
         }
         if let Some(err) = child.stderr.take() {
-            drain_to_tail(err, log_tail.clone(), log_file.clone());
+            drain_to_tail(err, log_tail.clone(), log_file.clone(), devices.clone());
         }
 
         let tracked = dub_core::proc::track(child.id());
@@ -240,6 +282,15 @@ impl LlamaServer {
             _tracked: tracked,
         };
         srv.wait_ready(opts.ready_timeout_secs)?;
+        let devices = devices.lock().map(|d| d.clone()).unwrap_or_default();
+        for line in &devices {
+            tracing::info!("llama-server: {line}");
+        }
+        if ngl != 0 {
+            if let Some(line) = devices.iter().find(|l| l.contains("offloaded 0/")) {
+                return Err(LlmError::NoGpuDevice { detail: line.clone() });
+            }
+        }
         Ok(srv)
     }
 

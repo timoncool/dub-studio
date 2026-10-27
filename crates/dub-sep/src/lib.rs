@@ -15,6 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod asset;
 mod wav;
 
 #[derive(Debug, thiserror::Error)]
@@ -32,6 +33,9 @@ pub enum SepError {
     NoOutput(PathBuf),
     #[error("audio I/O: {0}")]
     Wav(String),
+    /// A build for a graphics card ran on the processor: ggml found no device it could use.
+    #[error("the engine's GPU build ran on the CPU: {0}")]
+    FellBackToCpu(String),
 }
 
 impl SepError {
@@ -44,6 +48,7 @@ impl SepError {
             SepError::EngineFailed { .. } => "sep_engine_failed",
             SepError::NoOutput(_) => "sep_no_output",
             SepError::Wav(_) => "sep_audio_io",
+            SepError::FellBackToCpu(_) => "sep_fell_back_to_cpu",
         }
     }
 }
@@ -81,6 +86,13 @@ pub fn engine_dir_cpu(repo_root: &Path) -> PathBuf {
 /// уведомление (а не молча считает без фона).
 pub fn engine_cli(repo_root: &Path, backend: &str) -> PathBuf {
     let dir = if backend == "cpu" { engine_dir_cpu(repo_root) } else { engine_dir(repo_root) };
+    dir.join(ENGINE_CLI_FILE)
+}
+
+/// The CLI of a build of the engine by its name (as `acpp_server::asset::Build` names builds): `cuda13` in
+/// tools/bsroformer, `cuda12`, `vulkan` and `cpu` in tools/bsroformer-<build>.
+pub fn engine_cli_of(repo_root: &Path, build: &str) -> PathBuf {
+    let dir = if build == "cuda13" { engine_dir(repo_root) } else { repo_root.join("tools").join(format!("bsroformer-{build}")) };
     dir.join(ENGINE_CLI_FILE)
 }
 
@@ -284,6 +296,57 @@ fn subtract(mut mix: wav::Audio, voc: &wav::Audio) -> wav::Audio {
     }
 }
 
+/// A path the engine's narrow (ANSI) `argv` can carry: as it is when it is ASCII, otherwise its 8.3 short name on
+/// Windows. A path that has no short name (8.3 names are off on its volume) is an error naming it, as the engine would
+/// only say it cannot open the file. A file not made yet is its folder's short name plus its own ASCII name.
+#[cfg(windows)]
+fn engine_path(p: &Path) -> Result<PathBuf, SepError> {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    if p.as_os_str().to_str().is_some_and(|s| s.is_ascii()) {
+        return Ok(p.to_path_buf());
+    }
+    let short = |q: &Path| -> Option<PathBuf> {
+        let wide: Vec<u16> = q.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
+        let n = unsafe { windows_sys::Win32::Storage::FileSystem::GetShortPathNameW(wide.as_ptr(), std::ptr::null_mut(), 0) };
+        if n == 0 {
+            return None;
+        }
+        let mut buf = vec![0u16; n as usize];
+        let m = unsafe { windows_sys::Win32::Storage::FileSystem::GetShortPathNameW(wide.as_ptr(), buf.as_mut_ptr(), n) };
+        (m != 0 && m < n).then(|| PathBuf::from(std::ffi::OsString::from_wide(&buf[..m as usize])))
+    };
+    let shortened = if p.exists() {
+        short(p)
+    } else {
+        let name = p.file_name().filter(|n| n.to_str().is_some_and(|s| s.is_ascii()));
+        match (p.parent().and_then(short), name) {
+            (Some(dir), Some(name)) => Some(dir.join(name)),
+            _ => None,
+        }
+    };
+    match shortened {
+        Some(s) if s.as_os_str().to_str().is_some_and(|s| s.is_ascii()) => Ok(s),
+        _ => Err(SepError::Spawn(format!(
+            "the separation engine cannot open {}: the path has letters outside ASCII and its volume gives no 8.3 short name; move the project or the models to a folder with a Latin name",
+            p.display()
+        ))),
+    }
+}
+
+#[cfg(not(windows))]
+fn engine_path(p: &Path) -> Result<PathBuf, SepError> {
+    Ok(p.to_path_buf())
+}
+
+/// The last lines the engine wrote, stdout before stderr, with its «Error:» line first: that line names the cause.
+fn engine_tail(stdout: &str, stderr: &str) -> String {
+    let lines: Vec<&str> = stdout.lines().chain(stderr.lines()).map(str::trim).filter(|l| !l.is_empty()).collect();
+    let error = lines.iter().rev().find(|l| l.starts_with("Error:")).copied();
+    let mut tail: Vec<&str> = lines.iter().rev().filter(|l| Some(**l) != error).take(8).copied().collect();
+    tail.reverse();
+    error.into_iter().chain(tail).collect::<Vec<_>>().join(" | ")
+}
+
 /// Запустить сайдкар без окна консоли, cwd=папка движка (ради ggml-DLL), дождаться, проверить код.
 /// Эталон — voiceclean.rs::run_cli из Higgs-Ultimate.
 fn run_cli(cli: &Path, model: &Path, input: &Path, output: &Path) -> Result<(), SepError> {
@@ -299,7 +362,7 @@ fn run_cli(cli: &Path, model: &Path, input: &Path, output: &Path) -> Result<(), 
         }
     };
     let mut cmd = Command::new(abs(cli));
-    cmd.arg(abs(model)).arg(abs(input)).arg(abs(output));
+    cmd.arg(engine_path(&abs(model))?).arg(engine_path(&abs(input))?).arg(engine_path(&abs(output))?);
     if let Some(dir) = cli.parent() {
         cmd.current_dir(abs(dir));
         dub_core::proc::libraries_beside(&mut cmd, &abs(dir));
@@ -310,12 +373,65 @@ fn run_cli(cli: &Path, model: &Path, input: &Path, output: &Path) -> Result<(), 
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     let out = dub_core::proc::output(&mut cmd).map_err(|e| SepError::Spawn(e.to_string()))?;
+    let (stdout, stderr) = (String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     if !out.status.success() {
-        let stderr = String::from_utf8_lossy(&out.stderr);
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        let mut tail: Vec<&str> = stderr.lines().chain(stdout.lines()).rev().take(8).collect();
-        tail.reverse();
-        return Err(SepError::EngineFailed { code: out.status.code(), tail: tail.join(" | ") });
+        return Err(SepError::EngineFailed { code: out.status.code(), tail: engine_tail(&stdout, &stderr) });
+    }
+    let lines = || stdout.lines().chain(stderr.lines()).map(str::trim);
+    let backend = lines().find_map(|l| l.strip_prefix("Using backend:")).map(str::trim);
+    tracing::info!("BSRoformer {}: backend {}", cli.display(), backend.unwrap_or("not named"));
+    if backend == Some("CPU") && !is_cpu_build(cli) {
+        let why: Vec<&str> = lines().filter(|l| l.starts_with("ggml_cuda_init") || l.starts_with("ggml_vulkan")).collect();
+        return Err(SepError::FellBackToCpu(if why.is_empty() { "Using backend: CPU".to_string() } else { why.join(" | ") }));
     }
     Ok(())
+}
+
+/// The CLI is the processor build (`tools/bsroformer-cpu`); every other build is for a graphics card.
+fn is_cpu_build(cli: &Path) -> bool {
+    cli.parent().and_then(|d| d.file_name()).is_some_and(|n| n == "bsroformer-cpu")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_build_has_its_folder_and_the_processor_build_stays_where_it_was() {
+        let root = Path::new("r");
+        let dir = |b: &str| engine_cli_of(root, b).parent().unwrap().to_path_buf();
+        assert_eq!(dir("cpu"), engine_dir_cpu(root));
+        assert_eq!(dir("cuda12"), root.join("tools").join("bsroformer-cuda12"));
+        assert_eq!(dir("vulkan"), root.join("tools").join("bsroformer-vulkan"));
+        assert!(is_cpu_build(&engine_cli_of(root, "cpu")) && !is_cpu_build(&engine_cli_of(root, "vulkan")));
+    }
+
+    #[test]
+    fn the_error_line_leads_the_tail() {
+        let t = engine_tail("loading\nError: gguf_init_from_file: failed to open GGUF file\n", "ggml_cuda_init: found 1 CUDA devices\n");
+        assert!(t.starts_with("Error: gguf_init_from_file"), "{t}");
+        assert!(t.contains("loading") && t.contains("ggml_cuda_init"));
+        assert_eq!(engine_tail("a\n", "b\n"), "a | b");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_cyrillic_path_reaches_the_engine_as_its_short_name() {
+        let dir = std::env::temp_dir().join(format!("dub-sep-путь-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let model = dir.join("модель.gguf");
+        std::fs::write(&model, b"x").unwrap();
+        let ascii = std::env::temp_dir().join("plain.wav");
+        assert_eq!(engine_path(&ascii).unwrap(), ascii);
+        match engine_path(&model) {
+            Ok(short) => {
+                assert!(short.to_str().unwrap().is_ascii(), "{}", short.display());
+                assert_eq!(std::fs::read(&short).unwrap(), b"x", "the short name opens the same file");
+                let out = engine_path(&dir.join("vocals.wav")).unwrap();
+                assert!(out.to_str().unwrap().is_ascii() && out.ends_with("vocals.wav"));
+            }
+            Err(e) => assert!(e.to_string().contains("8.3"), "{e}"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

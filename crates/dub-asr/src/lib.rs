@@ -1,8 +1,8 @@
 //! dub-asr — ASR со словными таймстемпами + диаризация поверх parakeet-rs.
 //!
 //! Движок: Parakeet-TDT-0.6B-v3 (или его дообученные варианты той же архитектуры — Parakeet Ultra) +
-//! Nemotron 3 Diarization (Streaming Sortformer v3, до 8 спикеров) для диаризации, оба через ONNX Runtime
-//! (провайдер CPU по умолчанию). parakeet-rs требует ровно 16 кГц моно — входной WAV приводится к
+//! Nemotron 3 Diarization (Streaming Sortformer v3, до 8 спикеров) для диаризации — через ONNX Runtime
+//! (провайдер CPU по умолчанию) или сервер audio.cpp ([`Diarizer`]). parakeet-rs требует ровно 16 кГц моно — входной WAV приводится к
 //! 16k/mono здесь (даунмикс + ресемплинг с ограничением полосы).
 //!
 //! Сегментация словного потока (_segment), transcribe / diarize / transcribe_turns — порт
@@ -14,8 +14,8 @@ mod reconcile;
 mod resample;
 mod segment;
 mod speaker_global;
+pub mod acpp;
 pub mod tcpp;
-mod whisper;
 mod window;
 pub use hallucination::{hallucination_kind, is_hallucination, loop_kind, repeated_lines, HallucinationKind, HallucinationRules, LoopRules};
 pub use known_speakers::SpeakerMatchError;
@@ -24,7 +24,6 @@ pub use speaker_global::{
     cluster_embeddings, cosine, map_local_to_global, Embedding, LocalSpeaker, NullEmbedder,
     SpeakerEmbedder,
 };
-pub use whisper::WhisperAsr;
 pub use window::{
     detect_active_spans, merge_windows, plan_windows, speech_envelope, Window, WindowConfig,
 };
@@ -64,6 +63,7 @@ fn exec_config() -> ExecutionConfig {
             _ => GraphOptimizationLevel::Level1,
         };
         let mut b = b.with_optimization_level(lvl)?;
+        tracing::info!("onnxruntime diarization session: {}", if gpu && cfg!(feature = "cuda") { "CUDA" } else { "CPU" });
         #[cfg(feature = "cuda")]
         {
             if gpu {
@@ -77,7 +77,7 @@ fn exec_config() -> ExecutionConfig {
     })
 }
 
-pub use segment::{segment_words, split_at_speaker_turns, Segment, Word, SEG_MAX_GAP, SEG_MAX_DUR};
+pub use segment::{join_text, segment_words, split_at_speaker_turns, Segment, Word, SEG_MAX_GAP, SEG_MAX_DUR};
 
 /// Целевая частота parakeet-rs.
 pub const TARGET_SR: u32 = 16_000;
@@ -189,20 +189,19 @@ pub struct SpeakerSegment {
     pub speaker: i32,
 }
 
-/// Единый интерфейс ASR-движка: транскрипция whole-clip и per-speaker (реплики). Реализуют Parakeet
-/// (`Asr`) и Whisper (`WhisperAsr`) — analyze выбирает движок по настройке (models/active.json), не зная
-/// деталей. Методы берут `&Path` (объект-трейт: без дженериков).
+/// Единый интерфейс ASR-движка: транскрипция whole-clip и per-speaker (реплики). Реализуют Parakeet на transcribe.cpp
+/// (`tcpp::TcppEngine`) и CrisperWhisper в audiocpp_server (`acpp::AcppAsr`) — analyze выбирает движок по настройке
+/// (models/active.json), не зная деталей. Методы берут `&Path` (объект-трейт: без дженериков).
 pub trait AsrEngine {
     fn transcribe(&mut self, wav: &Path, lang: &str) -> Result<Vec<Segment>, AsrError>;
     fn transcribe_turns(&mut self, wav: &Path, turns: &[Turn], lang: &str) -> Result<Vec<SpeakerSegment>, AsrError>;
     /// Пакетная транскрипция МНОГИХ коротких файлов → полный текст каждого; Err — файл не распознан (с
-    /// причиной). Дефолт — цикл transcribe (Parakeet in-process и так быстр); Whisper переопределяет ОДНИМ
-    /// сабпроцессом на весь список (старт процесса дорогой, 333 файла по-одному — минуты впустую).
+    /// причиной). Дефолт — цикл transcribe; transcribe.cpp переопределяет пакетным прогоном.
     /// Используется QC-верификацией синтеза в рендере (сверка сказанного с ожидаемым переводом).
     fn transcribe_many(&mut self, files: &[std::path::PathBuf], lang: &str) -> Vec<Result<String, AsrError>> {
         files
             .iter()
-            .map(|f| self.transcribe(f, lang).map(|segs| segs.into_iter().map(|s| s.text).collect::<Vec<_>>().join(" ")))
+            .map(|f| self.transcribe(f, lang).map(|segs| join_text(segs.iter().map(|s| s.text.as_str()))))
             .collect()
     }
     /// Пакетная транскрипция МНОГИХ коротких файлов со словными таймингами (секунды от начала файла).
@@ -216,31 +215,80 @@ pub trait AsrEngine {
     }
 }
 
+/// Где работает Nemotron 3 Diarization: файл nemotron3_diar_v3.onnx через ONNX Runtime или сервер
+/// audio.cpp, в котором этот же файл загружен моделью `model` (`ModelEntry::nemotron_3_diar`).
+pub enum Diarizer<'a> {
+    Onnx(&'a Path),
+    Server { server: std::sync::Arc<acpp_server::Server>, model: &'a str },
+}
+
+/// Открытая модель диаризации: реплики одного окна 16 кГц моно со сдвигом `offset` секунд.
+enum WindowDiarizer<'a> {
+    Onnx(Sortformer),
+    Server { server: std::sync::Arc<acpp_server::Server>, model: &'a str },
+}
+
+impl<'a> WindowDiarizer<'a> {
+    fn open(diarizer: &Diarizer<'a>) -> Result<Self, AsrError> {
+        match diarizer {
+            Diarizer::Onnx(onnx) => {
+                ensure_ort_dylib(); // до первого касания ort — иначе дедлок на чужой system32 DLL
+                let mut sf = Sortformer::with_config(onnx, Some(exec_config()), DiarizationConfig::default())
+                    .map_err(|e| AsrError::Parakeet(e.to_string()))?;
+                sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+                Ok(WindowDiarizer::Onnx(sf))
+            }
+            Diarizer::Server { server, model } => Ok(WindowDiarizer::Server { server: server.clone(), model }),
+        }
+    }
+
+    fn turns(&mut self, audio: &[f32], sr: u32, offset: f64) -> Result<Vec<Turn>, AsrError> {
+        match self {
+            WindowDiarizer::Onnx(sf) => {
+                let segs = sf.diarize(audio.to_vec(), sr, 1).map_err(|e| AsrError::Parakeet(e.to_string()))?;
+                Ok(segments_to_turns(&segs, offset))
+            }
+            WindowDiarizer::Server { server, model } => {
+                let wav = std::env::temp_dir().join(format!("dub-diar-{}-{offset}.wav", std::process::id()));
+                write_wav_pcm16(&wav, audio, sr)?;
+                let answer = server.diarize(model, &wav);
+                let _ = std::fs::remove_file(&wav);
+                let turns = answer.map_err(|e| AsrError::Parakeet(e.to_string()))?;
+                Ok(turns
+                    .into_iter()
+                    .map(|t| Turn { start: offset + t.start, end: offset + t.end, speaker: t.speaker as i32 })
+                    .collect())
+            }
+        }
+    }
+}
+
+fn write_wav_pcm16(path: &Path, audio: &[f32], sr: u32) -> Result<(), AsrError> {
+    let spec = hound::WavSpec { channels: 1, sample_rate: sr, bits_per_sample: 16, sample_format: hound::SampleFormat::Int };
+    let io = |e: hound::Error| AsrError::Io(format!("{}: {e}", path.display()));
+    let mut w = hound::WavWriter::create(path, spec).map_err(io)?;
+    for s in audio {
+        w.write_sample((s.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16).map_err(io)?;
+    }
+    w.finalize().map_err(io)
+}
+
 /// Диаризация: Nemotron 3 Diarization (Streaming Sortformer v3, до [`MAX_SPEAKERS`] спикеров) -> реплики
-/// [(start,end,speaker)] в секундах, speaker перенумерован 0..k-1. diar_onnx — путь к nemotron3_diar_v3.onnx.
+/// [(start,end,speaker)] в секундах, speaker перенумерован 0..k-1.
 ///
 /// Файл целиком известен заранее, поэтому профиль стриминга — `offline()` (самый длинный контекст модели,
-/// буфер 30.4 с), постобработка — дефолт parakeet-rs, воспроизводящий `diarize()` NeMo для этой модели.
-pub fn diarize(
-    wav: impl AsRef<Path>,
-    diar_onnx: impl AsRef<Path>,
-) -> Result<Vec<Turn>, AsrError> {
-    ensure_ort_dylib(); // до первого касания ort — иначе дедлок на чужой system32 DLL
+/// буфер 30.4 с), постобработка — дефолт parakeet-rs, воспроизводящий `diarize()` NeMo для этой модели;
+/// сервер audio.cpp берёт тот же профиль (`very_high`) и тот же порог.
+pub fn diarize(wav: impl AsRef<Path>, diarizer: &Diarizer) -> Result<Vec<Turn>, AsrError> {
+    let mut model = WindowDiarizer::open(diarizer)?;
     let (audio, sr) = load_wav_16k_mono(wav.as_ref())?;
-    let mut sf = Sortformer::with_config(diar_onnx.as_ref(), Some(exec_config()), DiarizationConfig::default())
-        .map_err(|e| AsrError::Parakeet(e.to_string()))?;
-    sf.set_profile(StreamingProfile::offline())
-        .map_err(|e| AsrError::Parakeet(e.to_string()))?;
     // ДЛИННЫЙ файл — оконная диаризация: окна DIAR_WIN с перекрытием, спикеры соседних окон
     // сшиваются по пересечению реплик в оверлапе (страховка от роста памяти/деградации на часах).
     let total = audio.len() as f64 / sr as f64;
     let raw: Vec<Turn> = if total > DIAR_WINDOW_GATE_SECS {
-        diarize_windowed(&mut sf, &audio, sr)?
+        diarize_windowed(&mut model, &audio, sr)?
     } else {
-        let segs = sf
-            .diarize(audio, sr, 1)
-            .map_err(|e| AsrError::Parakeet(e.to_string()))?;
-        segments_to_turns(&segs, 0.0)
+        model.turns(&audio, sr, 0.0)?
     };
     Ok(renumber_turns(raw))
 }
@@ -284,7 +332,7 @@ const DIAR_OVERLAP_SECS: f64 = 120.0;
 /// приём стриминговой диаризации); не сматченные получают новые глобальные id. Реплики из головы
 /// окна, уже покрытые предыдущим (до середины оверлапа), отбрасываются — без дублей на шве.
 fn diarize_windowed(
-    sf: &mut Sortformer,
+    model: &mut WindowDiarizer,
     audio: &[f32],
     sr: u32,
 ) -> Result<Vec<Turn>, AsrError> {
@@ -300,10 +348,7 @@ fn diarize_windowed(
         let w1 = ((i + 1) as f64 * DIAR_WIN_SECS).min(total);
         let a0 = (w0 * sr as f64) as usize;
         let a1 = ((w1 * sr as f64) as usize).min(audio.len());
-        let segs = sf
-            .diarize(audio[a0..a1].to_vec(), sr, 1)
-            .map_err(|e| AsrError::Parakeet(e.to_string()))?;
-        let local: Vec<Turn> = segments_to_turns(&segs, w0);
+        let local: Vec<Turn> = model.turns(&audio[a0..a1], sr, w0)?;
         // Мапа локальный спикер -> глобальный id: по максимальному суммарному пересечению с
         // репликами prev_tail в зоне оверлапа [w0, w0+OVERLAP].
         let mut map: std::collections::HashMap<i32, i32> = Default::default();
@@ -422,17 +467,17 @@ mod continuous_diarization_tests {
 /// спикеров 0..k-1 и вернуть ref_windows (самая длинная реплика каждого).
 pub fn turns(
     wav: impl AsRef<Path>,
-    diar_onnx: impl AsRef<Path>,
+    diarizer: &Diarizer,
     merge_gap: f64,
     min_speaker_dur: f64,
 ) -> Result<DiarTurns, AsrError> {
-    let raw = diarize(wav, diar_onnx)?;
+    let raw = diarize(wav, diarizer)?;
     Ok(merge_turns(&raw, merge_gap, min_speaker_dur))
 }
 
 pub fn turns_with_speaker_count(
     wav: impl AsRef<Path>,
-    diar_onnx: impl AsRef<Path>,
+    diarizer: &Diarizer,
     count: usize,
     embed: &mut impl FnMut(&[f32]) -> Result<Vec<f32>, String>,
 ) -> Result<DiarTurns, AsrError> {
@@ -442,11 +487,8 @@ pub fn turns_with_speaker_count(
     if count == 1 {
         return Ok(DiarTurns { turns: Vec::new(), n_speakers: 1, ref_windows: Default::default() });
     }
-    ensure_ort_dylib();
+    let mut model = WindowDiarizer::open(diarizer)?;
     let (audio, sr) = load_wav_16k_mono(wav.as_ref())?;
-    let mut sf = Sortformer::with_config(diar_onnx.as_ref(), Some(exec_config()), DiarizationConfig::default())
-        .map_err(|e| AsrError::Parakeet(e.to_string()))?;
-    sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
     let total = audio.len() as f64 / sr as f64;
     let window = known_diarization_window(total, continuous_diarization_enabled().map_err(AsrError::Parakeet)?);
     let mut tracker = known_speakers::VoiceTracker::new(count);
@@ -454,8 +496,7 @@ pub fn turns_with_speaker_count(
     for range in known_speakers::diar_windows(total, window, DIAR_OVERLAP_SECS) {
         let a0 = (range.start * sr as f64) as usize;
         let a1 = ((range.end * sr as f64) as usize).min(audio.len());
-        let segs = sf.diarize(audio[a0..a1].to_vec(), sr, 1).map_err(|e| AsrError::Parakeet(e.to_string()))?;
-        let local = segments_to_turns(&segs, range.start);
+        let local = model.turns(&audio[a0..a1], sr, range.start)?;
         out.extend(tracker.process_window(&local, &audio[a0..a1], sr, range, embed)?);
     }
     Ok(known_speakers::finish_turns(out))
@@ -546,21 +587,29 @@ pub fn merge_turns(raw: &[Turn], merge_gap: f64, min_speaker_dur: f64) -> DiarTu
 
 /// Прочитать WAV, свести в моно и ресемплировать в 16 кГц (parakeet-rs требует ровно 16k моно).
 pub(crate) fn load_wav_16k_mono(path: &Path) -> Result<(Vec<f32>, u32), AsrError> {
+    load_wav_16k_mono_head(path, None)
+}
+
+/// [`load_wav_16k_mono`] of the first `secs` seconds only (all of it for None).
+pub(crate) fn load_wav_16k_mono_head(path: &Path, secs: Option<usize>) -> Result<(Vec<f32>, u32), AsrError> {
     let disp = path.display().to_string();
     let wav_err = |e: hound::Error| AsrError::WavRead(disp.clone(), e.to_string());
     let mut reader = hound::WavReader::open(path).map_err(wav_err)?;
     let spec = reader.spec();
     let ch = spec.channels.max(1) as usize;
+    let take = secs.map_or(usize::MAX, |s| s.saturating_mul(spec.sample_rate as usize).saturating_mul(ch));
 
     let interleaved: Vec<f32> = match spec.sample_format {
         hound::SampleFormat::Float => reader
             .samples::<f32>()
+            .take(take)
             .collect::<Result<Vec<_>, _>>()
             .map_err(wav_err)?,
         hound::SampleFormat::Int => {
             let max = (1i64 << (spec.bits_per_sample - 1)) as f32;
             reader
                 .samples::<i32>()
+                .take(take)
                 .map(|s| s.map(|v| v as f32 / max))
                 .collect::<Result<Vec<_>, _>>()
                 .map_err(wav_err)?

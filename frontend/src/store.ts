@@ -7,7 +7,7 @@ import { journalApi, projectRev, type JobKind, type JournalLine, type Project } 
  */
 export type Snapshot = { project: Project; rev: number | undefined };
 
-type Stage = "boot" | "offline" | "setup" | "empty" | "analyzing" | "editor" | "batch" | "multilang";
+type Stage = "boot" | "offline" | "setup" | "update" | "empty" | "analyzing" | "editor" | "batch" | "multilang";
 export type ExportItem = { id: string; name: string; status: "rendering" | "done" | "error"; msg: string; url?: string; pid?: string };
 // строка журнала «что делает приложение»; agent — действие агента по MCP; verb/noun/target — изменение агента, словами окна
 export type Activity = { t: number; text: string; kind: "work" | "done" | "error" | "agent"; verb?: string; noun?: string; target?: string };
@@ -81,6 +81,9 @@ type State = {
   patchLocalJob: (id: string, patch: Partial<LocalJob>) => void;
   dropLocalJob: (id: string) => void;
   jobsRev: number;                   // растёт на каждом конце джобы редактора: полоса джоб перечитывает итог проекта
+  /** The window over the page that names the hub's section for notices: settings, news or a library. */
+  overlay: "settings" | "news" | "library" | null;
+  setOverlay: (overlay: "settings" | "news" | "library" | null) => void;
 };
 
 const known = (pid: string | null): number | undefined => (pid === null ? undefined : projectRev(pid));
@@ -178,5 +181,7 @@ export const useStore = create<State>((set, get) => ({
   patchLocalJob: (id, patch) => set((s) => ({ localJobs: s.localJobs.map((x) => (x.id === id ? { ...x, ...patch } : x)) })),
   dropLocalJob: (id) => set((s) => ({ localJobs: s.localJobs.filter((x) => x.id !== id), jobsRev: s.jobsRev + 1 })),
   jobsRev: 0,
+  overlay: null,
+  setOverlay: (overlay) => set({ overlay }),
   resetHistory: () => set({ past: [], future: [] }),
 }));

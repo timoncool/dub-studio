@@ -72,7 +72,7 @@ fn peaks_args(video: &Path) -> Vec<std::ffi::OsString> {
 /// N бакетов, в каждом max(|amp|)/max_amp, округление до 3 знаков. CPU, вне GPU-воркера. Сбой ffmpeg
 /// или тишина -> пустой список (как питон — не отравляем кэш).
 pub fn waveform_peaks(video: &Path, n: usize) -> Vec<f64> {
-    let out = std::process::Command::new(dub_core::proc::ffmpeg()).args(peaks_args(video)).output();
+    let out = dub_core::proc::host_command(dub_core::proc::ffmpeg()).args(peaks_args(video)).output();
     let bytes = match out {
         Ok(o) if o.status.success() => o.stdout,
         _ => return Vec::new(),
@@ -116,6 +116,20 @@ pub fn write_mono_f32(path: &Path, data: &[f32], sample_rate: u32) -> Result<(),
     }
     w.finalize().map_err(|e| format!("finalize: {e}"))?;
     Ok(())
+}
+
+/// PCM f32 as a PCM16 WAV in memory (a basic PCM header, which every engine of the studio reads as a reference).
+pub fn encode_wav(samples: &[f32], sample_rate: i32, channels: i32) -> Vec<u8> {
+    let spec = WavSpec { channels: channels.max(1) as u16, sample_rate: sample_rate.max(1) as u32, bits_per_sample: 16, sample_format: SampleFormat::Int };
+    let mut out = std::io::Cursor::new(Vec::with_capacity(44 + samples.len() * 2));
+    {
+        let mut w = WavWriter::new(&mut out, spec).expect("a WAV header into memory");
+        for &x in samples {
+            w.write_sample((x.clamp(-1.0, 1.0) * 32767.0) as i16).expect("a sample into memory");
+        }
+        w.finalize().expect("a WAV into memory");
+    }
+    out.into_inner()
 }
 
 #[cfg(test)]

@@ -204,16 +204,23 @@ pub async fn proxy_test(State(st): State<AppState>, Json(body): Json<Value>) -> 
     }
 }
 
-// ─── Пресеты железа: GET /engine/presets (список + детект GPU + рекомендация), POST /engine/preset {id} ──
-pub async fn presets_list(State(_st): State<AppState>) -> Response {
-    let rec = tokio::task::spawn_blocking(crate::presets::recommend)
-        .await
-        .unwrap_or_else(|_| crate::presets::recommend());
+// ─── Пресеты железа: GET /engine/presets (список + детект GPU + рекомендация + текущий), POST /engine/preset {id} ──
+pub async fn presets_list(State(st): State<AppState>) -> Response {
+    let models_root = st.models_root.clone();
+    let lookup = move || {
+        let rec = crate::presets::recommend();
+        let current = crate::presets::current(&models_root, rec.recommended);
+        (rec, current)
+    };
+    let (rec, current) = match tokio::task::spawn_blocking(lookup.clone()).await {
+        Ok(found) => found,
+        Err(_) => lookup(),
+    };
     let list: Vec<Value> = crate::presets::PRESETS
         .iter()
         .map(|p| json!({ "id": p.id, "title": (p.title)(), "subtitle": (p.subtitle)() }))
         .collect();
-    Json(json!({ "presets": list, "hardware": rec })).into_response()
+    Json(json!({ "presets": list, "hardware": rec, "current": current })).into_response()
 }
 
 pub async fn preset_apply(State(st): State<AppState>, Json(body): Json<Value>) -> Response {

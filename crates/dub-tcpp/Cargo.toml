@@ -8,3 +8,6 @@ description = "Speech recognition by transcribe.cpp (Parakeet, Nemotron, Silero 
 [dependencies]
 # transcribe_engine (transcribe.cpp) is loaded at run time, as the voice engines are: the program starts without it.
 libloading = "0.9"
+
+[dev-dependencies]
+hound = "3"

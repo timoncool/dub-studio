@@ -14,10 +14,10 @@ import UndoToast from "./components/UndoToast";
 import CloudConsentHost from "./components/CloudConsentHost";
 import ServerOffline from "./components/ServerOffline";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star, Music, Move, Minimize2, FileText, Users, Mic2, AlignLeft, AlignCenter, AlignRight, ChevronFirst, ChevronLast, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, GripVertical, ScrollText, Clock, Keyboard, Save, ZoomIn, ZoomOut, Sliders, Merge, Scissors, Bot, History, Pin } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star, Music, Move, Minimize2, FileText, Users, Mic2, AlignLeft, AlignCenter, AlignRight, ChevronFirst, ChevronLast, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, GripVertical, ScrollText, Clock, Keyboard, Save, ZoomIn, ZoomOut, Sliders, Merge, Scissors, Bot, History, Pin, RotateCcw } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useFloatable, dockSlot } from "./lib/useFloatable";
-import { api, llmProviderOf, slot, ApiError, SetupError, JobCancelledError, type Selection, type AnalyzePost, type AnalyzeResult, type JobKind, type Project, type Capabilities, type SetupStatus, type SetupComponent, type ProjectListing, type LaunchDefaults, type Character, type DownloadJob, type UrlFetch, type ShortenResult } from "./lib/api";
+import { api, llmProviderOf, slot, SELECTION_CHANGED, ApiError, SetupError, JobCancelledError, type Selection, type AnalyzePost, type AnalyzeResult, type JobKind, type Project, type Capabilities, type SetupStatus, type SetupComponent, type ProjectListing, type LaunchDefaults, type Character, type DownloadJob, type UrlFetch, type ShortenResult } from "./lib/api";
 import { LANGS, DUB_LANGS, setLang, type Lang } from "./lib/i18n";
 import { useStore, type Activity } from "./store";
 import en from "./locales/en.json";
@@ -38,6 +38,7 @@ import ProjectJobBar from "./components/ProjectJobBar";
 import { ContinueJobButton, JobStateLabel } from "./components/RecentJobBadge";
 import AgentPanel from "./components/AgentPanel";
 import WhatsNew from "./components/WhatsNew";
+import UpdateScreen, { UpdatePlanView } from "./components/UpdateScreen";
 import DownloadProgress from "./components/DownloadProgress";
 import ModelsFolder from "./components/ModelsFolder";
 import GpuNotice from "./components/GpuNotice";
@@ -62,8 +63,9 @@ import { named } from "./lib/a11y";
 import { goHome, openProject as openProjectIn } from "./lib/openProject";
 import { GlossaryButton } from "./components/GlossaryPanel";
 import { SourceText, TtsIgnoredNote, TtsSkipNote } from "./components/SegmentText";
-import { hubChanged, setTelemetry, useHubState } from "./lib/studioHub";
+import { hubChanged, setTelemetry, showsNow, useHubState, type HubView } from "./lib/studioHub";
 import { HubBars } from "./components/HubBars";
+import HubPopup from "./components/HubPopup";
 import HubTelemetryPreview from "./components/HubTelemetryPreview";
 
 const EASE = [0.22, 1, 0.36, 1] as const;
@@ -115,9 +117,6 @@ const VARIANT_SLOT: Record<string, [string, string]> = {
   parakeet: ["asr", "int8"], "parakeet-ultra": ["asr", "ultra-int8"],
   gemma: ["mt", "q4_0"], "gemma-q5_0": ["mt", "q5_0"], "gemma-q6_k": ["mt", "q6_k"], "gemma-q8_0": ["mt", "q8_0"],
   roformer: ["sep", "Q8_0"], "roformer-q5": ["sep", "Q5_0"], "roformer-q4": ["sep", "Q4_0"],
-  "whisper-tiny": ["whisper_model", "tiny"], "whisper-base": ["whisper_model", "base"],
-  "whisper-small": ["whisper_model", "small"], "whisper-medium": ["whisper_model", "medium"],
-  "whisper-large-v3": ["whisper_model", "large-v3"], "whisper-large-v3-turbo": ["whisper_model", "large-v3-turbo"],
 };
 // Какой из ids сейчас активен по выбору (active.json из capabilities.selection).
 const activeVariantId = (ids: string[], sel: Selection): string | undefined =>
@@ -152,10 +151,9 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const { t } = useTranslation();
   const errText = useDownloadErrorText();
   const gpuReasonText = useGpuReasonText();
-  // Выбор ASR-движка (parakeet|whisper) + квант Whisper (compute) — из capabilities.selection.
+  // Выбор ASR-движка (parakeet | whisper = CrisperWhisper) — из capabilities.selection.
   const [cap, setCap] = useState<Capabilities | null>(null);
   const [asrEngine, setAsrEngine] = useState<string>("parakeet");
-  const [whisperCompute, setWhisperCompute] = useState<string>("int8");
   // Выбор варианта в дропдаунах поднят СЮДА (а не в локальный useState VariantPicker) — иначе ре-рендер
   // секции ремаунтил пикер и сбрасывал выбор на дефолт. Ключ = ids[0] группы.
   const [picks, setPicks] = useState<Record<string, string>>({});
@@ -167,7 +165,6 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const loadCap = () => api.capabilities().then((c) => {
     setCap(c);
     setAsrEngine(slot(c.selection, "asr_engine") ?? "parakeet");
-    setWhisperCompute(slot(c.selection, "whisper_compute") ?? "int8");
   }).catch(() => {});
   // Статус компонентов + фоновая закачка (опрос, пока она идёт). Скачанный вариант становится активным на
   // бэке — после закачки перечитываем выбор.
@@ -180,7 +177,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   useEffect(() => { loadCap(); }, []);
   const selv = (k: string) => slot(cap?.selection, k) ?? "";
   const hasOrKey = cap?.selection?.or_key_set === true;
-  const setSel = (k: string, v: string) => api.setSelection(k, v).then(loadCap).catch(() => {});
+  const setSel = (k: string, v: string) => api.setSelection(k, v).catch(() => {});
   // Видеопамять Drama 3 из списка: сохранения по очереди, при быстрой смене последним на сервер приходит последнее значение.
   const [dramaVram, setDramaVram] = useState<string | null>(null);
   const dramaSaves = useRef<Promise<unknown>>(Promise.resolve());
@@ -196,6 +193,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   }, [orTtsModel]);
   const setupErr = (e: unknown) => setErr(e instanceof SetupError ? `${errText(e.code)} · ${e.detail}` : e instanceof Error ? e.message : String(e));
   const [asking, setAsking] = useState<string[] | null>(null);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const dl = (ids: string[]) => { if (!downloading) setAsking(ids); };
   const startDownload = async (ids: string[]) => {
     setAsking(null);
@@ -219,6 +217,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   };
   const pause = () => { api.setupCancel().then(() => refreshStatus()).catch(setupErr); };
   useChanged(SETTINGS_CHANGED, () => { loadCap(); refreshStatus().catch(setupErr); });
+  useChanged(SELECTION_CHANGED, () => { loadCap(); refreshStatus().catch(setupErr); });
   const browseId = async (id: string) => {
     if (prog) return;
     try {
@@ -227,7 +226,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
       if (r.errors.length > 0) setErr(`${t("downloads.importErrors")} · ${r.errors.join("; ")}`);
     } catch (e) { setupErr(e); }
   };
-  const BrowseBtn = ({ id }: { id: string }) => (
+  const browseBtn = (id: string) => (
     <button onClick={() => browseId(id)} disabled={!!prog} title={t("settings.browseFolder")}
       className="shrink-0 inline-flex items-center px-1.5 py-1 rounded-md border border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] disabled:opacity-40">
       <FolderDown size={12} />
@@ -261,7 +260,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   const get = (id: string) => byId[id] as SetupComponent | undefined;
 
   // строка одного компонента (кнопка скачать/докачать + прогресс)
-  const Row = (c: SetupComponent) => {
+  const rowView = (c: SetupComponent) => {
     const pct = partPct(c.id);
     const active = pct != null;
     return (
@@ -279,7 +278,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         ) : (
           <div className="flex items-center gap-1.5 shrink-0">
             <RemoveComponent c={c} disabled={!!prog} onDone={(s) => { adopt(s); loadCap(); }} onError={setErr} />
-            <BrowseBtn id={c.id} />
+            {browseBtn(c.id)}
             {c.fitsVram === false && !c.installed
               ? <span className="text-[11px] text-[var(--color-warn)]">{t("setup.noVramShort")}</span>
               : <button onClick={() => dl([c.id])} disabled={!!prog} aria-label={`${c.installed ? t("settings.redownload") : t("setup.downloadOne")}: ${c.name}`}
@@ -295,7 +294,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
   // модель с выбором кванта: дропдаун вариантов + скачать выбранный. КОНТРОЛИРУЕМЫЙ — выбранное значение
   // берётся из поднятого picks / активного выбора (active.json), НЕ из внутреннего useState (иначе ре-рендер
   // секции сбрасывал бы дропдаун на дефолт). При смене — пишем picks и активируем на бэке (если установлен).
-  const VariantPicker = ({ base, ids, i18n }: { base: string; ids: string[]; i18n?: VariantI18n }) => {
+  const variantPicker = (base: string, ids: string[], i18n?: VariantI18n) => {
     const variants = ids.map(get).filter(Boolean) as SetupComponent[];
     const installed = variants.find((v) => v.installed);
     const sel = cap?.selection ?? {};
@@ -330,7 +329,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           ) : (
             <>
               <RemoveComponent c={c} disabled={!!prog} onDone={(s) => { adopt(s); loadCap(); }} onError={setErr} />
-              <BrowseBtn id={c.id} />
+              {browseBtn(c.id)}
               <button onClick={() => dl([c.id])} disabled={!!prog || (c.fitsVram === false && !c.installed)} title={c.fitsVram === false && !c.installed ? t("setup.noVram") : c.installed ? t("settings.redownload") : t("setup.downloadOne")}
                 className="shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[12px] border border-[var(--color-border)] text-[var(--color-accent-2)] hover:border-[var(--color-accent)] disabled:opacity-40">
                 {c.installed ? <RefreshCw size={12} /> : <Download size={12} />}
@@ -342,25 +341,26 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
     );
   };
 
-  const Group = ({ label, children }: { label: string; children: React.ReactNode }) => (
+  const group = (label: string, children: React.ReactNode) => (
     <div className="mb-3">
       <div className="text-[11px] uppercase tracking-[0.14em] text-[var(--color-muted)] mb-1.5">{label}</div>
       <div className="space-y-1.5">{children}</div>
     </div>
   );
 
-  const rowOf = (id: string) => { const c = get(id); return c ? <Row key={id} {...c} /> : null; };
+  const rowOf = (id: string) => { const c = get(id); return c ? rowView(c) : null; };
 
   // Тумблер движка «локально | OpenRouter» — тот же вид, что переключатель Parakeet|Whisper в группе ASR.
   const orRowCls = "px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]";
-  // На чём считать стадию (устройство): Авто / GPU (CUDA) / CPU — свои табы в каждом разделе, по
-  // аналогии с провайдерами. Независимый ключ на стадию (sep_backend / diar_backend / asr_backend).
-  const BackendTabs = ({ k }: { k: string }) => {
+  // На чём считать стадию (устройство): Авто / GPU (CUDA) / Vulkan / CPU — свои табы в каждом разделе, как у Speech
+  // Studio. Независимый ключ на стадию (tts_backend / sep_backend / diar_backend / asr_backend): у audio.cpp,
+  // transcribe.cpp и BSRoformer есть сборки CUDA 12.9 и Vulkan.
+  const backendTabs = (k: string) => {
     const cur = selv(k) || "auto";
-    const gpuOff = !status.gpu.cuda13Ok;
+    const gpuOff = !status.gpu.cudaBuild;
     return (
       <div className="flex gap-1 mb-1.5">
-        {([["auto", t("settings.auto")], ["gpu", "GPU (CUDA)"], ["cpu", "CPU"]] as const).map(([id, label]) => (
+        {([["auto", t("settings.auto")], ["gpu", "GPU (CUDA)"], ["vulkan", "Vulkan"], ["cpu", "CPU"]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setSel(k, id)} disabled={id === "gpu" && gpuOff && cur !== "gpu"}
             title={id === "gpu" && gpuOff ? gpuReasonText(status.gpu) : undefined}
             className={`flex-1 px-2 py-1.5 rounded-md text-[12px] font-medium border transition-colors ${cur === id ? "border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-text)]" : "border-[var(--color-border)] text-[var(--color-muted)] hover:text-[var(--color-text)]"} disabled:opacity-40`}>{label}</button>
@@ -395,6 +395,13 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <DownloadProgress job={status.active} onPause={pause} onResume={(ids) => { void startDownload(ids); }} />
         )}
       </div>
+      <details className="mb-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2" onToggle={(e) => setUpdateOpen(e.currentTarget.open)}>
+        <summary className="cursor-pointer select-none">
+          <span className="text-[12px] font-medium">{t("update.settingsEntry")}</span>
+          <span className="block mono text-[10px] text-[var(--color-muted)]">{t("update.settingsHint")}</span>
+        </summary>
+        {updateOpen && <div className="mt-2"><UpdatePlanView progress={false} onDone={() => { loadCap(); refreshStatus().catch(setupErr); }} /></div>}
+      </details>
       <button onClick={browse} disabled={!!prog}
         className="mb-3 w-full inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg border border-dashed border-[var(--color-border)] text-[12px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] transition-colors disabled:opacity-40">
         <FolderDown size={14} />{t("settings.browseFolder")}
@@ -405,7 +412,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <button onClick={() => setErr(null)} className="shrink-0 text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={12} /></button>
         </div>
       )}
-      <Group label={t("settings.roleTts")}>
+      {group(t("settings.roleTts"), <>
         <div className="flex gap-1 mb-2">
           {(["local", "openrouter", "google"] as const).map(provider => <button key={provider} onClick={() => api.setSelection("tts_provider",provider).then(loadCap).catch(e=>setErr(String(e)))}
             className={`flex-1 px-2 py-1.5 rounded-md border text-[12px] ${ttsProvider === provider ? "border-[var(--color-accent)]" : "border-[var(--color-border)]"}`}>{t(`google.provider_${provider}`)}</button>)}
@@ -433,7 +440,9 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </div>
         ) : (
           <>
-            <VariantPicker base={ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3"} ids={TTS_IDS} i18n={TTS_VARIANT_I18N} />
+            {/* Higgs and Supertonic run in the audio.cpp server on the build of this device, Qwen3-TTS on its backend module */}
+            {ttsPick !== "drama3" && backendTabs("tts_backend")}
+            {variantPicker(ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3", TTS_IDS, TTS_VARIANT_I18N)}
             {ttsPick === "drama3" && (
               <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
                 <div className="flex items-center gap-2">
@@ -453,16 +462,17 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             )}
             {ttsPick !== "drama3" && !isQwenTts(ttsPick) && ttsPick !== "supertonic3" && rowOf("higgs-engine")}
             {isQwenTts(ttsPick) && rowOf("qwen3-tts-engine")}
+            {isQwenTts(ttsPick) && selv("tts_backend") !== "cpu" && rowOf(selv("tts_backend") === "vulkan" ? "qwen3-tts-vulkan" : "qwen3-tts-cuda")}
             {isQwenTts(ttsPick) && rowOf("qwen3-tts-ru-stress")}
             {(isQwenTts(ttsPick) || ttsPick === "supertonic3") && rowOf("ruaccent")}
             {(isQwenTts(ttsPick) || ttsPick === "supertonic3") && rowOf("ruaccent-omograph-big")}
           </>
         )}
-      </Group>
-      <Group label={t("settings.roleAsr")}>
+      </>)}
+      {group(t("settings.roleAsr"), <>
         {/* Движок ASR: Parakeet-TDT (GPU, дефолт) / Whisper (локально, CPU) / OpenRouter (облако). */}
         <div className="flex gap-1 mb-1.5">
-          {[{ id: "parakeet", label: "Parakeet-TDT", cloud: false }, { id: "whisper", label: "Whisper", cloud: false }, { id: "openrouter", label: "OpenRouter", cloud: true }].map((e) => {
+          {[{ id: "parakeet", label: "Parakeet-TDT", cloud: false }, { id: "whisper", label: "CrisperWhisper", cloud: false }, { id: "openrouter", label: "OpenRouter", cloud: true }].map((e) => {
             const asrCloud = selv("or_asr_on") === "1";
             const active = e.cloud ? asrCloud : (!asrCloud && asrEngine === e.id);
             const dis = e.cloud && !hasOrKey;
@@ -475,7 +485,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             );
           })}
         </div>
-        {selv("or_asr_on") !== "1" && <BackendTabs k="asr_backend" />}
+        {selv("or_asr_on") !== "1" && backendTabs("asr_backend")}
         {selv("or_asr_on") === "1" ? (
           <div className={`${orRowCls} space-y-2`}>
             {orModelSelect("asr", "or_asr", t("providers.pickAsrModel"))}
@@ -483,58 +493,48 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </div>
         ) : asrEngine === "parakeet" ? (
           <>
-            {get("transcribe-engine-cpu")?.requirement === "required" ? rowOf("transcribe-engine-cpu") : rowOf("transcribe-engine")}
-            <VariantPicker base="Parakeet-TDT 0.6B v3" ids={["parakeet", "parakeet-ultra"]} i18n={ASR_VARIANT_I18N} />
+            {rowOf(TCPP_ENGINES.find((id) => get(id)?.requirement === "required") ?? "transcribe-engine")}
+            {variantPicker("Parakeet-TDT 0.6B v3", ["parakeet", "parakeet-ultra"], ASR_VARIANT_I18N)}
+            {rowOf("silero-vad")}
           </>
         ) : (
           <>
-            {rowOf("whisper-engine")}
-            <VariantPicker base={t("settings.whisperModel")} ids={["whisper-tiny", "whisper-base", "whisper-small", "whisper-medium", "whisper-large-v3", "whisper-large-v3-turbo"]} />
-            {/* Квант Whisper (compute_type) — точность/скорость вычислений, без отдельной скачки. */}
-            <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-              <div className="flex items-center gap-2.5">
-                <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-[var(--color-accent)]" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[12px] font-medium truncate">{t("settings.whisperCompute")}</div>
-                  <div className="mono text-[10px] text-[var(--color-muted)] truncate">{t("settings.whisperComputeHint")}</div>
-                </div>
-                <select value={whisperCompute} onChange={(e) => { setWhisperCompute(e.target.value); api.setSelection("whisper_compute", e.target.value).catch(() => {}); }}
-                  className="shrink-0 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-md px-2 py-1 text-[11px] mono focus:border-[var(--color-accent)] focus:outline-none">
-                  {(cap?.whisper_computes ?? ["int8", "int8_float16", "int8_float32"]).map((q) => <option key={q} value={q}>{q}</option>)}
-                </select>
-              </div>
-            </div>
+            {rowOf("crisperwhisper-turbo")}
+            {rowOf("langid")}
+            {rowOf("higgs-engine")}
           </>
         )}
-      </Group>
-      <Group label={t("settings.roleMt")}>
+      </>)}
+      {group(t("settings.roleMt"), <>
         {/* Перевод и vision — каждый своим провайдером: своя Gemma, локальный сервер или OpenRouter. */}
         <LlmProviders selection={cap?.selection} hasOrKey={hasOrKey} onChanged={loadCap} />
         {needsGemma && (
           <>
-            <VariantPicker base="Gemma-4 12B QAT + vision" ids={["gemma", "gemma-q5_0", "gemma-q6_k", "gemma-q8_0"]} />
+            {variantPicker("Gemma-4 12B QAT + vision", ["gemma", "gemma-q5_0", "gemma-q6_k", "gemma-q8_0"])}
             {rowOf("llama")}
+            {status.llamaNote && <p className="text-[11px] text-[var(--color-muted)] px-1">{status.llamaNote}</p>}
           </>
         )}
-      </Group>
-      <Group label={t("settings.roleSep")}>
+      </>)}
+      {group(t("settings.roleSep"), <>
         {/* На чём считать сепарацию — свои табы (GPU CUDA-сборка / CPU-сборка BSRoformer). */}
-        <BackendTabs k="sep_backend" />
-        <VariantPicker base="Mel-Band Roformer voc_fv6" ids={["roformer", "roformer-q5", "roformer-q4"]} />
-        {selv("sep_backend") === "cpu" ? rowOf("bsroformer-engine-cpu") : rowOf("bsroformer-engine")}
-      </Group>
-      <Group label={t("settings.roleDiar")}>
-        {/* На чём считать диаризацию — свои табы (Nemotron 3 Diarization onnx: CUDA-EP / CPU-провайдер). */}
-        <BackendTabs k="diar_backend" />
+        {backendTabs("sep_backend")}
+        {variantPicker("Mel-Band Roformer voc_fv6", ["roformer", "roformer-q5", "roformer-q4"])}
+        {rowOf(SEP_ENGINES.find((id) => get(id)?.requirement === "recommended") ?? "bsroformer-engine")}
+      </>)}
+      {group(t("settings.roleDiar"), <>
+        {/* На чём считать диаризацию — свои табы (Nemotron 3 Diarization на сервере audio.cpp). */}
+        {backendTabs("diar_backend")}
         {rowOf("sortformer")}
-      </Group>
-      <Group label={t("settings.roleRuntime")}>{rowOf("onnxruntime")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("onnxruntime-gpu")}{(selv("diar_backend") === "gpu" || selv("asr_backend") === "gpu") && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</Group>
+      </>)}
+      {group(t("settings.roleRuntime"), <>{rowOf("onnxruntime")}{selv("local_backend") !== "cpu" && rowOf("onnxruntime-gpu")}{selv("local_backend") !== "cpu" && rowOf("cudnn")}{rowOf("ffmpeg")}{rowOf("cuda-runtime")}{rowOf("cuda12-runtime")}{rowOf("vcruntime")}{rowOf("ocr")}</>)}
       <YtDlpTool installed={!!get("ytdlp")?.installed} row={rowOf("ytdlp")} />
       {/* Производительность / экономия RAM — ВИДИМЫЕ контролы (не авто-магия): против OOM на слабой памяти. */}
-      <Group label={t("settings.perfTitle")}>
+      {group(t("settings.perfTitle"), <>
         {[
           { key: "llama_ubatch", label: t("settings.llamaUbatch"), hint: t("settings.llamaUbatchHint"), opts: cap?.llama_ubatches ?? ["0", "512", "256", "128"], def: "0", fmt: (v: string) => (v === "0" ? t("settings.auto") : v) },
           { key: "higgs_ref_secs", label: t("settings.higgsRef"), hint: t("settings.higgsRefHint"), opts: cap?.higgs_ref_secs_opts ?? ["12", "8", "6", "4"], def: "12", fmt: (v: string) => `${v}${t("settings.sec")}` },
+          { key: "tts_idle_unload_min", label: t("settings.idleUnload"), hint: t("settings.idleUnloadHint"), opts: ["0", "5", "15", "30", "60"], def: "15", fmt: (v: string) => (v === "0" ? t("settings.idleNever") : t("settings.idleMinutes", { n: Number(v) })) },
         ].map((row) => {
           const cur = slot(cap?.selection, row.key) ?? row.def;
           return (
@@ -553,7 +553,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             </div>
           );
         })}
-      </Group>
+      </>)}
     </div>
   );
 }
@@ -563,16 +563,21 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
 function PresetsSection({ onApplied }: { onApplied?: () => void }) {
   const { t } = useTranslation();
   const [data, setData] = useState<Awaited<ReturnType<typeof api.hwPresets>> | null>(null);
-  const [applied, setApplied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => { api.hwPresets().then(setData).catch(() => {}); }, []);
+  // «custom» writes nothing, so the settings still hold the preset they were on
+  const [custom, setCustom] = useState(false);
+  const load = () => { api.hwPresets().then(setData).catch(() => {}); };
+  useEffect(() => { load(); }, []);
+  useChanged(SETTINGS_CHANGED, load);
+  useChanged(SELECTION_CHANGED, load);
   const apply = async (id: string) => {
     setBusy(true);
-    try { await api.applyPreset(id); setApplied(id); onApplied?.(); } catch { /* ignore */ }
+    setCustom(id === "custom");
+    try { await api.applyPreset(id); onApplied?.(); } catch { /* ignore */ }
     setBusy(false);
   };
   const hw = data?.hardware;
-  const cur = applied ?? hw?.recommended ?? "";
+  const cur = custom ? "custom" : data?.current ?? "";
   const curP = data?.presets.find((p) => p.id === cur);
   return (
     <div className="mb-4 pb-3 border-b border-[var(--color-border)]">
@@ -753,6 +758,9 @@ function TopBar() {
   // Открытые настройки: цель «раздел[:часть]» и номер запроса — повторный запрос той же цели снова ведёт к ней.
   const [settings, setSettings] = useState<{ target: string; request: number } | null>(null);
   const [help, setHelp] = useState(false);
+  const setOverlay = useStore((s) => s.setOverlay);
+  const settingsOpen = settings !== null;
+  useEffect(() => { setOverlay(settingsOpen ? "settings" : null); }, [settingsOpen, setOverlay]);
   const openSettingsAt = (target: string) => setSettings(settingsRequest(target));
   useEffect(() => {
     const open = (e: Event) => setSettings(settingsRequest((e as CustomEvent<string>).detail));
@@ -2554,6 +2562,25 @@ function Editor() {
   const [selTitles, setSelTitles] = useState<Set<number>>(new Set()); // multi-select: titles
   const [fonts, setFonts] = useState<Record<string, string>>({});
   const [voiceList, setVoiceList] = useState<string[]>([]);
+  const [voiceCleaned, setVoiceCleaned] = useState<string[]>([]);   // library voices with the original kept (noise removed)
+  const [denoiseBusy, setDenoiseBusy] = useState<string | null>(null);
+  // Noise out of a library voice (DPDFNet, 18 dB as Speech Studio's default), or its original back.
+  const toggleDenoise = async (name: string) => {
+    setDenoiseBusy(name);
+    try {
+      if (voiceCleaned.includes(name)) {
+        await api.voiceRestore(name);
+        pushActivity(t("voice.restored", { name: prettyVoice(name) }), "work");
+      } else {
+        const { job_id } = await api.voiceDenoise(name, 18);
+        await api.watchJob(job_id, () => {});
+        pushActivity(t("voice.denoised", { name: prettyVoice(name) }), "work");
+      }
+      const v = await api.voices();
+      setVoiceList(v.voices); setVoiceCleaned(v.cleaned ?? []);
+    } catch (err) { await surfaceErr(err); }
+    finally { setDenoiseBusy(null); }
+  };
   const [spkVoiceBusy, setSpkVoiceBusy] = useState<string | null>(null);
   const [voicePreview, setVoicePreview] = useState<string | null>(null);   // имя проигрываемого сэмпла голоса
   const voicePreviewAudio = useRef<HTMLAudioElement | null>(null);
@@ -2575,7 +2602,7 @@ function Editor() {
   // голоса из каталога; если пусто и ещё не пробовали — тихо тянем дефолтный пак (VibeVoice, ~100МБ) в фоне
   useEffect(() => {
     api.voices().then(async (r) => {
-      setVoiceList(r.voices);
+      setVoiceList(r.voices); setVoiceCleaned(r.cleaned ?? []);
       if (r.voices.length === 0 && !localStorage.getItem("voicepack-auto")) {
         localStorage.setItem("voicepack-auto", "1");
         try {
@@ -3698,6 +3725,19 @@ function Editor() {
               <option value="autocast">{t("voice.autocast")}</option>
               <option value="voice">{t("voice.pack")}</option>
             </select>
+            {p.audio.voice.mode === "clone" && (
+              <label className="mt-2 block">
+                <span className="text-[10px] text-[var(--color-muted)]">{t("voice.emoRef")}</span>
+                <select aria-label={t("voice.emoRef")} value={p.audio.voice.emo_ref == null ? "default" : p.audio.voice.emo_ref ? "on" : "off"}
+                  onChange={(e) => branch("emo_ref", { value: e.target.value })}
+                  title={t("voice.emoRefHint")}
+                  className="mt-1 block w-[200px] max-w-full bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-2 focus:border-[var(--color-accent)] focus:outline-none transition-colors">
+                  <option value="default">{t("voice.emoRefDefault")}</option>
+                  <option value="on">{t("voice.emoRefOn")}</option>
+                  <option value="off">{t("voice.emoRefOff")}</option>
+                </select>
+              </label>
+            )}
             <VoiceRecorder voiceList={voiceList} onVoices={setVoiceList}
               onDone={(nm) => branch("recast", { voice_mode: "voice", voice_name: nm })} />
             {(() => {
@@ -3758,6 +3798,13 @@ function Editor() {
                     className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                     {voicePreview === cur && cur ? <Pause size={14} className="text-[var(--color-accent)]" /> : <Play size={14} />}
                   </button>
+                  {cur && !cur.includes(":") && (
+                    <button type="button" disabled={!!denoiseBusy} onClick={() => toggleDenoise(cur)}
+                      title={voiceCleaned.includes(cur) ? t("voice.restore") : t("voice.denoise")}
+                      className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      {denoiseBusy === cur ? <Loader2 size={14} className="animate-spin" /> : voiceCleaned.includes(cur) ? <RotateCcw size={14} /> : <AudioLines size={14} />}
+                    </button>
+                  )}
                 </div>
               );
               if (spks.length <= 1)
@@ -4129,31 +4176,35 @@ const QUANT_GROUP: Record<string, string> = {
   parakeet: "parakeet", "parakeet-ultra": "parakeet",
   roformer: "roformer", "roformer-q5": "roformer", "roformer-q4": "roformer",
   "qwen3-tts": "qwen3", "qwen3-tts-q8_0": "qwen3",
-  "whisper-tiny": "whisper", "whisper-base": "whisper", "whisper-small": "whisper", "whisper-medium": "whisper",
-  "whisper-large-v3": "whisper", "whisper-large-v3-turbo": "whisper",
+  "crisperwhisper-turbo": "whisper",
 };
 
 // Engines, runtimes and libraries: the studio takes them for the models chosen and for this computer's card, so they
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
-  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cpu", "whisper-engine", "whisper-cuda",
-  "bsroformer-engine", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cudnn",
+  "higgs-engine", "qwen3-tts-engine", "qwen3-tts-cuda", "qwen3-tts-vulkan", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-vulkan", "transcribe-engine-cpu", "langid", "silero-vad",
+  "bsroformer-engine", "bsroformer-engine-cuda12", "bsroformer-engine-vulkan", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cuda12-runtime", "cudnn",
   "vcruntime",
 ]);
 
+/** The builds of the transcribe.cpp engine; the server requires the one this computer runs recognition on. */
+const TCPP_ENGINES = ["transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-vulkan", "transcribe-engine-cpu"];
+/** The builds of the separation engine (dub_sep::asset). */
+const SEP_ENGINES = ["bsroformer-engine", "bsroformer-engine-cuda12", "bsroformer-engine-vulkan", "bsroformer-engine-cpu"];
+
 /** The service parts a chosen model runs on; of two builds of one engine, the one the server asks for on this computer. */
 function needs(id: string, s: SetupStatus): string[] {
-  const build = (gpu: string, cpu: string) => {
-    const req = (x: string) => s.components.find((c) => c.id === x)?.requirement ?? "optional";
-    if (req(gpu) !== "optional") return gpu;
-    if (req(cpu) !== "optional") return cpu;
-    return s.gpu?.cuda13Ok ? gpu : cpu;
-  };
+  const req = (x: string) => s.components.find((c) => c.id === x)?.requirement ?? "optional";
+  const tcpp = () =>
+    TCPP_ENGINES.find((x) => req(x) !== "optional")
+      ?? (s.gpu?.cudaBuild === "cuda13" ? "transcribe-engine" : s.gpu?.cudaBuild === "cuda12" ? "transcribe-engine-cuda12" : "transcribe-engine-cpu");
   if (id.startsWith("higgs")) return ["higgs-engine"];
   if (id.startsWith("qwen3-tts")) return ["qwen3-tts-engine"];
-  if (id.startsWith("parakeet")) return [build("transcribe-engine", "transcribe-engine-cpu")];
-  if (QUANT_GROUP[id] === "whisper") return s.gpu?.nvidia ? ["whisper-engine", "whisper-cuda"] : ["whisper-engine"];
-  if (id.startsWith("roformer")) return [build("bsroformer-engine", "bsroformer-engine-cpu")];
+  if (id.startsWith("parakeet-ultra")) return [tcpp(), "silero-vad"];
+  if (id.startsWith("parakeet")) return [tcpp()];
+  if (QUANT_GROUP[id] === "whisper") return ["higgs-engine", "langid", tcpp()];
+  // the server recommends the separation engine of the separation device
+  if (id.startsWith("roformer")) return SEP_ENGINES.filter((x) => req(x) !== "optional");
   if (id.startsWith("gemma")) return ["llama"];
   return [];
 }
@@ -4916,18 +4967,31 @@ export default function App() {
   const pid = useStore((s) => s.pid);
   const [cap, setCap] = useState("");
   const [capOffline, setCapOffline] = useState(false);
-  useEffect(() => { api.capabilities().then((c) => {
+  useEffect(() => { const load = () => api.capabilities().then((c) => {
     const base = (p?: string) => p ? (p.split(/[\\/]/).pop() || p).replace(/\.(gguf|onnx|bin|pt|safetensors)$/i, "") : "";
     // ASR в футере — из ФАКТИЧЕСКОГО выбора (active.json), не из статичного имени Parakeet-модели:
     // юзер переключил движок в «Моделях» -> строка обязана показать то, чем реально пойдёт прогон.
     const sel = (c as { selection?: Record<string, string> }).selection ?? {};
     const parts = [c.device, `ASR ${c.asr_label}`];
-    if (c.models?.llm) parts.push(`MT+vision ${base(c.models.llm)}`);
+    const llm = base(c.models?.llm);
+    if (c.llm_provider === "agent") parts.push(`MT ${t("providers.agent")}`);
+    else if (c.llm_provider === "openrouter") parts.push(`MT ${llm ? `${llm} (OpenRouter)` : "OpenRouter"}`);
+    else if (c.llm_provider === "server") parts.push(`MT ${llm ? `${llm} (${t("providers.server")})` : t("providers.server")}`);
+    else if (llm) parts.push(`MT+vision ${llm}`);
     const ttsQuant = sel.tts || c.tts_quant;
     if (c.models?.tts) parts.push(sel.tts === "drama3" ? "TTS Fish Audio Drama 3 q4" : sel.tts === "supertonic3" ? "TTS Supertonic 3 int8" : isQwenTts(sel.tts) ? `TTS Qwen3-TTS 1.7B ${sel.tts === "qwen3-tts" ? "Q4_K_M" : "Q8_0"}` : `TTS ${c.models.tts}${ttsQuant ? ` ${ttsQuant}` : ""}`);
     parts.push("sep BSRoformer", "diar Nemotron 3", "OCR PP-OCR");   // фикс-движки пайплайна
     setCap(parts.join(" · "));
-  }).catch(() => setCapOffline(true)); }, []);
+    setCapOffline(false);
+  }).catch(() => setCapOffline(true));
+    load();
+    window.addEventListener(SELECTION_CHANGED, load);
+    window.addEventListener(SETTINGS_CHANGED, load);
+    return () => {
+      window.removeEventListener(SELECTION_CHANGED, load);
+      window.removeEventListener(SETTINGS_CHANGED, load);
+    };
+  }, [t]);
   // boot: resume ?pid=… project, else gate on /setup/status — missing required components -> «first run».
   // Сетевая ошибка (fetch отклонён TypeError) = сервиса нет на порту -> экран «сервер не отвечает»; HTTP-ошибка
   // значит, что сервис ответил, и ведёт на главный экран.
@@ -4935,17 +4999,41 @@ export default function App() {
     const unreachable = (e: unknown) => e instanceof TypeError;
     const pid = new URLSearchParams(location.search).get("pid");
     if (pid) { api.getProject(pid).then((p) => { setPid(pid); setProject(p); setStage("editor"); }).catch((e: unknown) => setStage(unreachable(e) ? "offline" : "empty")); return; }
-    api.setupStatus()
-      .then((s) => setStage(s.ready ? "empty" : "setup"))
+    // a release that changed what the studio downloads shows its update screen once, before the setup screen
+    Promise.all([api.setupStatus(), api.setupUpdate()])
+      .then(([s, u]) => setStage(u.show ? "update" : s.ready ? "empty" : "setup"))
       .catch((e: unknown) => setStage(unreachable(e) ? "offline" : "empty"));   // older server without /setup -> fall through to hero
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // the hub's sections: a dub is made from the start screen to the editor, a transcript is a tool, the open window names its own
+  const overlay = useStore((s) => s.overlay);
+  const view: HubView = overlay ?? (stage === "editor" && projMode === "transcribe" ? "tools" : "create");
+  const busy = useStore((s) => s.stage === "analyzing" || s.currentJob !== null || s.rendering || s.localJobs.length > 0 || s.exports.some((e) => e.status === "rendering"));
+  const ready = stage !== "boot" && stage !== "offline" && stage !== "setup" && stage !== "update";
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!ready) return;
+    const readyAt = Date.now();
+    const tick = window.setInterval(() => setElapsed(Math.floor((Date.now() - readyAt) / 1000)), 1000);
+    return () => window.clearInterval(tick);
+  }, [ready]);
+  const [popupClosed, setPopupClosed] = useState<Set<string>>(() => new Set());
+  // a popup waits while something is being made: an analysis, a render, an editor job or an export
+  const popup = ready && hub && !busy
+    ? hub.items.find((item) => item.kind === "popup" && !popupClosed.has(item.id) && showsNow(item, elapsed, view))
+    : undefined;
+  const closePopup = (id: string) => {
+    setPopupClosed((previous) => new Set(previous).add(id));
+    hubChanged();
+  };
   return (
     <div className="h-full flex flex-col">
-      {hub && stage !== "setup" && <HubBars items={hub.items} />}
+      {hub && stage !== "setup" && stage !== "update" && <HubBars items={hub.items} view={view} />}
+      {popup && <HubPopup item={popup} onClose={() => closePopup(popup.id)} />}
       <TopBar />
       {stage === "boot" && <div className="flex-1 grid place-items-center"><Loader2 size={22} className="animate-spin text-[var(--color-muted)]" /></div>}
       {stage === "offline" && <ServerOffline />}
       {stage === "setup" && <FirstRun />}
+      {stage === "update" && <UpdateScreen />}
       {stage === "empty" && <DropZone />}
       {stage === "analyzing" && <AnalyzeProgress />}
       {stage === "batch" && <BatchView />}

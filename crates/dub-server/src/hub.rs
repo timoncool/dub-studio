@@ -175,7 +175,7 @@ fn models_in_use(mroot: &Path, stages: &[&str]) -> Vec<String> {
                 provider => format!("tts:{provider}:{}", models::tts_model(mroot)),
             },
             "asr" if models::openrouter_asr_on(mroot) => format!("asr:openrouter:{}", slot("or_asr", "default")),
-            "asr" if slot("asr_engine", "parakeet") == "whisper" => format!("asr:whisper-{}", slot("whisper_model", "default")),
+            "asr" if slot("asr_engine", "parakeet") == "whisper" => "asr:crisperwhisper-turbo".to_string(),
             "asr" => format!("asr:parakeet-{}", slot("asr", "int8")),
             "sep" => format!("sep:roformer-{}", stem(&models::resolve_sep(mroot, &sel)).trim_start_matches("voc_fv6-")),
             stage => match models::llm_backend(mroot, stage) {

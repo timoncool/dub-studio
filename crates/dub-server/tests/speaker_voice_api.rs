@@ -11,6 +11,7 @@ use tower::ServiceExt;
 const PID: &str = "abc123def456";
 
 fn fixture_root() -> PathBuf {
+    dub_server::forbid_downloads();
     let root = std::env::temp_dir().join(format!("dub_speaker_voice_api_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let dir = root.join("workspace").join(PID);

@@ -14,7 +14,7 @@ use std::process::Command;
 pub fn filter_script_flag() -> &'static str {
     static FLAG: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
     FLAG.get_or_init(|| {
-        let major = Command::new(dub_core::proc::ffmpeg())
+        let major = dub_core::proc::host_command(dub_core::proc::ffmpeg())
             .arg("-version")
             .output()
             .ok()
@@ -236,7 +236,7 @@ pub fn burn(
 
 /// Длительность видео в секундах через ffprobe (для пропорционального таймаута burn). Ошибка -> None.
 fn probe_duration_secs(video: &Path) -> Option<f64> {
-    let out = Command::new(dub_core::proc::ffprobe())
+    let out = dub_core::proc::host_command(dub_core::proc::ffprobe())
         .args(["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0"])
         .arg(video)
         .output()
@@ -252,7 +252,7 @@ fn run_ffmpeg(
     gpu_decode: bool,
     timeout_secs: u64,
 ) -> Result<(), CaptionsError> {
-    let mut cmd = Command::new(dub_core::proc::ffmpeg());
+    let mut cmd = dub_core::proc::host_command(dub_core::proc::ffmpeg());
     cmd.arg("-y");
     if gpu_decode {
         cmd.args(["-hwaccel", "cuda"]);
@@ -397,7 +397,7 @@ pub fn burn_frame(
         vec!["-vf".into(), format!("{pre},{ass_f}")]
     };
 
-    let mut cmd = Command::new(dub_core::proc::ffmpeg());
+    let mut cmd = dub_core::proc::host_command(dub_core::proc::ffmpeg());
     cmd.arg("-y")
         .arg("-ss")
         .arg(format!("{:.3}", (t - 1.0).max(0.0)))
@@ -437,7 +437,7 @@ mod filter_flag_tests {
             return;
         }
         let out = dir.join("o.png");
-        let res = Command::new(dub_core::proc::ffmpeg())
+        let res = dub_core::proc::host_command(dub_core::proc::ffmpeg())
             .args(["-y", "-hide_banner", "-loglevel", "error"])
             .arg(flag)
             .arg(&script)

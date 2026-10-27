@@ -779,7 +779,16 @@ fn make_project(fetch_root: &Path, media: &Path, title: &str, subs: Option<&Path
             subs_imported = true;
         }
     }
-    crate::write_initial_project(&d).map_err(|e| UrlError::new("io", e))?;
+    match crate::write_initial_project(&d) {
+        Ok(()) => {}
+        Err(crate::InitialProjectError::Unreadable(e)) => {
+            if let Err(rm) = std::fs::remove_dir_all(&d) {
+                tracing::error!("[ERROR] the unreadable download {} was not removed: {rm}", d.display());
+            }
+            return Err(UrlError::new("unreadable_media", e));
+        }
+        Err(crate::InitialProjectError::Io(e)) => return Err(UrlError::new("io", e)),
+    }
     Ok(Made { pid, subs_imported, warning })
 }
 
@@ -1081,7 +1090,7 @@ mod tests {
         let fetch_root = root.path().join("workspace").join(".fetch");
         let dir = fetch_root.join("url5");
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("source.mp4"), b"not really a video").unwrap();
+        audio_file(&dir.join("source.mp4"));
         std::fs::write(dir.join("subs.en.srt"), "1\n00:00:01,000 --> 00:00:02,500\nHello there\n\n").unwrap();
         assert_eq!(find_media(&dir), Some(dir.join("source.mp4")));
         let subs = find_subs(&dir).unwrap();
@@ -1093,17 +1102,42 @@ mod tests {
         assert!(p.join("import_subs.srt").is_file());
         let project: Value = serde_json::from_str(&std::fs::read_to_string(p.join("project.json")).unwrap()).unwrap();
         assert_eq!(project["segments"][0]["src_text"], "Hello there");
-        std::fs::write(dir.join("source.m4a"), b"x").unwrap();
+        audio_file(&dir.join("source.m4a"));
         std::fs::write(dir.join("empty.srt"), "garbage").unwrap();
         let made = make_project(&fetch_root, &dir.join("source.m4a"), "a", Some(&dir.join("empty.srt"))).unwrap();
         assert_eq!((made.subs_imported, made.warning.map(|w| w.0)), (false, Some("subs_empty")));
+    }
+
+    /// A short real audio file, so a made project probes it as a user's download would be.
+    fn audio_file(path: &Path) {
+        let ok = dub_core::proc::host_command(dub_core::proc::ffmpeg())
+            .args(["-y", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:a", "aac"])
+            .arg(path)
+            .status()
+            .unwrap()
+            .success();
+        assert!(ok, "ffmpeg made {}", path.display());
+    }
+
+    #[test]
+    fn a_download_ffprobe_cannot_read_makes_no_project() {
+        let root = tempfile::tempdir().unwrap();
+        let fetch_root = root.path().join("workspace").join(".fetch");
+        let dir = fetch_root.join("url6");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("source.webm"), b"an HTML page saved as a video").unwrap();
+        let Err(e) = make_project(&fetch_root, &dir.join("source.webm"), "broken", None) else { panic!("an unreadable download became a project") };
+        assert_eq!(e.code, "unreadable_media");
+        assert!(e.detail.contains("source.webm"), "{}", e.detail);
+        let left: Vec<_> = std::fs::read_dir(root.path().join("workspace")).unwrap().flatten().map(|e| e.file_name()).filter(|n| n != ".fetch").collect();
+        assert!(left.is_empty(), "no project folder stays: {left:?}");
     }
 
     fn downloaded(f: &Fetches, id: &str) -> PathBuf {
         lock(&f.inner.list).push(fetch(id, FetchStatus::Downloading));
         let dir = f.dir(id);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join("source.mp4"), b"not really a video").unwrap();
+        audio_file(&dir.join("source.mp4"));
         dir.join("source.mp4")
     }
 

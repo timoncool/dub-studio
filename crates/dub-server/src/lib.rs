@@ -8,6 +8,7 @@
 
 #[macro_use]
 pub mod i18n;
+mod acpp;
 mod analyze;
 mod asr_filter;
 mod atomic;
@@ -36,6 +37,7 @@ mod guard;
 mod hub;
 pub use hub::flush_on_exit as flush_hub_on_exit;
 pub use models::apply_faces_backend;
+pub use setup::forbid_downloads;
 mod hw;
 mod job_store;
 mod jobs;
@@ -69,6 +71,13 @@ mod supertonic;
 mod takes;
 mod translate;
 mod tts_audit;
+mod tts_host;
+mod vad;
+mod denoise;
+mod voice_library;
+mod google_speech;
+mod spending;
+mod update_screen;
 mod tts_text;
 mod tts_trim;
 mod url_import;
@@ -148,7 +157,7 @@ pub fn verify_captions_e2e(
         repo_root: repo_root.to_path_buf(),
         asr: models::AsrChoice::unused(), // ocr::stage не трогает ASR (verify-путь)
         sortformer_onnx: unused.clone(),
-        llama_bin: dub_llm::resolve_llama_bin(&repo_root.join("tools").join("llama")),
+        llama_bin: dub_llm::resolve_llama_bin(&setup::llama_dir(repo_root, setup::llama_build())),
         mt_model,
         mmproj,
         models_root: mroot,
@@ -192,8 +201,6 @@ pub struct AppState {
     pub bsroformer_cli: PathBuf,
     /// GGUF модель сепарации. Env DUB_STUDIO_BSROFORMER_MODEL, иначе <repo>/models/bsroformer/voc_fv6-Q8_0.gguf.
     pub bsroformer_model: PathBuf,
-    /// Higgs audiocpp_engine.dll (TTS). Env DUB_STUDIO_HIGGS_DLL, иначе <models>/higgs-engine/audiocpp_engine.dll.
-    pub higgs_dll: PathBuf,
     /// Каталог весов Higgs (q8_0). Env DUB_STUDIO_HIGGS_MODEL, иначе <models>/higgs-q8_0.
     pub higgs_model_root: PathBuf,
     /// Каталог bundled-шрифтов субтитров. Env DUB_STUDIO_FONTS_DIR, иначе <repo>/fonts.
@@ -249,11 +256,14 @@ pub fn ensure_library_path(repo_root: &Path) {
 /// чтобы `Command::new("ffmpeg")` и подобные находили их без перезапуска после автозакачки. Вызывается
 /// один раз при старте сервера (main.rs / Tauri-shell). Идемпотентно: не дублирует уже присутствующие.
 pub fn augment_path_for_tools(repo_root: &Path) {
-    let dirs = [
+    let mut dirs = vec![
         repo_root.join("tools").join("ffmpeg"),
-        repo_root.join("tools").join("llama"),
+        setup::llama_dir(repo_root, setup::llama_build()),
         repo_root.join("models").join("higgs-engine"),
     ];
+    if crate::hw::gpu_report().cuda_build == Some(crate::hw::CudaBuild::Cuda12) {
+        dirs.insert(2, repo_root.join("models").join("cuda12-runtime"));
+    }
     let sep = if cfg!(windows) { ";" } else { ":" };
     let cur = std::env::var("PATH").unwrap_or_default();
     let mut prefix = String::new();
@@ -295,9 +305,19 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
             // а закачка onnxruntime ставит его на скачанную (point_ort)
             let mut candidates = dub_core::runtime::ort_candidates(&repo_root.join("models"));
             let expected = if crate::hw::gpu_report().cuda13_ok { candidates.remove(0) } else { candidates.remove(candidates.len() - 1) };
-            eprintln!("[ERROR] onnxruntime 1.28 not found in {}: recognition and diarization will not start until the ONNX Runtime component is downloaded", rt.display());
+            eprintln!("[ERROR] onnxruntime 1.28 not found in {}: casting, text detection and speaker voices will not start until the ONNX Runtime component is downloaded", rt.display());
             std::env::set_var("ORT_DYLIB_PATH", expected);
         }
+    }
+}
+
+/// ONNX Runtime with its telemetry off: Microsoft's builds send usage telemetry unless the environment turns it off.
+/// Called at start, before any session is made; the library itself is still bound at its first use.
+pub fn ort_without_telemetry() -> Result<(), String> {
+    if ort::init().with_telemetry(false).commit() {
+        Ok(())
+    } else {
+        Err("ONNX Runtime was set up before the studio could turn its telemetry off".into())
     }
 }
 
@@ -341,6 +361,7 @@ pub async fn serve(state: AppState, listener: std::net::TcpListener) -> anyhow::
     service::record_port(listener.local_addr()?.port());
     let listener = tokio::net::TcpListener::from_std(listener)?;
     hub::start(&state.repo_root, &state.workspace);
+    tts_host::watch_idle(state.models_root.clone());
     // models another program already has are linked in at start; only what is missing everywhere is downloaded
     let root = state.repo_root.clone();
     tokio::task::spawn_blocking(move || {
@@ -373,7 +394,6 @@ impl AppState {
         }
         let web_root = spa::find_web_root(&repo_root);
         let mroot = models_root(&repo_root);
-        setup::remove_retired(&mroot);
         match credentials::migrate_legacy_selection(&mroot) {
             Ok(moved) if moved.openrouter_key || moved.proxy_password => {
                 tracing::info!("secrets moved from active.json to the secret store: {moved:?}")
@@ -381,21 +401,14 @@ impl AppState {
             Ok(_) => {}
             Err(e) => tracing::error!("secrets from active.json were not moved to the store: {e:#}"),
         }
-        let sortformer_onnx = std::env::var("DUB_STUDIO_SORTFORMER")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| {
-                mroot.join(dub_asr::DIAR_MODEL_DIR).join(dub_asr::DIAR_MODEL_FILE)
-            });
-        // llama-server: env-override, иначе <repo>/tools/llama/llama-server(.exe) (негитуемый каталог,
-        // кладёт установщик/раунд 3). Существование проверяет сама стадия перевода (fail-safe).
-        let llama_bin = dub_llm::resolve_llama_bin(&repo_root.join("tools").join("llama"));
+        let sortformer_onnx = crate::acpp::diar_onnx(&mroot);
+        // llama-server: env-override, иначе llama-server(.exe) сборки этой карты (tools/llama, llama-cuda12,
+        // llama-vulkan, llama-cpu). Существование проверяет сама стадия перевода.
+        let llama_bin = dub_llm::resolve_llama_bin(&setup::llama_dir(&repo_root, setup::llama_build()));
         let bsroformer_cli = std::env::var("DUB_STUDIO_BSROFORMER_DIR")
             .map(|d| PathBuf::from(d).join(dub_sep::ENGINE_CLI_FILE))
             .unwrap_or_else(|_| dub_sep::engine_dir(&repo_root).join(dub_sep::ENGINE_CLI_FILE));
         let bsroformer_model = dub_sep::model_path(&repo_root);
-        let higgs_dll = std::env::var("DUB_STUDIO_HIGGS_DLL")
-            .map(PathBuf::from)
-            .unwrap_or_else(|_| mroot.join("higgs-engine").join(if cfg!(windows) { "audiocpp_engine.dll" } else { "libaudiocpp_engine.so" }));
         let higgs_model_root = std::env::var("DUB_STUDIO_HIGGS_MODEL")
             .map(PathBuf::from)
             .unwrap_or_else(|_| mroot.join("higgs-q8_0"));
@@ -417,7 +430,6 @@ impl AppState {
             llama_bin,
             bsroformer_cli,
             bsroformer_model,
-            higgs_dll,
             higgs_model_root,
             fonts_dir,
             models_root: mroot,
@@ -543,8 +555,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/engine/google/models", get(secrets_api::google_models))
         .route(
             "/projects/{pid}/google-tts",
-            get(google_tts::project_report),
+            get(google_speech::project_report),
         )
+        .route("/cloud/spend", get(cloud_spend))
         .route(
             "/engine/proxy/settings", get(secrets_api::proxy_settings).put(secrets_api::update_proxy_settings),
         )
@@ -555,6 +568,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/setup/download", post(setup_download))
         .route("/setup/cancel", post(setup_cancel))
         .route("/setup/remove", post(setup_remove))
+        .route("/setup/update", get(setup_update))
+        .route("/setup/update/apply", post(setup_update_apply))
+        .route("/setup/update/seen", post(setup_update_seen))
         .route("/setup/open-models", post(setup_open_models))
         .route("/setup/browse", post(setup_browse))
         .route("/pick-folder", post(pick_folder))
@@ -570,6 +586,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/voices/get", post(voices_get))
         .route("/voices/rename", post(voices_rename))
         .route("/voices/delete", post(voices_delete))
+        .route("/voices/denoise", post(voices_denoise))
+        .route("/voices/restore", post(voices_restore))
         .route("/projects/{pid}/speaker-voice", post(speaker_voice))
         .route("/projects/{pid}/voice-slots", post(voice_slots_assign))
         .route("/projects/{pid}/casting", get(casting_get).post(casting_save),
@@ -685,9 +703,16 @@ async fn capabilities(State(st): State<AppState>) -> Json<Value> {
     let ffmpeg = which_ffmpeg();
     // Текущий выбор вариантов (active.json) — фронт рисует по нему селекторы движка/модели/кванта ASR.
     // Без секретов: вместо ключа OpenRouter и пароля прокси — флаги or_key_set / proxy_password_set.
-    let sel = models::public_selection(&st.models_root);
+    let sel = cloud_tts::with_defaults(models::public_selection(&st.models_root));
     // Языки контента = полный набор Whisper (99). Единый источник — dub_translate::WHISPER_LANGS.
     let langs: Vec<&str> = dub_translate::WHISPER_LANGS.iter().map(|(c, _)| *c).collect();
+    let llm_provider = models::llm_backend(&st.models_root, "llm");
+    let llm = match llm_provider {
+        models::LlmBackend::Local => models::resolve_mt(&st.models_root, &models::load_selection(&st.models_root)).0.to_string_lossy().into_owned(),
+        models::LlmBackend::Server => models::server_model(&st.models_root, "llm"),
+        models::LlmBackend::OpenRouter => models::openrouter_model(&st.models_root, "llm"),
+        models::LlmBackend::Agent => String::new(),
+    };
     // Тот же JSON-контракт, что в app.py.capabilities(), плюс поля выбора ASR-движка.
     Json(json!({
         "device": o.device,
@@ -696,19 +721,18 @@ async fn capabilities(State(st): State<AppState>) -> Json<Value> {
         "asr_label": models::resolve_asr_choice(&st.repo_root, &st.models_root, &models::load_selection(&st.models_root)).label(),
         "models": {
             "asr": o.asr_model,
-            "llm": o.mt_model_path.to_string_lossy(),
+            "llm": llm,
             "vision": o.mmproj_path.to_string_lossy(),
             "tts": o.tts_model,
         },
+        // the translator's model is `models.llm`: a Gemma file, the server's or OpenRouter's model id, none for the agent
+        "llm_provider": llm_provider.as_str(),
         "ffmpeg": ffmpeg,
         "languages": langs,
         "voice_modes": ["clone","autocast","auto","voice"],
-        // Выбор ASR: движок (parakeet|whisper), модель Whisper, квант Whisper (compute_type).
+        // Выбор ASR: движок (parakeet | whisper = CrisperWhisper).
         "selection": sel,
         "asr_engines": ["parakeet","whisper"],
-        "whisper_models": ["tiny","base","small","medium","large-v3","large-v3-turbo"],
-        // Кванты Whisper (compute_type): float16 / int8_float16 задействуют Tensor Cores на CUDA GPU.
-        "whisper_computes": ["int8","int8_float16","int8_float32"],
         // Видимые лимиты RAM (настройки, не авто-магия): против OOM на слабой памяти. "0" = авто (дефолт).
         "llama_ubatches": ["0","512","256","128"],      // prefill-батч Gemma (меньше = меньше RAM)
         "higgs_ref_secs_opts": ["12","8","6","4"],       // длина реф-клипа клона (сек; <12 спасает 32ГБ)
@@ -822,6 +846,65 @@ async fn setup_remove(State(st): State<AppState>, Json(body): Json<Value>) -> Re
         .into_response()
 }
 
+async fn update_plan(st: &AppState) -> Result<update_screen::Plan, Response> {
+    let root = st.repo_root.clone();
+    tokio::task::spawn_blocking(move || update_screen::plan(&root, &models_root(&root), service::app_version()))
+        .await
+        .map_err(join_failure)
+}
+
+/// GET /setup/update — the update screen's plan of this release: {version, updated, added, retired, download, freed,
+/// show}. Reads only the disk.
+async fn setup_update(State(st): State<AppState>) -> Response {
+    match update_plan(&st).await {
+        Ok(plan) => Json(plan).into_response(),
+        Err(r) => r,
+    }
+}
+
+/// POST /setup/update/apply — the update screen's button: downloads what is updated and new in the background (as
+/// /setup/download) and removes the leftovers of former releases once it is all in place; with nothing to download it
+/// removes them at once. {download, plan}; the plan counts as shown.
+async fn setup_update_apply(State(st): State<AppState>) -> Response {
+    let plan = match update_plan(&st).await {
+        Ok(plan) => plan,
+        Err(r) => return r,
+    };
+    let (root, dl, ids) = (st.repo_root.clone(), st.downloads.clone(), plan.ids());
+    let started = tokio::task::spawn_blocking(move || {
+        let job = if ids.is_empty() {
+            setup::remove_leftovers(&root, &models_root(&root));
+            None
+        } else {
+            Some(dl.start_update(ids)?)
+        };
+        if let Err(e) = update_screen::mark_seen(&root, service::app_version()) {
+            tracing::error!("[ERROR] {e}");
+        }
+        Ok::<_, setup::DlError>(job)
+    })
+    .await;
+    let job = match started {
+        Ok(Ok(job)) => job,
+        Ok(Err(e)) => return dl_error_response(e),
+        Err(e) => return join_failure(e),
+    };
+    match update_plan(&st).await {
+        Ok(plan) => Json(json!({ "download": job, "plan": plan })).into_response(),
+        Err(r) => r,
+    }
+}
+
+/// POST /setup/update/seen — «Later»: this release's plan is not shown at start again (Settings → Models keeps it).
+async fn setup_update_seen(State(st): State<AppState>) -> Response {
+    let root = st.repo_root.clone();
+    match tokio::task::spawn_blocking(move || update_screen::mark_seen(&root, service::app_version())).await {
+        Ok(Ok(())) => Json(json!({ "seen": service::app_version() })).into_response(),
+        Ok(Err(e)) => internal_error(e),
+        Err(e) => join_failure(e),
+    }
+}
+
 /// Открыть каталог в проводнике (без выделения файла).
 fn open_folder(dir: &Path) -> std::io::Result<()> {
     #[cfg(windows)]
@@ -830,7 +913,7 @@ fn open_folder(dir: &Path) -> std::io::Result<()> {
     let cmd = "open";
     #[cfg(all(not(windows), not(target_os = "macos")))]
     let cmd = "xdg-open";
-    std::process::Command::new(cmd).arg(dir).spawn().map(|_| ())
+    dub_core::proc::host_command(cmd).arg(dir).spawn().map(|_| ())
 }
 
 /// POST /setup/open-models — открыть папку моделей в проводнике: {path}.
@@ -856,10 +939,10 @@ fn job_asr(repo_root: &Path, models_root: &Path) -> models::AsrChoice {
 fn ensure_job_components(
     repo_root: &Path,
     models_root: &Path,
-    casting: bool,
-    diarization: bool,
+    needs: JobNeeds,
     progress: &setup::ProgressCb,
 ) -> Result<(), String> {
+    let JobNeeds { casting, diarization, voicing, translating } = needs;
     let manifest = setup::manifest();
     let missing = |id: &str| -> bool {
         manifest
@@ -877,37 +960,102 @@ fn ensure_job_components(
     if casting && missing("casting") {
         need.push("casting".to_string());
     }
-    // Сепарация или диаризация на GPU → полный CUDA-стек: диаризация грузит onnxruntime-GPU + cuDNN, ggml-движки
-    // (сепарация/Higgs) — cuda-runtime (cudart/cublas/cuFFT). Без cuFFT CUDA-EP не поднимется. Распознавание на GPU
-    // (transcribe.cpp) берёт из него только cuda-runtime, Whisper — свои библиотеки (whisper-cuda ниже).
-    let gpu = ["sep_backend", "diar_backend"]
-        .iter()
-        .any(|k| models::stage_backend(models_root, k) == "gpu");
-    if gpu {
-        for id in ["cuda-runtime", "onnxruntime-gpu", "cudnn", "bsroformer-engine",
-        ] {
+    // A stage on the card needs its CUDA stack: separation its BSRoformer build and that build's runtime (CUDA 13 or
+    // 12.9), the speaker voices of casting and of a told speaker count (ONNX Runtime on the common device)
+    // onnxruntime-GPU with cuDNN and the CUDA 13 runtime (without cuFFT the CUDA EP does not start), recognition the
+    // runtime of its transcribe.cpp build. Diarization runs in audiocpp_server: the build of its device and that
+    // build's runtime.
+    let mut stage_needs: Vec<&str> = Vec::new();
+    let sep = models::sep_build(models_root);
+    if sep != dub_sep::asset::Build::Cpu {
+        stage_needs.push(sep.component());
+        stage_needs.extend(sep.runtime_component());
+    }
+    if (casting || diarization) && models::stage_backend(models_root, "local_backend") == "gpu" {
+        stage_needs.extend(["cuda-runtime", "onnxruntime-gpu", "cudnn"]);
+    }
+    if diarization {
+        stage_needs.extend(models::server_components(models_root, "diar_backend"));
+    }
+    for id in stage_needs {
+        if missing(id) && !need.iter().any(|n| n == id) {
+            need.push(id.to_string());
+        }
+    }
+    let tcpp_runtime = match models::tcpp_build(models_root) {
+        dub_asr::tcpp::Build::Cuda => Some("cuda-runtime"),
+        dub_asr::tcpp::Build::Cuda12 => Some("cuda12-runtime"),
+        dub_asr::tcpp::Build::Vulkan | dub_asr::tcpp::Build::Cpu => None,
+    };
+    if let Some(runtime) = tcpp_runtime {
+        if missing(runtime) && !need.iter().any(|n| n == runtime) {
+            need.push(runtime.to_string());
+        }
+    }
+    // ONNX Runtime serves casting, speaker voices, text detection, Supertonic and RUAccent: without either build the
+    // first session would end the job in a panic of ort's loader (4.4 on processors).
+    if missing("onnxruntime") && missing("onnxruntime-gpu") && !need.iter().any(|n| n == "onnxruntime-gpu") {
+        need.push("onnxruntime".to_string());
+    }
+    let sel = models::load_selection(models_root);
+    let asr_whisper = sel.get("asr_engine").and_then(|v| v.as_str()) == Some("whisper");
+    // CrisperWhisper chosen → its weights, and the language id (VoxLingua107) with the transcribe.cpp build it runs on
+    // for a source language left on «auto»; downloaded on first use as Parakeet's are.
+    if asr_whisper && !models::openrouter_asr_on(models_root) {
+        for id in ["crisperwhisper-turbo", "langid", models::tcpp_build(models_root).dir()] {
             if missing(id) {
                 need.push(id.to_string());
             }
         }
-    } else if models::stage_backend(models_root, "asr_backend") == "gpu" && missing("cuda-runtime") {
-        need.push("cuda-runtime".to_string());
     }
-    // Whisper на GPU: CTranslate2 требует cuBLAS12 + cuDNN8 РЯДОМ с whisper-faster.exe (наш ONNX-стек
-    // выше — CUDA 13, whisper'у не подходит). Без них whisper молча идёт на CPU. Тянем их только когда
-    // движок ASR = Whisper И стадия ASR на GPU.
-    let asr_whisper = models::load_selection(models_root)
-        .get("asr_engine")
-        .and_then(|v| v.as_str())
-        == Some("whisper");
-    if asr_whisper && models::stage_backend(models_root, "asr_backend") == "gpu" && missing("whisper-cuda") {
-        need.push("whisper-cuda".to_string());
+    // a transcribe.cpp model that must be told the language hears it by the language id under «auto»
+    if !asr_whisper && !models::openrouter_asr_on(models_root) && missing("langid") {
+        if let models::AsrChoice::Ggml { model, .. } | models::AsrChoice::Server { model, .. } = models::resolve_asr_choice(repo_root, models_root, &sel) {
+            if dub_asr::tcpp::told_the_language(model) {
+                need.push("langid".to_string());
+            }
+        }
     }
-    // Whisper chosen → its program and the model the settings name, downloaded on first use as Parakeet's are
+    // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs or Supertonic voice of a render (an
+    // install updated from 4.4 has the former Higgs library, not the server); a program named by
+    // DUB_STUDIO_AUDIOCPP_SERVER is taken as it is.
+    let tts = models::resolve_tts(models_root, &sel).1;
+    let higgs_voice = voicing
+        && !models::cloud_tts_on(models_root)
+        && tts != models::DRAMA_TTS
+        && tts != models::SUPERTONIC_TTS
+        && models::qwen_quant(&tts).is_none();
+    let mut server_needs: Vec<&str> = Vec::new();
     if asr_whisper && !models::openrouter_asr_on(models_root) {
-        let sel = models::load_selection(models_root);
-        let model = sel.get("whisper_model").and_then(|v| v.as_str()).filter(|m| !m.is_empty()).unwrap_or("large-v3-turbo");
-        for id in ["whisper-engine".to_string(), format!("whisper-{model}")] {
+        server_needs.extend(models::server_components(models_root, "asr_backend"));
+    }
+    let supertonic_voice = voicing && !models::cloud_tts_on(models_root) && tts == models::SUPERTONIC_TTS;
+    if higgs_voice || supertonic_voice {
+        server_needs.extend(models::server_components(models_root, "tts_backend"));
+    }
+    // Qwen3-TTS: its engine, the backend module of the voicing device and that device's CUDA runtime
+    if voicing && !models::cloud_tts_on(models_root) && models::qwen_quant(&tts).is_some() {
+        server_needs.extend(models::qwen_components(models_root));
+    }
+    for id in server_needs {
+        if missing(id) && !need.iter().any(|n| n == id) {
+            need.push(id.to_string());
+        }
+    }
+    // The chosen Higgs quant itself: its GGUF with config.json and tokenizer.json beside it, which the server reads.
+    if higgs_voice {
+        let id = if tts == "q8_0" { "higgs".to_string() } else { format!("higgs-{tts}") };
+        if missing(&id) {
+            need.push(id);
+        }
+    }
+    // The studio's own Gemma for translation or frames: llama-server and the chosen quant (a transcript made with
+    // the cloud or without translation did not need them, and a mode switch from it does).
+    let local_llm = ["llm", "vision"].iter().any(|stage| models::llm_backend(models_root, stage) == models::LlmBackend::Local);
+    if translating && local_llm {
+        let quant = sel.get("mt").and_then(|v| v.as_str()).unwrap_or("q4_0");
+        let gemma = if quant == "q4_0" { "gemma".to_string() } else { format!("gemma-{quant}") };
+        for id in ["llama".to_string(), gemma] {
             if missing(&id) {
                 need.push(id);
             }
@@ -916,11 +1064,15 @@ fn ensure_job_components(
     // Parakeet → its chosen variant and the transcribe.cpp build of the recognition backend (CUDA or CPU), which the
     // settings may have changed after the first run.
     if !asr_whisper && !models::openrouter_asr_on(models_root) {
-        if let models::AsrChoice::Ggml { build, model, .. } = models::resolve_asr_choice(repo_root, models_root, &models::load_selection(models_root)) {
-            for id in [build.dir(), model.component] {
-                if missing(id) {
-                    need.push(id.to_string());
-                }
+        let ids: Vec<&str> = match models::resolve_asr_choice(repo_root, models_root, &sel) {
+            models::AsrChoice::Ggml { build, model, .. } => vec![build.dir(), model.component],
+            // the model, and the server build of the recognition device with its CUDA runtime
+            models::AsrChoice::Server { model, .. } => std::iter::once(model.component).chain(models::server_components(models_root, "asr_backend")).collect(),
+            models::AsrChoice::CrisperWhisper { .. } => Vec::new(),
+        };
+        for id in ids {
+            if missing(id) && !need.iter().any(|n| n == id) {
+                need.push(id.to_string());
             }
         }
     }
@@ -946,6 +1098,34 @@ fn ensure_job_components(
         }
     }
     Ok(())
+}
+
+/// What a job uses beyond recognition, for [`ensure_job_components`].
+#[derive(Clone, Copy, Default)]
+pub(crate) struct JobNeeds {
+    pub casting: bool,
+    pub diarization: bool,
+    /// The render's voice (Higgs on audiocpp_server).
+    pub voicing: bool,
+    /// Translation or frames on the studio's own Gemma.
+    pub translating: bool,
+}
+
+/// Downloads those of `ids` this computer lacks, with the job's progress; nothing to fetch returns at once.
+pub(crate) fn fetch_missing(repo_root: &Path, ids: &[&str], progress: &setup::ProgressCb) -> Result<(), String> {
+    let manifest = setup::manifest();
+    let need: Vec<String> = ids
+        .iter()
+        .filter(|id| manifest.iter().find(|c| c.id == **id).is_some_and(|c| !setup::component_status(repo_root, c).installed))
+        .map(|id| id.to_string())
+        .collect();
+    if need.is_empty() {
+        return Ok(());
+    }
+    progress(json!({ "stage": "download", "msg": t!("setup-fetching-missing") }));
+    let ctl = jobs::current();
+    let cancel = move || ctl.as_ref().is_some_and(|c| c.is_cancelled());
+    setup::download_components(repo_root, &need, &cancel, progress).map(|_| ()).map_err(|e| e.detail)
 }
 
 /// GET /hw/snapshot — снимок GPU/VRAM/темп/мощность + RAM для монитора ресурсов.
@@ -984,10 +1164,12 @@ fn list_voice_names(dir: &Path) -> Vec<String> {
 
 /// GET /voices — список голосов из каталога (пак + записи с микрофона).
 async fn voices_list(State(st): State<AppState>) -> Json<Value> {
-    let mut voices = list_voice_names(&st.voices_dir);
-    voices.extend(qwen_voice_names(&st.models_root));
-    voices.extend(supertonic_voice_names(&st.models_root));
-    Json(json!({ "voices": voices }))
+    let mut listing = voices_listing(&st.voices_dir);
+    if let Some(voices) = listing["voices"].as_array_mut() {
+        voices.extend(qwen_voice_names(&st.models_root).into_iter().map(Value::from));
+        voices.extend(supertonic_voice_names(&st.models_root).into_iter().map(Value::from));
+    }
+    Json(listing)
 }
 
 /// Девять голосов Qwen3-TTS (`qwen:<id>`), когда он выбран движком озвучки: их дают персонажам, как записи пака.
@@ -1009,7 +1191,7 @@ fn supertonic_voice_names(mroot: &Path) -> Vec<String> {
 }
 
 /// Проба голоса Supertonic 3: один раз сказанная фраза, дальше файл из models/supertonic3/samples.
-async fn supertonic_voice_sample(mroot: &Path, voice: &str, req: axum::http::Request<axum::body::Body>) -> Response {
+async fn supertonic_voice_sample(repo_root: &Path, mroot: &Path, voice: &str, req: axum::http::Request<axum::body::Body>) -> Response {
     if !supertonic::VOICES.contains(&voice) {
         return (StatusCode::NOT_FOUND, "voice not found").into_response();
     }
@@ -1018,14 +1200,14 @@ async fn supertonic_voice_sample(mroot: &Path, voice: &str, req: axum::http::Req
     }
     let sample = supertonic::dir(mroot).join("samples").join(format!("{voice}.wav"));
     if !sample.is_file() {
-        let (root, out, voice) = (mroot.to_path_buf(), sample.clone(), voice.to_string());
+        let (repo, root, out, voice) = (repo_root.to_path_buf(), mroot.to_path_buf(), sample.clone(), voice.to_string());
         let made = tokio::task::spawn_blocking(move || -> Result<(), String> {
             static MAKING: std::sync::Mutex<()> = std::sync::Mutex::new(());
             let _one = MAKING.lock().unwrap_or_else(|e| e.into_inner());
             if out.is_file() {
                 return Ok(());
             }
-            let model = supertonic::Model::load(&root, models::local_backend(&root) == "gpu")?;
+            let model = supertonic::Model::load(&repo, &root)?;
             let audio = model.speak("Hello! This is how my voice sounds in your dub.", "en", &voice, supertonic::DEFAULT_STEPS, supertonic::DEFAULT_SPEED, 7)?;
             if let Some(dir) = out.parent() {
                 std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
@@ -1059,7 +1241,12 @@ async fn qwen_voice_sample(mroot: &Path, speaker: &str, req: axum::http::Request
             if out.is_file() {
                 return Ok(());
             }
-            let engine = qwentts::QwenEngine::load(&root, quant, false, false).map_err(|e| e.to_string())?;
+            let build = models::qwen_build(&root)?;
+            if !models::qwen_library_installed(&root, build) || !qwentts::installed(&root, quant, false) {
+                return Err(t!("render-qwen-missing"));
+            }
+            let clamp = models::qwen_clamp_fp16(build, hw::gpu_report().compute.as_deref());
+            let engine = qwentts::QwenEngine::load(&root, models::qwen_device(build), clamp, quant, false, false).map_err(|e| e.to_string())?;
             let say = qwentts::Say { text: "Hello! This is how my voice sounds in your dub.", lang: "en", speaker: Some(&speaker), reference: None, seed: 7, temperature: 0.7, max_new_tokens: 0 };
             let audio = engine.speak(&say).map_err(|e| e.to_string())?;
             if let Some(dir) = out.parent() {
@@ -1088,7 +1275,7 @@ async fn voice_sample(
         return qwen_voice_sample(&st.models_root, speaker, req).await;
     }
     if let Some(voice) = q.get("name").and_then(|name| name.strip_prefix(render::SUPERTONIC_VOICE)) {
-        return supertonic_voice_sample(&st.models_root, voice, req).await;
+        return supertonic_voice_sample(&st.repo_root, &st.models_root, voice, req).await;
     }
     let name = sanitize_voice_name(q.get("name").map(|s| s.as_str()).unwrap_or(""));
     if name.is_empty() {
@@ -1183,9 +1370,9 @@ async fn speaker_voice(
     let tmp = dir.join("_voicecut");
     let res = tokio::task::spawn_blocking(move || {
         std::fs::create_dir_all(&voices_dir).map_err(|e| format!("{}: {e}", voices_dir.display()))?;
-        let cli = dub_sep::engine_cli(&repo_root, models::stage_backend(&models_root, "sep_backend"),
-        );
-        let made = render::speaker_voice_clip(&cand, 12.0, &dir, &input, (&cli, &model), &tmp, &out);
+        let cli = models::sep_cli(&repo_root, &models_root);
+        let blocked = models::sep_unavailable(&models_root);
+        let made = render::speaker_voice_clip(&cand, 12.0, &dir, &input, (&cli, &model), blocked.as_deref(), &tmp, &out);
         let cleaned =
             if tmp.exists() { std::fs::remove_dir_all(&tmp).map_err(|e| format!("{}: {e}", tmp.display())) } else { Ok(()) };
         let text = made?;
@@ -1664,34 +1851,84 @@ async fn voices_get(State(st): State<AppState>, Json(body): Json<Value>) -> Json
     }
 }
 
-/// POST /voices/rename {from, to} — переименовать голос (mp3/wav + txt).
+/// POST /voices/rename {from, to} — переименовать голос со всеми его файлами, и с исходником в `.originals`.
+
 async fn voices_rename(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let from = sanitize_voice_name(body.get("from").and_then(|v| v.as_str()).unwrap_or(""));
     let to = sanitize_voice_name(body.get("to").and_then(|v| v.as_str()).unwrap_or(""));
-    for ext in ["wav", "mp3", "txt"] {
-        let src = st.voices_dir.join(format!("{from}.{ext}"));
-        if src.is_file() {
-            let _ = std::fs::rename(&src, st.voices_dir.join(format!("{to}.{ext}")));
-        }
+    match voice_library::rename(&st.voices_dir, &from, &to) {
+        Ok(()) => Json(voices_listing(&st.voices_dir)),
+        Err(e) => Json(json!({ "error": e, "voices": list_voice_names(&st.voices_dir) })),
     }
-    Json(json!({ "voices": list_voice_names(&st.voices_dir) }))
 }
 
-/// POST /voices/delete {name} — удалить голос.
+/// POST /voices/delete {name} — удалить голос со всеми его файлами.
+
 async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
-    for ext in ["wav", "mp3", "txt"] {
-        let _ = std::fs::remove_file(st.voices_dir.join(format!("{name}.{ext}")));
+    match voice_library::delete(&st.voices_dir, &name) {
+        Ok(()) => Json(voices_listing(&st.voices_dir)),
+        Err(e) => Json(json!({ "error": e, "voices": list_voice_names(&st.voices_dir) })),
     }
-    Json(json!({ "voices": list_voice_names(&st.voices_dir) }))
+}
+
+/// GET /cloud/spend?project= — what the cloud cost: in all, today, by provider, model and day, with the daily limit for
+/// agents and programs, as Speech Studio's.
+async fn cloud_spend(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Json<Value> {
+    let all = spending::spent(&st.repo_root);
+    let mut s = spending::summary(&all, q.get("project").map(String::as_str).filter(|p| !p.is_empty()));
+    s["daily_limit_usd"] = json!(spending::daily_limit(&st.models_root));
+    Json(s)
+}
+
+/// The library voices and those of them whose sound was cleaned, with the original kept (`voices/.originals`).
+fn voices_listing(dir: &Path) -> Value {
+    let voices = list_voice_names(dir);
+    let cleaned: Vec<&String> = voices.iter().filter(|n| voice_library::original_path(dir, n).is_some()).collect();
+    json!({ "voices": voices, "cleaned": cleaned })
+}
+
+/// POST /voices/denoise {name, db?} — a library voice without noise (DPDFNet): a job; `db` limits how far the noise
+/// goes down, none removes what it can. The original stays in `voices/.originals`.
+async fn voices_denoise(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
+    let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
+    let Some(audio) = voice_library::audio_path(&st.voices_dir, &name) else {
+        return (StatusCode::NOT_FOUND, format!("no voice named {name}")).into_response();
+    };
+    let limit = body.get("db").and_then(Value::as_f64).filter(|d| *d > 0.0).map(|d| d.min(100.0) as f32);
+    let (dir, repo_root, models_root) = (st.voices_dir.clone(), st.repo_root.clone(), st.models_root.clone());
+    let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
+        let cb = |ev: Value| progress(ev);
+        fetch_missing(&repo_root, &["dpdfnet"], &cb)?;
+        let work = tempfile::Builder::new().prefix("denoise-").tempdir().map_err(|e| e.to_string())?;
+        let out = work.path().join("denoised.wav");
+        let msg = t!("voice-denoising", name = name.clone());
+        denoise::denoise_file(&models_root, &audio, &out, limit, &|f| cb(json!({ "stage": "voice_clean", "msg": msg, "pct": (f * 100.0) as i64 })))?;
+        voice_library::replace_with_cleaned(&dir, &name, &out)?;
+        Ok(json!({ "name": name, "denoised": true }))
+    });
+    match st.jobs.enqueue(jobs::JobMeta::new(jobs::JobKind::VoiceClean, None), job).await {
+        Ok(job_id) => Json(json!({ "job_id": job_id })).into_response(),
+        Err(e) => enqueue_error(e),
+    }
+}
+
+/// POST /voices/restore {name} — the voice's sound as it was before it was cleaned.
+async fn voices_restore(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
+    let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
+    match voice_library::restore_original(&st.voices_dir, &name) {
+        Ok(()) => Json(voices_listing(&st.voices_dir)).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
 }
 
 /// POST /voices/download-pack — скачать пак голосов (VibeVoice) и распаковать в каталог голосов.
 async fn voices_download_pack(State(st): State<AppState>) -> Response {
     let dir = st.voices_dir.clone();
+    let repo_root = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         let cb = |ev: Value| progress(ev);
-        record::download_pack(&dir, &cb)
+        record::download_pack(&repo_root, &dir, &cb)
     });
     match st.jobs.enqueue(jobs::JobMeta::new(jobs::JobKind::VoicesPack, None), job).await {
         Ok(job_id) => Json(json!({ "job_id": job_id })).into_response(),
@@ -1803,7 +2040,13 @@ async fn create_project(
         let dir = d.clone();
         match tokio::task::spawn_blocking(mcp::carry(move || write_initial_project(&dir))).await {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+            Ok(Err(InitialProjectError::Unreadable(e))) => {
+                if let Err(rm) = tokio::fs::remove_dir_all(&d).await {
+                    tracing::error!("[ERROR] the refused upload {} was not removed: {rm}", d.display());
+                }
+                return (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": "unreadable_media", "detail": e }))).into_response();
+            }
+            Ok(Err(InitialProjectError::Io(e))) => return (StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
             Err(e) => return join_failure(e),
         }
     }
@@ -1812,31 +2055,30 @@ async fn create_project(
 }
 
 /// Начальный project.json проекта из его source.txt (и import_subs.*, если субтитры пришли вместе с видео): проект
-/// открывается в редакторе без analyze. Общий для загрузки файла и загрузки по ссылке.
-pub(crate) fn write_initial_project(d: &Path) -> Result<(), String> {
-    let src_path_str = std::fs::read_to_string(d.join("source.txt")).map_err(|e| format!("{}: {e}", d.join("source.txt").display()))?;
+/// открывается в редакторе без analyze. Общий для загрузки файла и загрузки по ссылке. Файл, который ffprobe не
+/// читает, проектом не становится: каждый запуск на нём падал бы тем же отказом.
+pub(crate) fn write_initial_project(d: &Path) -> Result<(), InitialProjectError> {
+    let src_path_str = std::fs::read_to_string(d.join("source.txt"))
+        .map_err(|e| InitialProjectError::Io(format!("{}: {e}", d.join("source.txt").display())))?;
     let src_path = Path::new(src_path_str.trim());
-    let meta = match media::probe(src_path) {
-        Ok(m) => dub_core::Meta {
-            video: src_path.to_string_lossy().to_string(),
-            duration: m.duration,
-            width: m.width,
-            height: m.height,
-            fps: m.fps,
-            src_codec: m.src_codec,
-            extra: serde_json::Map::new(),
-        },
-        Err(_) => dub_core::Meta {
-            video: src_path.to_string_lossy().to_string(),
-            duration: 0.0,
-            width: 1920,
-            height: 1080,
-            fps: 30.0,
-            src_codec: String::new(),
-            extra: serde_json::Map::new(),
-        },
+    let m = media::probe(src_path).map_err(InitialProjectError::Unreadable)?;
+    let meta = dub_core::Meta {
+        video: src_path.to_string_lossy().to_string(),
+        duration: m.duration,
+        width: m.width,
+        height: m.height,
+        fps: m.fps,
+        src_codec: m.src_codec,
+        extra: serde_json::Map::new(),
     };
-    save_project_atomic(d, &initial_project(d, meta))
+    save_project_atomic(d, &initial_project(d, meta)).map_err(InitialProjectError::Io)
+}
+
+/// Why a new project was not made: its file is no video or audio the studio reads, or the disk refused.
+#[derive(Debug)]
+pub(crate) enum InitialProjectError {
+    Unreadable(String),
+    Io(String),
 }
 
 /// Начальный project.json нового проекта, чтобы редактор открыл его без analyze: медиа и реплики
@@ -2054,23 +2296,32 @@ async fn restore_project(State(st): State<AppState>, AxPath(pid): AxPath<String>
         return (StatusCode::CONFLICT, t!("project-restore-exists")).into_response();
     }
     let (workspace, name) = (st.workspace.clone(), pid.clone());
-    let found = tokio::task::spawn_blocking(move || -> Result<(), String> {
-        // the bin keeps the folder the project was deleted from as the system spells it
-        let home = std::fs::canonicalize(&workspace).map_err(|e| format!("{}: {e}", workspace.display()))?;
-        let item = trash::os_limited::list()
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .filter(|i| i.name == name.as_str() && std::fs::canonicalize(&i.original_parent).is_ok_and(|parent| parent == home))
-            .max_by_key(|i| i.time_deleted)
-            .ok_or_else(|| t!("project-restore-gone"))?;
-        trash::os_limited::restore_all([item]).map_err(|e| e.to_string())
-    })
-    .await;
+    let found = tokio::task::spawn_blocking(move || restore_from_bin(&workspace, &name)).await;
     match found {
         Ok(Ok(())) => Json(json!({ "restored": pid })).into_response(),
         Ok(Err(e)) => (StatusCode::NOT_FOUND, e).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+/// The project `name` deleted last from `workspace`, put back from the system's recycle bin.
+#[cfg(not(target_os = "macos"))]
+fn restore_from_bin(workspace: &Path, name: &str) -> Result<(), String> {
+    // the bin keeps the folder the project was deleted from as the system spells it
+    let home = std::fs::canonicalize(workspace).map_err(|e| format!("{}: {e}", workspace.display()))?;
+    let item = trash::os_limited::list()
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .filter(|i| i.name == name && std::fs::canonicalize(&i.original_parent).is_ok_and(|parent| parent == home))
+        .max_by_key(|i| i.time_deleted)
+        .ok_or_else(|| t!("project-restore-gone"))?;
+    trash::os_limited::restore_all([item]).map_err(|e| e.to_string())
+}
+
+/// macOS gives programs no way to list the Bin or put an item back from it; Finder's Put Back does it.
+#[cfg(target_os = "macos")]
+fn restore_from_bin(_workspace: &Path, _name: &str) -> Result<(), String> {
+    Err(t!("project-restore-finder"))
 }
 
 // ─── POST /projects/{pid}/analyze ───────────────────────────────────────────
@@ -2148,6 +2399,10 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         // выровнять тайминги импортированных субтитров по речи (полный прогон ASR ради слов).
         align_subs: import_subs.is_some() && qget("align_subs", "0") == "1",
     };
+    if args.mode != "transcribe" && !args.import_translated {
+        llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)
+            .map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
+    }
     let post = post_analyze::PostAnalyze::from_query(&q)
         .map_err(|e| Box::new((StatusCode::BAD_REQUEST, e).into_response()))?;
     let voices_dir = st.voices_dir.clone();
@@ -2174,8 +2429,7 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         caption_fps: st.opts.caption_fps,
         import_subs,
         // Сепарация ДО диаризации/ASR (best practices): чистый вокал; stems-кэш общий с рендером.
-        bsroformer_cli: dub_sep::engine_cli(&st.repo_root, models::stage_backend(&st.models_root, "sep_backend"),
-        ),
+        bsroformer_cli: models::sep_cli(&st.repo_root, &st.models_root),
         bsroformer_model: st.bsroformer_model.clone(),
     };
 
@@ -2187,7 +2441,13 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         let cb = |ev: Value| progress(ev);
         // On-demand: если для этой функции (кастинг) или backend (GPU) не хватает моделей — тянем их СЕЙЧАС,
         // до анализа. Иначе кастинг «не видел» бы лиц, а GPU-стадии падали бы с ошибкой CUDA.
-        ensure_job_components(&paths.repo_root, &paths.models_root, args.casting, analyze::wants_diarization(&args), &cb,
+        let needs = JobNeeds {
+            casting: args.casting,
+            diarization: analyze::wants_diarization(&args),
+            voicing: false,
+            translating: args.mode != "transcribe",
+        };
+        ensure_job_components(&paths.repo_root, &paths.models_root, needs, &cb,
         )?;
         // the recogniser named at enqueue may have been downloaded just now
         let mut paths = paths;
@@ -2384,16 +2644,12 @@ fn render_paths(st: &AppState, dir: &Path, input: PathBuf) -> render::RenderPath
         bench: models::bench_enabled(&st.models_root),
         work_dir: dir.to_path_buf(),
         output: dir.join("output.mp4"),
-        bsroformer_cli: dub_sep::engine_cli(&st.repo_root, models::stage_backend(&st.models_root, "sep_backend"),
-        ),
+        bsroformer_cli: models::sep_cli(&st.repo_root, &st.models_root),
         bsroformer_model: sep_model,
-        higgs_dll: st.higgs_dll.clone(),
+        repo_root: st.repo_root.clone(),
         higgs_model_root,
         higgs_quant,
         fonts_dir: st.fonts_dir.clone(),
-        higgs_backend: "cuda".to_string(),
-        higgs_device: 0,
-        higgs_threads: st.opts.num_threads,
         max_stretch: st.opts.max_stretch as f64,
         voices_dir: st.voices_dir.clone(),
         asr: models::resolve_asr_choice(&st.repo_root, &st.models_root, &sel),
@@ -2429,7 +2685,7 @@ async fn render_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response
         clean_partials(&dir_for_job);
         let cb = |ev: Value| progress(ev);
         // On-demand: GPU-стадии рендера (Higgs TTS / сепарация на CUDA) без CUDA-стека -> догрузить сейчас.
-        ensure_job_components(&repo_root_for_job, &paths.models_root, false, false, &cb)?;
+        ensure_job_components(&repo_root_for_job, &paths.models_root, JobNeeds { voicing: true, ..JobNeeds::default() }, &cb)?;
         let mut paths = paths;
         paths.asr = job_asr(&repo_root_for_job, &paths.models_root);
         jobs::check_cancelled()?;
@@ -2553,6 +2809,10 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
         }
     };
 
+    if !translated {
+        llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)
+            .map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
+    }
     let llama_bin = st.llama_bin.clone();
     // Квант Gemma — выбранный сейчас (models::resolve_mt), а не найденный при старте сервера.
     let (mt_model, _) = models::resolve_mt(&st.models_root, &models::load_selection(&st.models_root));
@@ -2562,9 +2822,12 @@ async fn export_lang_enqueue(st: &AppState, pid: &str, args: &Value,
     let lang_c = lang.clone();
     let new_pid_res = pid.to_string();
     let out_res = paths.output.clone();
+    let repo_root_xl = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         use dub_translate::{flat_run_with, FlatOpts, Seg};
         clean_partials(&dst_for_job);
+        let needs = JobNeeds { voicing: true, translating: !translated, ..JobNeeds::default() };
+        ensure_job_components(&repo_root_xl, &models_root_xl, needs, &|ev| progress(ev))?;
         let pj = dst_for_job.join("project.json");
         let text = std::fs::read_to_string(&pj).map_err(|e| e.to_string())?;
         let mut p = Project::from_json(&text).map_err(|e| e.to_string())?;
@@ -2704,6 +2967,8 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
         ));
     }
 
+    llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)
+        .map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
     let llama_bin = st.llama_bin.clone();
     // Квант Gemma — выбранный сейчас (models::resolve_mt), а не найденный при старте сервера.
     let (mt_model, _) = models::resolve_mt(&st.models_root, &models::load_selection(&st.models_root));
@@ -2711,8 +2976,10 @@ async fn retranslate_enqueue(st: &AppState, pid: &str, args: &Value,
     let dir_for_job = dir.clone();
     let pid_res = pid.to_string();
     let lang_c = lang.clone();
+    let repo_root_xl = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         use dub_translate::{flat_run_with, FlatOpts, Seg};
+        ensure_job_components(&repo_root_xl, &models_root_xl, JobNeeds { translating: true, ..JobNeeds::default() }, &|ev| progress(ev))?;
         let pj = dir_for_job.join("project.json");
         let read = |path: &Path| -> Result<Project, String> {
             let text = std::fs::read_to_string(path).map_err(|e| t!("common-read", path = path.display().to_string(), error = e.to_string()))?;
@@ -2834,9 +3101,11 @@ async fn dub_audio_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Respo
     let input = project_input(&dir)?;
     let paths = render_paths(st, &dir, input);
     let dir_for_job = dir.clone();
+    let repo_root = st.repo_root.clone();
     let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
         clean_partials(&dir_for_job);
         let cb = |ev: Value| progress(ev);
+        ensure_job_components(&repo_root, &paths.models_root, JobNeeds { voicing: true, ..JobNeeds::default() }, &cb)?;
         let text = std::fs::read_to_string(&proj_path).map_err(|e| e.to_string())?;
         let proj = Project::from_json(&text).map_err(|e| e.to_string())?;
         let regen = proj.segments.iter().any(|s| s.dirty);
@@ -2980,9 +3249,13 @@ async fn open_output(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
                 .args(["/C", "start", "", &path])
                 .spawn();
         }
-        #[cfg(not(windows))]
+        #[cfg(target_os = "macos")]
         {
-            let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
+            let _ = dub_core::proc::host_command("open").arg(&path).spawn();
+        }
+        #[cfg(all(not(windows), not(target_os = "macos")))]
+        {
+            let _ = dub_core::proc::host_command("xdg-open").arg(&path).spawn();
         }
     })
     .await;
@@ -3007,7 +3280,7 @@ fn reveal_in_explorer(path: String) {
         {
             // freedesktop FileManager1.ShowItems выделяет файл (Dolphin, Nautilus, Nemo, Thunar); без него — каталог
             let path = std::path::Path::new(&path);
-            let shown = std::process::Command::new("dbus-send")
+            let shown = dub_core::proc::host_command("dbus-send")
                 .args(["--session", "--print-reply", "--reply-timeout=3000", "--dest=org.freedesktop.FileManager1", "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems"])
                 .arg(format!("array:string:{}", file_uri(path)))
                 .arg("string:")
@@ -3017,7 +3290,7 @@ fn reveal_in_explorer(path: String) {
                 .is_ok_and(|status| status.success());
             if !shown {
                 let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| std::path::PathBuf::from("."));
-                let _ = std::process::Command::new("xdg-open").arg(parent).spawn();
+                let _ = dub_core::proc::host_command("xdg-open").arg(parent).spawn();
             }
         }
     });
@@ -3340,11 +3613,11 @@ async fn align_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>
             .map(|f| dir_for_job.join(f))
             .find(|p| p.is_file())
             .ok_or_else(|| t!("align-no-vocals"))?;
-        ensure_job_components(&repo_root, &models_root, false, false, &|ev| progress(ev))?;
+        ensure_job_components(&repo_root, &models_root, JobNeeds::default(), &|ev| progress(ev))?;
         let asr = job_asr(&repo_root, &models_root);
         progress(json!({ "stage": "asr", "msg": t!("align-recognizing") }));
         std::env::set_var("DUB_ASR_BACKEND", &backend);
-        let words: Vec<subalign::Heard> = models::build_engine(&asr)
+        let words: Vec<subalign::Heard> = models::build_engine(&asr)?
             .transcribe(&wav, "auto")
             .map_err(|e| t!("align-recognition-failed", error = e.localize()))?
             .into_iter()

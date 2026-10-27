@@ -85,31 +85,61 @@ fn start_gemma(o: &LlmOpen, with_mmproj: bool) -> Result<LlmProvider, String> {
     if with_mmproj {
         opts = opts.with_mmproj(o.mmproj);
     }
+    // the processor's build has no card to put layers on
+    if crate::setup::llama_build() == crate::acpp::Build::Cpu {
+        opts.n_gpu_layers = 0;
+    }
+    // Gemma does not share the card with the voicing model the process keeps
+    crate::tts_host::unload();
     let server = LlamaServer::start(&opts).map_err(|e| e.localize())?;
     let client = ChatClient::new(server.base_url()).map_err(|e| t!("llm-chat-client", error = e.localize()))?;
     Ok(LlmProvider::Local { _server: server, client })
 }
 
-/// Локальный OpenAI-совместимый сервер: адрес, модель стадии, ключ из хранилища секретов — если он сохранён для
-/// этого адреса.
 fn open_server(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
-    let url = crate::models::server_url(o.models_root);
-    let model = crate::models::server_model(o.models_root, mode.stage());
+    let (url, model) = server_of(o.models_root, mode)?;
+    let client = ChatClient::openai_compatible(&url, model.clone(), crate::credentials::local_server_key_for(&url))
+        .map_err(|e| t!("llm-local-client", error = e.localize()))?;
+    Ok(LlmProvider::Remote { client, label: t!("llm-local-label", url = url.clone(), model = model.clone()) })
+}
+
+/// The address and the stage's model of the local server; no model is the reason it cannot start.
+fn server_of(models_root: &Path, mode: LlmMode) -> Result<(String, String), String> {
+    let url = crate::models::server_url(models_root);
+    let model = crate::models::server_model(models_root, mode.stage());
     if model.trim().is_empty() {
         return Err(match mode {
             LlmMode::Text => t!("llm-local-no-text-model", url = url.clone()),
             LlmMode::Vision => t!("llm-local-no-vision-model", url = url.clone()),
         });
     }
-    let client = ChatClient::openai_compatible(&url, model.clone(), crate::credentials::local_server_key_for(&url))
-        .map_err(|e| t!("llm-local-client", error = e.localize()))?;
-    Ok(LlmProvider::Remote { client, label: t!("llm-local-label", url = url.clone(), model = model.clone()) })
+    Ok((url, model))
 }
 
-/// OpenRouter: ключ, модель стадии из настроек, запись каталога (что модель принимает и как думает).
+/// Whether the stage's provider is set up enough to start a job: the local server with a model, OpenRouter with a key
+/// and a model that takes the stage's input. The studio's own Gemma is fetched by the job, the agent is asked when
+/// the stage runs.
+pub fn configured(models_root: &Path, mode: LlmMode) -> Result<(), String> {
+    match crate::models::llm_backend(models_root, mode.stage()) {
+        LlmBackend::Server => server_of(models_root, mode).map(|_| ()),
+        LlmBackend::OpenRouter => openrouter_of(models_root, mode).map(|_| ()),
+        LlmBackend::Local | LlmBackend::Agent => Ok(()),
+    }
+}
+
 fn open_openrouter(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
+    let (key, model, entry) = openrouter_of(o.models_root, mode)?;
+    let client = ChatClient::openrouter(key, model.clone())
+        .map_err(|e| e.localize())?
+        .with_profile(entry.as_ref().map(|entry| entry.profile()));
+    Ok(LlmProvider::Remote { client, label: format!("OpenRouter · {model}") })
+}
+
+/// The OpenRouter key, the stage's model and its catalogue entry; a missing key or model, or a model that does not take
+/// the stage's input, is the reason it cannot start.
+fn openrouter_of(models_root: &Path, mode: LlmMode) -> Result<(String, String, Option<dub_llm::openrouter::CatalogModel>), String> {
     let key = crate::models::openrouter_key().ok_or_else(|| t!("llm-openrouter-no-key"))?;
-    let model = crate::models::openrouter_model(o.models_root, mode.stage());
+    let model = crate::models::openrouter_model(models_root, mode.stage());
     if model.trim().is_empty() {
         return Err(match mode {
             LlmMode::Text => t!("llm-openrouter-no-text-model"),
@@ -117,7 +147,7 @@ fn open_openrouter(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
         });
     }
     let capability = if mode == LlmMode::Vision { Capability::Vision } else { Capability::Text };
-    let entry = crate::openrouter::describe(o.models_root, &model);
+    let entry = crate::openrouter::describe(models_root, &model);
     if let Some(entry) = &entry {
         if !entry.supports(capability) {
             return Err(match mode {
@@ -126,10 +156,7 @@ fn open_openrouter(o: &LlmOpen, mode: LlmMode) -> Result<LlmProvider, String> {
             });
         }
     }
-    let client = ChatClient::openrouter(key, model.clone())
-        .map_err(|e| e.localize())?
-        .with_profile(entry.as_ref().map(|entry| entry.profile()));
-    Ok(LlmProvider::Remote { client, label: format!("OpenRouter · {model}") })
+    Ok((key, model, entry))
 }
 
 /// Агент, подключённый по MCP: свой чат-клиент студии на `/mcp/agent-llm` этого же сервера, который отдаёт каждый

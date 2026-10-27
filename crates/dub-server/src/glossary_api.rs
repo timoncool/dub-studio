@@ -244,6 +244,29 @@ pub async fn extract(State(st): State<AppState>, AxPath(pid): AxPath<String>) ->
     }
 }
 
+/// The glossary's source terms as a hint to recognition: the words and spellings the recording is expected to hold,
+/// each once, up to [`ASR_HINT_CHARS`].
+pub fn asr_hint(entries: &[GlossaryEntry]) -> Option<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = String::new();
+    for term in entries.iter().map(|e| e.term.trim()).filter(|t| !t.is_empty()) {
+        if !seen.insert(term.to_lowercase()) {
+            continue;
+        }
+        if out.chars().count() + term.chars().count() + 2 > ASR_HINT_CHARS {
+            break;
+        }
+        if !out.is_empty() {
+            out.push_str(", ");
+        }
+        out.push_str(term);
+    }
+    (!out.is_empty()).then_some(out)
+}
+
+/// Whisper's context window keeps about 224 tokens; the hint stays well inside it.
+const ASR_HINT_CHARS: usize = 400;
+
 /// Глоссарий анализа: собственные записи прежнего project.json и профиля сериала (casting_ref), записи
 /// проекта главнее. Записи сериала помечены source series: прежние такие записи заменяет нынешний профиль.
 /// Профиля нет — строка в журнал; его глоссарий не читается — ошибка анализа.
@@ -277,6 +300,15 @@ pub fn for_analyze(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_hint_names_each_source_term_once_within_its_limit() {
+        let e = |term: &str| GlossaryEntry { term: term.into(), ..Default::default() };
+        assert_eq!(super::asr_hint(&[]), None);
+        assert_eq!(super::asr_hint(&[e("Ваня"), e(" "), e("ваня"), e("Клавдия")]).as_deref(), Some("Ваня, Клавдия"));
+        let many: Vec<GlossaryEntry> = (0..200).map(|i| e(&format!("term{i}"))).collect();
+        assert!(super::asr_hint(&many).unwrap().chars().count() <= super::ASR_HINT_CHARS);
+    }
+
     use super::*;
 
     fn entry(term: &str, translation: &str) -> GlossaryEntry {

@@ -1,14 +1,36 @@
 //! Облачный TTS через OpenRouter (`/audio/speech`, формат pcm) напрямую из Rust. PCM 24 кГц моно оборачивается
 //! в WAV без ffmpeg; другая частота, стерео или сжатый ответ (mp3) приводятся ffmpeg к 24 кГц моно один раз:
 //! таймлайн дубляжа кладёт seg-файлы по частоте первого (TTS = 24 кГц) без ресемпла.
-//! Результат кладётся ПРЯМО в seg-файл дубляжа, fit_to_slot читает его ОДИН раз. Модель/голос — только из
-//! настроек юзера (or_tts_model/or_tts_voice), без хардкода.
+//! Результат кладётся ПРЯМО в seg-файл дубляжа, fit_to_slot читает его ОДИН раз. Модель/голос — из настроек
+//! (or_tts_model/or_tts_voice), а не выбранные — те же, что у Speech Studio: [`DEFAULT_MODEL`] и его первый взрослый
+//! голос каталога.
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::AtomicU64;
 
 use dub_llm::openrouter::{OpenRouter, SpeechAudio};
+
+/// The OpenRouter voice model a studio starts with: speaks Russian, 30 voices in the catalog.
+pub const DEFAULT_MODEL: &str = "google/gemini-3.1-flash-tts-preview";
+
+/// The cloud voice settings with the defaults voicing uses where none is chosen, for the window; nothing is written.
+pub fn with_defaults(mut sel: serde_json::Value) -> serde_json::Value {
+    let Some(obj) = sel.as_object_mut() else { return sel };
+    let mut fill = |k: &str, v: &str| {
+        if obj.get(k).and_then(serde_json::Value::as_str).is_none_or(|x| x.trim().is_empty()) {
+            obj.insert(k.into(), v.into());
+        }
+    };
+    fill("or_tts_model", DEFAULT_MODEL);
+    fill("google_tts_model", crate::google_tts::DEFAULT_MODEL);
+    let model = obj.get("or_tts_model").and_then(serde_json::Value::as_str).unwrap_or(DEFAULT_MODEL).to_string();
+    if let Some(v) = crate::cloud_voices::default_voice(&model) {
+        if obj.get("or_tts_voice").and_then(serde_json::Value::as_str).is_none_or(|x| x.trim().is_empty()) {
+            obj.insert("or_tts_voice".into(), v.into());
+        }
+    }
+    sel
+}
 
 pub struct Job {
     pub out: PathBuf,
@@ -44,17 +66,16 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str,
     let key = crate::models::openrouter_key()
         .ok_or_else(|| t!("cloud-tts-no-key"))?;
     let model = crate::models::openrouter_model(models_root, "tts");
-    if model.is_empty() {
-        return Err(t!("cloud-tts-no-model"));
-    }
+    let model = if model.is_empty() { DEFAULT_MODEL.to_string() } else { model };
     let v = if voice.trim().is_empty() {
         crate::models::openrouter_tts_voice(models_root)
     } else {
         voice.trim().to_string()
     };
-    if v.is_empty() {
-        return Err(t!("cloud-tts-no-voice"));
-    }
+    let v = match v.is_empty() {
+        true => crate::cloud_voices::default_voice(&model).map(str::to_string).ok_or_else(|| t!("cloud-tts-no-voice"))?,
+        false => v,
+    };
     let client = OpenRouter::new(Some(key)).map_err(|e| t!("cloud-tts-failed", error = format!("{e:#}")))?;
     let bytes = match client.speech_with_style(&model, text, &v, style).map_err(|e| t!("cloud-tts-failed", error = format!("{e:#}")))? {
         SpeechAudio::Wav(wav) if is_seg_format(&wav) => wav,
@@ -65,26 +86,6 @@ pub fn synth_audio(models_root: &Path, text: &str, voice: &str,
         return Err(t!("cloud-tts-too-short", bytes = bytes.len()));
     }
     Ok(bytes)
-}
-
-pub fn seg_audio(mime: &str, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
-    if is_seg_format(&bytes) {
-        return Ok(bytes);
-    }
-    if mime.starts_with("audio/L16") || mime.starts_with("audio/pcm") {
-        let rate = mime
-            .split(';')
-            .find_map(|p| p.trim().strip_prefix("rate="))
-            .and_then(|n| n.parse().ok())
-            .ok_or("Google PCM has no sample rate")?;
-        let wav = dub_llm::openrouter::pcm16_to_wav(&bytes, rate, 1).map_err(|e| e.to_string())?;
-        return if rate == SEG_RATE {
-            Ok(wav)
-        } else {
-            to_seg_wav("audio/wav", &wav)
-        };
-    }
-    to_seg_wav(mime, &bytes)
 }
 
 /// Частота seg-файлов дубляжа.
@@ -103,7 +104,7 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
     let tmp = std::env::temp_dir().join(format!("dub_cloud_tts_{}_{}.bin", std::process::id(), uid));
     let wav_tmp = tmp.with_extension("wav");
     std::fs::write(&tmp, bytes).map_err(|e| t!("cloud-tts-failed", error = format!("{mime}: {e}")))?;
-    let out = dub_core::proc::output(Command::new(dub_core::proc::ffmpeg()).args([
+    let out = dub_core::proc::output(dub_core::proc::host_command(dub_core::proc::ffmpeg()).args([
         "-v", "error", "-i", &tmp.to_string_lossy(), "-ar", &SEG_RATE.to_string(), "-ac", "1", "-c:a", "pcm_s16le", "-y", &wav_tmp.to_string_lossy(),
     ]));
     let _ = std::fs::remove_file(&tmp);
@@ -122,7 +123,7 @@ fn to_seg_wav(mime: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
 /// провал -> false (основной цикл ретраит/фолбэкнет на оригинал). Возвращает успех по каждой джобе.
 /// Потоки привязаны к джобе вызывающего: её отмена прекращает раздачу новых сегментов, а процессы
 /// сайдкара попадают в учёт джобы.
-pub fn synth_batch(models_root: &Path,
+pub fn synth_batch(repo_root: &Path, models_root: &Path,
     wd: &Path,
     jobs: Vec<Job>, concurrency: usize,
     progress: &crate::render::Progress,
@@ -131,7 +132,7 @@ pub fn synth_batch(models_root: &Path,
         return Ok(Synthesized { ok: Vec::new(), failures: Vec::new() });
     }
     if crate::models::tts_provider(models_root) == "google" {
-        return crate::google_tts::synth_jobs(models_root, wd, &jobs, concurrency, progress);
+        return crate::google_speech::synth_jobs(repo_root, models_root, wd, &jobs, progress);
     }
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     let n = jobs.len();
@@ -178,5 +179,16 @@ mod tests {
         assert!(!is_seg_format(&dub_llm::openrouter::pcm16_to_wav(&pcm, 44_100, 1).unwrap()));
         assert!(!is_seg_format(&dub_llm::openrouter::pcm16_to_wav(&pcm, 24_000, 2).unwrap()));
         assert!(!is_seg_format(b"ID3 mp3 bytes"));
+    }
+
+    #[test]
+    fn the_window_sees_the_default_cloud_model_and_voice_where_none_is_chosen() {
+        let sel = with_defaults(serde_json::json!({ "or_tts_model": "", "or_tts_voice": " " }));
+        assert_eq!(sel["or_tts_model"], DEFAULT_MODEL);
+        assert_eq!(sel["google_tts_model"], crate::google_tts::DEFAULT_MODEL);
+        let voice = crate::cloud_voices::default_voice(DEFAULT_MODEL).expect("the default model has voices");
+        assert_eq!(sel["or_tts_voice"], voice);
+        let own = with_defaults(serde_json::json!({ "or_tts_model": "x/y", "or_tts_voice": "Kore" }));
+        assert_eq!((own["or_tts_model"].as_str(), own["or_tts_voice"].as_str()), (Some("x/y"), Some("Kore")));
     }
 }

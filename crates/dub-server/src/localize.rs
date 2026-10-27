@@ -2,7 +2,6 @@
 //! code and its arguments and speak English in `Display` (for logs); here each becomes a message of the
 //! catalogues in the language the window shows.
 
-use audiocpp::EngineError;
 use dub_asr::{AsrError, SpeakerMatchError};
 use dub_captions::CaptionsError;
 use dub_core::glossary::GlossaryError;
@@ -49,6 +48,7 @@ impl Localize for LlmError {
             LlmError::LogFile { path, error } => t!("llm-log-file", path = shown(path), error = error.clone()),
             LlmError::ExitedEarly { status, stderr } => t!("llm-exited-early", status = status.clone(), stderr = stderr.clone()),
             LlmError::NotReady { secs, port, stderr } => t!("llm-not-ready", secs = *secs, port = *port, stderr = stderr.clone()),
+            LlmError::NoGpuDevice { detail } => t!("llm-no-gpu-device", detail = detail.clone()),
             LlmError::Http(error) => t!("llm-http", error = error.clone()),
             LlmError::Api(error) => t!("llm-api", error = error.clone()),
             LlmError::Rejected { status, body, .. } => t!("llm-rejected", status = status.clone(), body = body.clone()),
@@ -98,6 +98,7 @@ impl Localize for SepError {
             SepError::EngineFailed { code: None, tail } => t!("sep-engine-killed", tail = tail.clone()),
             SepError::NoOutput(path) => t!("sep-no-output", path = shown(path)),
             SepError::Wav(error) => t!("sep-audio-io", error = error.clone()),
+            SepError::FellBackToCpu(why) => t!("sep-fell-back-to-cpu", why = why.clone()),
         }
     }
 }
@@ -119,18 +120,6 @@ impl Localize for FacesError {
             FacesError::CropSize { width, height } => t!("faces-crop-size", width = *width, height = *height),
             FacesError::SampleRate { expected, got } => t!("faces-sample-rate", expected = *expected, got = *got),
             FacesError::ClipTooShort => t!("faces-clip-too-short"),
-        }
-    }
-}
-
-impl Localize for EngineError {
-    fn localize(&self) -> String {
-        match self {
-            EngineError::LibraryLoad(error) => t!("tts-library-load", error = error.clone()),
-            EngineError::Cancelled => t!("tts-cancelled"),
-            EngineError::Generation(error) => t!("tts-generation", error = error.clone()),
-            EngineError::InvalidParam(error) => t!("tts-invalid-param", error = error.clone()),
-            EngineError::StreamingUnsupported => t!("tts-streaming-unsupported"),
         }
     }
 }

@@ -28,59 +28,109 @@ pub struct Download {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Build {
     Cuda,
+    /// CUDA 12.9 for the cards and drivers CUDA 13 does not run; its cudart and cuBLAS come from the program's CUDA 12.9
+    /// runtime (on Windows its folder on PATH, on Linux the library's RUNPATH `$ORIGIN/../cuda12-runtime`).
+    Cuda12,
     Vulkan,
     Cpu,
 }
 
+/// Whether this computer's processor runs an engine built with the x86-64 floor of the studios: AVX2, FMA, F16C and BMI2
+/// (every Intel since Haswell, every AMD since Zen). A processor without them gets this answer, naming `engine`, instead of
+/// a crash on the engine's first call. Other architectures pass.
+pub fn cpu_floor(engine: &str) -> Result<(), String> {
+    let missing = cpu_floor_missing();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    Err(format!(
+        "{engine} needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got {}",
+        missing.join(", ")
+    ))
+}
+
+/// What this computer's processor lacks of the x86-64 floor of [`cpu_floor`]: nothing on one that has it and on other
+/// architectures.
+pub fn cpu_floor_missing() -> Vec<&'static str> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        [
+            ("AVX2", std::arch::is_x86_feature_detected!("avx2")),
+            ("FMA", std::arch::is_x86_feature_detected!("fma")),
+            ("F16C", std::arch::is_x86_feature_detected!("f16c")),
+            ("BMI2", std::arch::is_x86_feature_detected!("bmi2")),
+        ]
+        .into_iter()
+        .filter(|(_, has)| !has)
+        .map(|(name, _)| name)
+        .collect()
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    Vec::new()
+}
+
 impl Build {
-    pub const ALL: [Build; 3] = [Build::Cuda, Build::Vulkan, Build::Cpu];
+    pub const ALL: [Build; 4] = [Build::Cuda, Build::Cuda12, Build::Vulkan, Build::Cpu];
 
     /// Папка сборки в каталоге моделей (= id компонента).
     pub fn dir(self) -> &'static str {
         match self {
             Build::Cuda => "transcribe-engine",
+            Build::Cuda12 => "transcribe-engine-cuda12",
             Build::Vulkan => "transcribe-engine-vulkan",
             Build::Cpu => "transcribe-engine-cpu",
         }
+    }
+
+
+    /// Whether this computer's processor runs the engine (see [`cpu_floor`]).
+    pub fn runs_here(self) -> Result<(), String> {
+        let _ = self;
+        cpu_floor("transcribe.cpp")
     }
 
     #[cfg(windows)]
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine.dll",
-                size: 144_513_536,
-                sha256: "80b90f1294f7d63dfb658fb5ebc6e06627d3d97931a2552bb8553deb7eeb9b52",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine.dll",
+                size: 144_430_592,
+                sha256: "b4d4cfef4a3a5802cd2426b539de86758a7f92c0acbeb4ea5ade917bff7ac380",
+            },
+            Build::Cuda12 => Download {
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-cuda12.dll",
+                size: 172_778_496,
+                sha256: "16657d6a49b88cf2ced1585dee1359f3713bc12b0af62d108d69474480fb8ad4",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-vulkan.dll",
-                size: 48_914_432,
-                sha256: "55c1fadb50f74128e796e30f908b833935b4f32a01b8d30efc19baed79a5c5f0",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-vulkan.dll",
+                size: 48_807_936,
+                sha256: "5b0d2d194ebb838d18f4145f418a141321748c89a41f6ba8692e200597ca5bf8",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/transcribe_engine-cpu.dll",
-                size: 3_666_432,
-                sha256: "92511dcc9490fb4deb75c0d31c78de21ee826e50d90db1ffbeeff23865602be4",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-cpu.dll",
+                size: 3_560_960,
+                sha256: "c39fa05fd6762fa8a29199a8d90765cab5c7afdfec1bd5dcdfd7bcf1cfc6af9a",
             },
         }
     }
 
-    /// На Mac одна сборка на архитектуру, в папке процессорной: Metal и процессор на Apple silicon, процессор (и Metal
-    /// карт Intel-Маков) на x86_64. CUDA и Vulkan на Mac нет, их место занимает она же.
+    /// На Mac одна сборка на архитектуру, в папке процессорной: Metal и процессор на Apple silicon, процессор на
+    /// x86_64. CUDA и Vulkan на Mac нет, их место занимает она же.
     #[cfg(target_os = "macos")]
     pub const fn download(self) -> Download {
         let _ = self;
         #[cfg(target_arch = "aarch64")]
         return Download {
-            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-macos-arm64.dylib",
-            size: 8_994_040,
-            sha256: "683456e64f2cd16442895e0ac293c146b2b773f18a2aaedd2d7d6b6a90523829",
+            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-macos-arm64.dylib",
+            size: 9_012_648,
+            sha256: "2a5204cd63156a58ac476610acdb0333bddf929dc9b941da422e8ba703a2e17c",
         };
         #[cfg(not(target_arch = "aarch64"))]
         return Download {
-            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-macos-x86_64.dylib",
-            size: 9_918_736,
-            sha256: "7f9d0d154540673227880fc27a6178e2bd2ebbdff73e8f9a1a18d7cb262a9290",
+            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-macos-x86_64.dylib",
+            size: 9_933_088,
+            sha256: "f6e73be83962f4bf9bb20ec54704f1c871119b61b114fdffb1439b0262c29bb8",
         };
     }
 
@@ -88,19 +138,24 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine.so",
-                size: 160_931_720,
-                sha256: "1dff339818952e1cf547d85bb216dae36dccf1d8654612f2197f98a75950368e",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine.so",
+                size: 160_764_040,
+                sha256: "55f703005d320afe9ac4eee52b50599ef6eeb002975b2de6ea8d711fcae41283",
+            },
+            Build::Cuda12 => Download {
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-cuda12.so",
+                size: 184_375_104,
+                sha256: "6b17f67201f4cc9d40ed219c62783efe0c2c08a9dc17c27896e909300b82a4be",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-vulkan.so",
-                size: 50_963_160,
-                sha256: "029377f780bf97a5c794f7ed12fcac39d318f6c594f0fc2d40b5b2fc58283ec6",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-vulkan.so",
+                size: 50_807_768,
+                sha256: "a4d1951f881edea2b477abe44977587db0884f7a295647196b3743d20e752560",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.1/libtranscribe_engine-cpu.so",
-                size: 5_002_200,
-                sha256: "8120113acb4f9a7b4b6c623e5e758b9260883ab3467eed07f712d6cb28f66c4f",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-cpu.so",
+                size: 4_838_616,
+                sha256: "566328f75598ca35b8aebbbb45e730cbccabe81abd185833186deb3d836db675",
             },
         }
     }
@@ -188,8 +243,11 @@ pub fn model_path(models_root: &Path, m: &Model) -> PathBuf {
     models_root.join(m.dir).join(m.file)
 }
 
+/// The engine and the model are the pinned files: one of another size is another release (an engine an update left
+/// behind) and counts as not installed.
 pub fn installed(models_root: &Path, build: Build, m: &Model) -> bool {
-    engine_dir(models_root, build).join(LIBRARY).is_file() && model_path(models_root, m).is_file()
+    let pinned = |path: PathBuf, size: u64| std::fs::metadata(path).is_ok_and(|f| f.is_file() && f.len() == size);
+    pinned(engine_dir(models_root, build).join(LIBRARY), build.download().size) && pinned(model_path(models_root, m), m.download.size)
 }
 
 /// Вспомогательная модель transcribe.cpp: разметка речи (Silero VAD v6.2, только F32, считается на CPU) и определение
@@ -428,6 +486,21 @@ type CapsBuffer = [u64; 64];
 /// библиотеки не переживает); смена сборки в настройках берёт другую, уже загруженную или новую.
 static LOADED: Mutex<Vec<(PathBuf, Library, Api)>> = Mutex::new(Vec::new());
 
+/// Opens the engine library so that its own folder is searched for the libraries it needs (cuBLAS lies beside the CUDA
+/// build): plain `LoadLibraryExW(path, 0, 0)` searches the program's folder and PATH, not the library's.
+fn open(path: &Path) -> Result<Library, String> {
+    #[cfg(windows)]
+    {
+        use libloading::os::windows::{Library as WindowsLibrary, LOAD_WITH_ALTERED_SEARCH_PATH};
+        let full = std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        unsafe { WindowsLibrary::load_with_flags(&full, LOAD_WITH_ALTERED_SEARCH_PATH) }
+            .map(Library::from)
+            .map_err(|e| format!("{}: {e}", full.display()))
+    }
+    #[cfg(not(windows))]
+    unsafe { Library::new(path) }.map_err(|e| format!("{}: {e}", path.display()))
+}
+
 fn library(dir: &Path) -> Result<Api, String> {
     let mut loaded = LOADED.lock().unwrap_or_else(|e| e.into_inner());
     if let Some((_, _, api)) = loaded.iter().find(|(d, _, _)| d == dir) {
@@ -437,7 +510,8 @@ fn library(dir: &Path) -> Result<Api, String> {
     if !path.is_file() {
         return Err(format!("transcribe.cpp: the engine is not installed: {}", path.display()));
     }
-    let lib = unsafe { Library::new(&path) }.map_err(|e| format!("{}: {e}", path.display()))?;
+    Build::Cpu.runs_here()?;
+    let lib = open(&path)?;
     let api = unsafe {
         macro_rules! sym {
             ($name:literal) => {
@@ -542,6 +616,21 @@ pub struct Word {
     pub end: f64,
 }
 
+/// The name of `lang` among the languages a model lists: as listed, or the listed region of a plain code («ru» →
+/// «ru-RU»). None for «auto», no language, or a model that lists none: the model is then told nothing.
+fn language_of(languages: &[String], lang: &str) -> Result<Option<String>, String> {
+    let lang = lang.trim();
+    if lang.is_empty() || lang.eq_ignore_ascii_case("auto") || languages.is_empty() {
+        return Ok(None);
+    }
+    let prefix = format!("{}-", lang.to_ascii_lowercase());
+    let found = languages.iter().find(|l| l.eq_ignore_ascii_case(lang)).or_else(|| languages.iter().find(|l| l.to_ascii_lowercase().starts_with(&prefix)));
+    match found {
+        Some(l) => Ok(Some(l.clone())),
+        None => Err(engine_err(format!("transcribe.cpp: the model does not recognise «{lang}» (it knows {})", languages.join(", ")))),
+    }
+}
+
 /// Модель на видеокарте и её сессия; освобождаются при drop.
 pub struct TcppAsr {
     api: Api,
@@ -614,19 +703,10 @@ impl TcppAsr {
         Ok(())
     }
 
-    /// Имя `lang` у самой модели: «ru» — это «ru-RU» у модели, что пишет языки с регионом. Без языка модель с
-    /// языками-регионами (Nemotron) получает `auto`: язык ей нужно назвать всегда.
+    /// Имя `lang` у самой модели: «ru» — это «ru-RU» у модели, что пишет языки с регионом. «auto» и пустой язык
+    /// модели не называются: модели с языками-регионами (Nemotron) строку «auto» не принимают.
     fn language(&self, lang: &str) -> Result<Option<CString>, String> {
-        if lang.is_empty() || lang == "auto" || self.languages.is_empty() {
-            let regional = !self.languages.is_empty() && self.languages.iter().all(|l| l.contains('-'));
-            return Ok(regional.then(|| CString::new("auto").expect("no NUL")));
-        }
-        let prefix = format!("{}-", lang.to_ascii_lowercase());
-        let found = self.languages.iter().find(|l| l.eq_ignore_ascii_case(lang)).or_else(|| self.languages.iter().find(|l| l.to_ascii_lowercase().starts_with(&prefix)));
-        match found {
-            Some(l) => Ok(Some(CString::new(l.as_str()).map_err(|e| engine_err(e.to_string()))?)),
-            None => Err(engine_err(format!("transcribe.cpp: the model does not recognise «{lang}» (it knows {})", self.languages.join(", ")))),
-        }
+        language_of(&self.languages, lang).map(|l| l.map(|l| CString::new(l).expect("model language names hold no NUL")))
     }
 
     /// Слова 16 кГц моно со временем от его начала, с.
@@ -1056,6 +1136,82 @@ mod tests {
             assert!(m.download.url.contains("/resolve/") && m.download.url.ends_with(m.file), "{}", m.id);
             assert_eq!(m.download.sha256.len(), 64, "{}", m.id);
             assert!(m.download.size > 0, "{}", m.id);
+        }
+    }
+
+    /// A CUDA build (DUB_TCPP_ENGINE_DIR: transcribe_engine.dll with cuBLAS beside it) loads with PATH holding only
+    /// the system folder.
+    #[test]
+    #[ignore]
+    #[cfg(windows)]
+    fn the_engine_finds_the_libraries_beside_it() {
+        let Ok(dir) = std::env::var("DUB_TCPP_ENGINE_DIR") else { return };
+        let system = std::env::var("SystemRoot").map(|r| format!("{r}\\System32")).unwrap();
+        std::env::set_var("PATH", system);
+        library(Path::new(&dir)).expect("the engine and the libraries beside it");
+    }
+
+    #[test]
+    fn an_engine_of_another_release_is_not_installed() {
+        static TINY: Model = Model {
+            id: "tiny",
+            name: "tiny",
+            dir: "tiny-model",
+            component: "tiny",
+            file: "tiny.gguf",
+            download: Download { url: "", size: 3, sha256: "" },
+            languages: &[],
+        };
+        let root = std::env::temp_dir().join(format!("dub-tcpp-pin-{}", std::process::id()));
+        let lib = engine_dir(&root, Build::Cpu).join(LIBRARY);
+        std::fs::create_dir_all(lib.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(root.join(TINY.dir)).unwrap();
+        std::fs::write(model_path(&root, &TINY), b"abc").unwrap();
+        let engine = std::fs::File::create(&lib).unwrap();
+        engine.set_len(Build::Cpu.download().size + 4096).unwrap();
+        assert!(!installed(&root, Build::Cpu, &TINY), "an older engine of another size");
+        engine.set_len(Build::Cpu.download().size).unwrap();
+        drop(engine);
+        assert!(installed(&root, Build::Cpu, &TINY));
+        std::fs::write(model_path(&root, &TINY), b"abcd").unwrap();
+        assert!(!installed(&root, Build::Cpu, &TINY), "a model of another size");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn auto_and_no_language_tell_the_model_nothing() {
+        let regional: Vec<String> = ["en-US", "ru-RU", "de-DE"].iter().map(|s| s.to_string()).collect();
+        let plain: Vec<String> = ["en", "ru"].iter().map(|s| s.to_string()).collect();
+        for languages in [&regional, &plain] {
+            assert_eq!(language_of(languages, "auto").unwrap(), None);
+            assert_eq!(language_of(languages, " AUTO ").unwrap(), None);
+            assert_eq!(language_of(languages, "").unwrap(), None);
+        }
+        assert_eq!(language_of(&regional, "ru").unwrap().as_deref(), Some("ru-RU"));
+        assert_eq!(language_of(&regional, "ru-RU").unwrap().as_deref(), Some("ru-RU"));
+        assert_eq!(language_of(&plain, "ru").unwrap().as_deref(), Some("ru"));
+        assert!(language_of(&regional, "ja").unwrap_err().contains("does not recognise"));
+        assert_eq!(language_of(&[], "ja").unwrap(), None);
+    }
+
+    /// A model hears a language named by its plain code: DUB_TCPP_ENGINE_DIR (an engine), DUB_TCPP_LANG_MODELS
+    /// (models separated by `;`), DUB_TCPP_LANG_WAV (16 kHz mono speech) and DUB_TCPP_LANG (its language, `ru`).
+    #[test]
+    #[ignore]
+    fn a_plain_language_code_reaches_every_model() {
+        let (Ok(dir), Ok(models), Ok(wav), Ok(lang)) =
+            (std::env::var("DUB_TCPP_ENGINE_DIR"), std::env::var("DUB_TCPP_LANG_MODELS"), std::env::var("DUB_TCPP_LANG_WAV"), std::env::var("DUB_TCPP_LANG"))
+        else {
+            return;
+        };
+        let mut r = hound::WavReader::open(&wav).unwrap();
+        let pcm: Vec<f32> = r.samples::<i16>().map(|s| s.unwrap() as f32 / 32768.0).collect();
+        for model in models.split(';') {
+            let mut asr = TcppAsr::load(Path::new(&dir), Path::new(model)).unwrap();
+            let named = asr.language(&lang).unwrap().map(|c| c.into_string().unwrap());
+            let words = asr.words(&pcm, &lang).unwrap_or_else(|e| panic!("{model} with {lang:?} (sent {named:?}): {e}"));
+            println!("[OK] {model}: {lang:?} sent as {named:?}, {} words: {}", words.len(), words.iter().map(|w| w.word.as_str()).collect::<Vec<_>>().join(" "));
+            assert!(!words.is_empty(), "{model}");
         }
     }
 

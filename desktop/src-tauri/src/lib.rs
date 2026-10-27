@@ -100,6 +100,9 @@ fn start_or_reuse_service(repo_root: &std::path::Path) -> Result<u16, String> {
 /// augment_path_for_tools внутри serve_blocking).
 fn setup_server_env(repo_root: &PathBuf) {
     dub_server::set_ort_dylib_env(repo_root, &layout::executable_directory());
+    if let Err(e) = dub_server::ort_without_telemetry() {
+        layout::fatal(&e);
+    }
 }
 
 /// Проверка обновления на GitHub-релизе и (по согласию юзера) установка. Драйвится из Rust: фронт
@@ -171,7 +174,13 @@ fn spawn_update_check(app: tauri::AppHandle, portable: bool) {
             if open {
                 // Браузер, запущенный изнутри job студии, закрылся бы вместе с ней.
                 let opened = dub_server::process_group::detach_from_group(
-                    &mut std::process::Command::new(if cfg!(windows) { "explorer" } else { "xdg-open" }),
+                    &mut dub_core::proc::host_command(if cfg!(windows) {
+                        "explorer"
+                    } else if cfg!(target_os = "macos") {
+                        "open"
+                    } else {
+                        "xdg-open"
+                    }),
                 )
                 .arg(RELEASES_URL)
                 .spawn();
@@ -295,6 +304,7 @@ pub fn run() {
 
     let context = tauri::generate_context!();
     service::set_app_version(context.package_info().version.to_string());
+    dub_server::diagnostics::log_to_file(&repo_root);
 
     let mut builder = tauri::Builder::default();
     if single_instance_wanted() {
@@ -376,7 +386,11 @@ pub fn run() {
                 let app = app.clone();
                 std::thread::spawn(move || confirm_close(&app));
             }
-            tauri::RunEvent::Exit => dub_server::flush_hub_on_exit(),
+            tauri::RunEvent::Exit => {
+                dub_server::flush_hub_on_exit();
+                // the servers and engines the studio started end with it, also where no job object ends them (macOS)
+                dub_server::process_group::terminate_group_members();
+            }
             _ => {}
         });
 }

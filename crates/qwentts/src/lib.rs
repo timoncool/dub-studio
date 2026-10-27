@@ -1,6 +1,7 @@
-//! Qwen3-TTS 1.7B через qwentts.cpp (ServeurpersoCom, ggml на CUDA), загружаемый во время работы: его C ABI `qwen.h`
-//! (ABI 6, с адаптером ударений ABI 7) — девять голосов модели (CustomVoice), клон по эталону (Base), адаптер LoRA
-//! русских ударений на Base, потоковые куски и отмена.
+//! Qwen3-TTS 1.7B через qwentts.cpp (ServeurpersoCom; наш форк timoncool/qwentts.cpp, engine-0.2.x), загружаемый во
+//! время работы: его C ABI `qwen.h` (ABI 7) — девять голосов модели (CustomVoice), клон по эталону (Base), адаптер LoRA
+//! русских ударений на Base, потоковые куски и отмена. Устройство (`CUDA0`, `Vulkan0`, `CPU`, `MTL0`) — его модуль
+//! бэкенда ggml, который библиотека грузит рядом с собой; та же раскладка, что у Speech Studio (`engines/qwen_tts.rs`).
 
 use std::ffi::{c_char, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
@@ -23,7 +24,9 @@ pub const STRESS_LORA: &str = "qwen-talker-1.7b-base-ru-stress-lora.safetensors"
 const STRESS_LORA_SCALE: f32 = 32.0 / 16.0;
 #[cfg(windows)]
 pub const LIBRARY: &str = "qwen.dll";
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub const LIBRARY: &str = "libqwen.dylib";
+#[cfg(all(not(windows), not(target_os = "macos")))]
 pub const LIBRARY: &str = "libqwen.so";
 /// Голоса CustomVoice: id, имя, пол, родной язык по карточке модели.
 pub const SPEAKERS: &[(&str, &str, &str, &str)] = &[
@@ -38,9 +41,7 @@ pub const SPEAKERS: &[(&str, &str, &str, &str)] = &[
     ("sohee", "Sohee", "female", "ko"),
 ];
 pub const SAMPLE_RATE: u32 = 24_000;
-const ABI_VERSION: i32 = 6;
-/// Поля адаптера появились в ABI 7: библиотека ABI 6 их не читает, поэтому 7 ставится только с адаптером.
-const ABI_LORA: i32 = 7;
+const ABI_VERSION: i32 = 7;
 const STATUS_CANCELLED: i32 = -5;
 
 #[derive(Debug, Error)]
@@ -125,6 +126,7 @@ struct RawContext {
 
 #[derive(Clone, Copy)]
 struct Api {
+    version: unsafe extern "C" fn() -> *const c_char,
     last_error: unsafe extern "C" fn() -> *const c_char,
     init_default: unsafe extern "C" fn(*mut InitParams),
     init: unsafe extern "C" fn(*const InitParams) -> *mut RawContext,
@@ -138,7 +140,9 @@ struct Api {
 }
 
 /// Библиотека загружается один раз на процесс и не выгружается: статический инициализатор ggml второй загрузки
-/// не переживает (GGML_ASSERT на своём обработчике terminate), выгрузка и новая загрузка роняют процесс.
+/// не переживает (GGML_ASSERT на своём обработчике terminate), выгрузка и новая загрузка роняют процесс. Модули
+/// бэкендов она грузит рядом с собой, когда устройство нужно впервые: одна библиотека на все устройства, смена
+/// устройства перезагружает только модель.
 static LOADED: std::sync::Mutex<Option<(Library, Api)>> = std::sync::Mutex::new(None);
 
 fn library(dir: &Path) -> Result<Api, QwenError> {
@@ -154,6 +158,7 @@ fn library(dir: &Path) -> Result<Api, QwenError> {
             };
         }
         Api {
+            version: sym!("qt_version"),
             last_error: sym!("qt_last_error"),
             init_default: sym!("qt_init_default_params"),
             init: sym!("qt_init"),
@@ -276,9 +281,10 @@ unsafe impl Send for QwenEngine {}
 unsafe impl Sync for QwenEngine {}
 
 impl QwenEngine {
-    /// Загружает библиотеку (CUDA-библиотеки она находит по PATH) и талкер кванта: Base при `clone`, иначе CustomVoice;
-    /// `stress` добавляет к Base адаптер ударений.
-    pub fn load(models_root: &Path, quant: &str, clone: bool, stress: bool) -> Result<QwenEngine, QwenError> {
+    /// Загружает библиотеку (CUDA-библиотеки она находит по PATH) и талкер кванта на устройстве ggml `device` (`CUDA0`,
+    /// `Vulkan0`, `CPU`, `MTL0`): Base при `clone`, иначе CustomVoice; `stress` добавляет к Base адаптер ударений;
+    /// `clamp_fp16` зажимает активации fp16 (Vulkan, карты до Ampere).
+    pub fn load(models_root: &Path, device: &str, clamp_fp16: bool, quant: &str, clone: bool, stress: bool) -> Result<QwenEngine, QwenError> {
         if stress && !clone {
             return Err(QwenError::Load("the stress adapter is trained on the Base talker".into()));
         }
@@ -293,13 +299,15 @@ impl QwenEngine {
         let talker = talker(models_root, quant, clone).ok_or_else(|| QwenError::Load(format!("no quantisation {quant}")))?;
         let (t, c) = (cstring(&talker.to_string_lossy(), "talker path")?, cstring(&d.join(CODEC).to_string_lossy(), "codec path")?);
         let lora = if stress { Some(cstring(&d.join(STRESS_LORA).to_string_lossy(), "adapter path")?) } else { None };
+        let device = cstring(device, "device")?;
         let mut p: InitParams = unsafe { std::mem::zeroed() };
         unsafe { (api.init_default)(&mut p) };
         p.abi_version = ABI_VERSION;
         p.talker_path = t.as_ptr();
         p.codec_path = c.as_ptr();
+        p.device = device.as_ptr();
+        p.clamp_fp16 = clamp_fp16;
         if let Some(lora) = &lora {
-            p.abi_version = ABI_LORA;
             p.lora_path = lora.as_ptr();
             p.lora_scale = STRESS_LORA_SCALE;
         }
@@ -314,6 +322,11 @@ impl QwenEngine {
             return Err(QwenError::Load(format!("{} is a {kind} checkpoint, not {expected}", talker.display())));
         }
         Ok(engine)
+    }
+
+    /// The library's version (`qt_version`).
+    pub fn version(&self) -> String {
+        unsafe { CStr::from_ptr((self.api.version)()) }.to_string_lossy().into_owned()
     }
 
     /// Останавливает идущий синтез за кадр (~83 мс).

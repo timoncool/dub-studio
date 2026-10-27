@@ -1,6 +1,7 @@
 //! dub-core — типы Project (serde) и EngineOpts, зеркало Pydantic-контракта dub-engine.
 
 pub mod atomic;
+pub mod compat;
 pub mod fit;
 pub mod glossary;
 mod opts;

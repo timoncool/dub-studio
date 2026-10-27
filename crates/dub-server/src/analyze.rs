@@ -672,25 +672,80 @@ mod continuous_diarization_cache_tests {
     }
 }
 
-fn known_speaker_turns(
+/// Recognition of a recording in pieces cut at its pauses (Silero VAD), as Speech Studio cuts it: silence does not go to
+/// the recognizer, and a long recording is not cut mid-word. A recording without speech gives no lines.
+fn recognise_by_pauses(
+    paths: &AnalyzePaths,
+    asr: &mut dyn dub_asr::AsrEngine,
     wav: &std::path::Path,
-    detector: &std::path::Path,
+    lang: &str,
+    progress: &Progress,
+) -> Result<Vec<dub_asr::Segment>, String> {
+    let lacking = crate::vad::missing(&paths.models_root);
+    crate::fetch_missing(&paths.repo_root, &lacking.iter().map(String::as_str).collect::<Vec<_>>(), progress)?;
+    let (samples, sr) = crate::wavio::read_mono_f32(wav)?;
+    if sr as usize != crate::vad::SR {
+        return Err(format!("{}: {sr} Hz, the speech finder takes {} Hz", wav.display(), crate::vad::SR));
+    }
+    let probs = crate::vad::probabilities(&paths.models_root, &samples)?;
+    let spans = crate::vad::speech(&probs, samples.len(), &crate::vad::VadConfig::default());
+    let windows = crate::vad::windows(&spans, &probs, crate::vad::MAX_WINDOW_SECS);
+    let piece = paths.work_dir.join("asr_piece.wav");
+    let mut all = Vec::new();
+    for (k, &(a, b)) in windows.iter().enumerate() {
+        crate::jobs::check_cancelled()?;
+        emit(progress, "asr", &t!("analyze-asr-piece", n = (k + 1) as i64, total = windows.len() as i64));
+        let (from, to) = ((a * sr as f64) as usize, ((b * sr as f64) as usize).min(samples.len()));
+        crate::wavio::write_mono_f32(&piece, &samples[from..to], sr)?;
+        for mut s in asr.transcribe(&piece, lang).map_err(|e| e.localize())? {
+            s.start += a;
+            s.end += a;
+            for w in &mut s.words {
+                w.start += a;
+                w.end += a;
+            }
+            all.push(s);
+        }
+    }
+    if let Err(e) = std::fs::remove_file(&piece) {
+        tracing::warn!("{}: {e}", piece.display());
+    }
+    Ok(all)
+}
+
+/// The speakers' turns from Nemotron 3 Diarization in audiocpp_server, on the build of the diarization device: by
+/// itself for `count` 0, else for a told speaker count with the speaker voices (WeSpeaker). The model leaves the
+/// card after it.
+fn diarize_on_server(
+    paths: &AnalyzePaths,
+    wav: &std::path::Path,
     voice_model: &std::path::Path,
     count: usize,
     progress: &Progress,
 ) -> Result<dub_asr::DiarTurns, String> {
-    let msg = if dub_asr::continuous_diarization_enabled()? {
-        t!("analyze-diarize-continuous", speakers = count)
-    } else {
-        t!("analyze-diarize-fragments", speakers = count)
-    };
-    emit(progress, "diarize", &msg);
-    let mut embedder = dub_faces::VoiceEmbedder::load(voice_model)
-        .map_err(|e| t!("analyze-wespeaker-needed", error = e.localize()))?;
-    dub_asr::turns_with_speaker_count(wav, detector, count, &mut |samples| {
-        crate::jobs::check_cancelled()?;
-        embedder.embed_samples(samples).map_err(|e| e.localize())
-    }).map_err(|e| e.localize())
+    let build = crate::acpp::build_for(crate::models::server_choice(&paths.models_root, "diar_backend"))?;
+    let server = crate::acpp::server(&paths.repo_root, &paths.models_root, build, crate::acpp::DIAR)?;
+    tracing::info!("diarization: Nemotron 3 Diarization on audiocpp_server {build:?}");
+    let diarizer = dub_asr::Diarizer::Server { server, model: crate::acpp::DIAR };
+    let turns = (|| {
+        if count == 0 {
+            return dub_asr::turns(wav, &diarizer, 0.8, 2.5).map_err(|e| e.localize());
+        }
+        let msg = if dub_asr::continuous_diarization_enabled()? {
+            t!("analyze-diarize-continuous", speakers = count)
+        } else {
+            t!("analyze-diarize-fragments", speakers = count)
+        };
+        emit(progress, "diarize", &msg);
+        let mut embedder = dub_faces::VoiceEmbedder::load(voice_model)
+            .map_err(|e| t!("analyze-wespeaker-needed", error = e.localize()))?;
+        dub_asr::turns_with_speaker_count(wav, &diarizer, count, &mut |samples| {
+            crate::jobs::check_cancelled()?;
+            embedder.embed_samples(samples).map_err(|e| e.localize())
+        }).map_err(|e| e.localize())
+    })();
+    crate::acpp::unload(&[crate::acpp::DIAR]);
+    turns
 }
 
 /// Кто переводит (stage "llm") или смотрит кадры (stage "vision") — для ключа стадии перевода: своя Gemma
@@ -761,7 +816,7 @@ fn align_cues(
     }
     emit(progress, "asr", &t!("analyze-align-recognizing"));
     std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
-    let mut asr = crate::models::build_engine(&paths.asr);
+    let mut asr = crate::models::build_engine(&paths.asr)?;
     let words: Vec<crate::subalign::Heard> = asr
         .transcribe(asr_wav, &args.src_lang)
         .map_err(|e| t!("analyze-align-recognition-failed", error = e.localize()))?
@@ -865,6 +920,8 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // Бенчмаркинг (галка в настройках, ВЫКЛ по умолчанию): семплер GPU/CPU/VRAM -> bench.json + ⏱ в журнал.
     let mut bench = crate::bench::Bench::start(&paths.work_dir, "analyze", crate::models::bench_enabled(&paths.models_root));
     bench.stage("probe");
+    // separation, diarization and recognition come next: a small card lets the kept voicing model go
+    crate::tts_host::make_room();
 
     // 1) probe (метаданные видео).
     let meta = media::probe(&paths.input)?;
@@ -946,6 +1003,11 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         let clean16 = paths.work_dir.join("vocals16_clean.wav");
         let stems = paths.work_dir.join("stems");
         let cached_voc = stems.join("vocals.wav");
+        if !cached_voc.is_file() {
+            if let Some(why) = crate::models::sep_unavailable(&paths.models_root) {
+                return Err(why);
+            }
+        }
         let sep_result: Result<std::path::PathBuf, String> = (|| {
             if !cached_voc.is_file() {
                 let audio_hq = paths.work_dir.join("audio_hq.wav");
@@ -978,8 +1040,6 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     };
     crate::jobs::check_cancelled()?;
     bench.stage("diarize");
-    // Backend диаризации (onnx CUDA-EP / CPU) — exec_config читает DUB_ASR_BACKEND при создании сессии.
-    std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "diar_backend"));
     emit(progress, "diarize", &t!("analyze-diarizing", model = "Nemotron 3 Diarization"));
     // Вход диаризации и ASR — asr_wav (чистый вокал или сырое аудио): ключи стадий от его отпечатка.
     let asr_in_hash = cache::hash_file_prefix(&asr_wav);
@@ -994,11 +1054,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             crate::jobs::emit_resumed(progress, "diarize", &t!("analyze-diarization-cached"));
             Some(d.into_turns())
         } else {
-            let result = if args.speaker_count > 0 {
-                known_speaker_turns(&asr_wav, &paths.sortformer_onnx, &voice_model, args.speaker_count, progress)
-            } else {
-                dub_asr::turns(&asr_wav, &paths.sortformer_onnx, 0.8, 2.5).map_err(|e| e.localize())
-            };
+            let result = diarize_on_server(paths, &asr_wav, &voice_model, args.speaker_count, progress);
             match result {
                 Ok(d) => {
                     stage_store(&mut cache, &paths.work_dir, "diarize", &diar_key, DIAR_FILE, &DiarOut::of(&d), progress);
@@ -1061,6 +1117,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     let cached_transcript =
         stage_load::<TranscriptOut>(&cache, &paths.work_dir, "asr", &asr_key, TRANSCRIPT_FILE, progress);
     let resumed_asr = cached_transcript.is_some();
+    let mut by_crisperwhisper = matches!(paths.asr, crate::models::AsrChoice::CrisperWhisper { .. });
     let (mut segments, n_spk): (Vec<Segment>, usize) = if let Some(t) = cached_transcript {
         crate::jobs::emit_resumed(progress, "asr", &t!("analyze-transcript-cached", segments = t.segments.len()));
         (t.segments, t.n_spk)
@@ -1151,13 +1208,34 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     } else {
         // Движок выбран настройкой (Parakeet/Whisper) — analyze не знает деталей (build_engine).
         bench.stage("asr");
-        let parakeet = matches!(paths.asr, crate::models::AsrChoice::Ggml { .. });
-        if args.src_lang != "auto" && !paths.asr.knows(&args.src_lang) {
-            return Err(t!("analyze-asr-language", lang = args.src_lang.clone()));
+        // Parakeet knows 25 European languages: a source language outside them, chosen or heard by the language id
+        // under «auto», goes to CrisperWhisper before recognition starts, with a line in the journal.
+        let mut asr_choice = paths.asr.clone();
+        if let crate::models::AsrChoice::Ggml { models_root, build, .. } | crate::models::AsrChoice::Server { models_root, build, .. } = &paths.asr {
+            let lang = if args.src_lang == "auto" {
+                // the language id runs on the transcribe.cpp build of the recognition device
+                crate::fetch_missing(&paths.repo_root, &["langid", build.dir()], progress)?;
+                let langid = dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID);
+                dub_asr::acpp::heard_language(&dub_asr::tcpp::engine_dir(models_root, *build), &langid, &asr_wav).map_err(|e| e.localize())?
+            } else {
+                args.src_lang.clone()
+            };
+            if !paths.asr.knows(&lang) {
+                emit(progress, "asr", &t!("analyze-asr-to-crisperwhisper", lang = lang.clone()));
+                crate::fetch_missing(&paths.repo_root, &crate::models::crisperwhisper_components(&paths.models_root), progress)?;
+                asr_choice = crate::models::crisperwhisper_choice(&paths.repo_root, &paths.models_root);
+                by_crisperwhisper = true;
+            }
         }
+        let parakeet = matches!(asr_choice, crate::models::AsrChoice::Ggml { .. } | crate::models::AsrChoice::Server { .. });
         // Backend локального ASR (Parakeet onnx CUDA-EP/CPU, Whisper cuda/cpu) — до создания движка/сессии.
         std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
-        let mut asr = crate::models::build_engine(&paths.asr);
+        // Термины глоссария проекта (с прошлого анализа) — подсказка распознавателю, как их писать.
+        let hint = std::fs::read_to_string(paths.work_dir.join("project.json"))
+            .ok()
+            .and_then(|text| Project::from_json(&text).ok())
+            .and_then(|p| crate::glossary_api::asr_hint(&p.glossary));
+        let mut asr = crate::models::build_engine_hinted(&asr_choice, hint)?;
         let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);
         let nsp = diar.as_ref().map(|d| d.n_speakers).unwrap_or(1).max(1);
         emit(
@@ -1165,9 +1243,12 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             "asr",
             &t!("asr-windowed", speakers = nsp),
         );
-        let ts = asr
-            .transcribe(&asr_wav, &args.src_lang)
-            .map_err(|e| e.localize())?;
+        // the server's models window a long recording themselves; transcribe.cpp's get it in pieces cut at pauses
+        let ts = if matches!(asr_choice, crate::models::AsrChoice::Ggml { .. }) {
+            recognise_by_pauses(paths, &mut *asr, &asr_wav, &args.src_lang, progress)?
+        } else {
+            asr.transcribe(&asr_wav, &args.src_lang).map_err(|e| e.localize())?
+        };
         // Спикер — по словам: реплика, на которой сменился спикер диаризации, режется на слове смены.
         let segs: Vec<Segment> = dub_asr::split_at_speaker_turns(ts, turns)
             .into_iter()
@@ -1215,9 +1296,10 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // находит кандидатов, звук на интервале (отделённый вокал, реплики диаризации или сырой микс) решает
     // «скрыть» или «только пометить». Импорт субтитров — текст пользователя, его не трогаем.
     if paths.import_subs.is_none() {
-        let rules = match (&paths.asr, crate::models::openrouter_asr_on(&paths.models_root)) {
-            (crate::models::AsrChoice::Whisper { .. }, false) => dub_asr::HallucinationRules::Whisper,
-            _ => dub_asr::HallucinationRules::CaseAware,
+        let rules = if by_crisperwhisper && !crate::models::openrouter_asr_on(&paths.models_root) {
+            dub_asr::HallucinationRules::Whisper
+        } else {
+            dub_asr::HallucinationRules::CaseAware
         };
         let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
         let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);

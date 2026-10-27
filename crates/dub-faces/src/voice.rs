@@ -66,6 +66,14 @@ impl VoiceEmbedder {
         })
     }
 
+    /// [`VoiceEmbedder::load`] on the device the caller names (diarization's own setting).
+    pub fn load_on(onnx: &Path, gpu: bool) -> Result<Self, FacesError> {
+        Ok(Self {
+            model: OnnxModel::load_on(onnx, gpu)?,
+            mel: MelBanks::new(),
+        })
+    }
+
     /// Эмбеддинг для WAV-клипа (16к моно; чужой sr — ошибка, вызывающий режет ffmpeg'ом в 16к). Пустой/
     /// слишком короткий клип (<1 кадра) -> ошибка. Возвращает 256-d L2-нормированный вектор.
     pub fn embed_wav(&mut self, wav: &Path) -> Result<Vec<f32>, FacesError> {

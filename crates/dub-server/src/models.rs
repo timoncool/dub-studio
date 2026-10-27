@@ -134,20 +134,7 @@ pub fn component_selection(id: &str) -> Vec<(&'static str, String)> {
         SUPERTONIC_TTS => vec![("tts", SUPERTONIC_TTS.into())],
         "parakeet" => vec![("asr_engine", "parakeet".into()), ("asr", "int8".into())],
         "parakeet-ultra" => vec![("asr_engine", "parakeet".into()), ("asr", "ultra-int8".into())],
-        "whisper-tiny" => vec![("asr_engine", "whisper".into()), ("whisper_model", "tiny".into()),
-        ],
-        "whisper-base" => vec![("asr_engine", "whisper".into()), ("whisper_model", "base".into()),
-        ],
-        "whisper-small" => vec![("asr_engine", "whisper".into()), ("whisper_model", "small".into()),
-        ],
-        "whisper-medium" => vec![("asr_engine", "whisper".into()), ("whisper_model", "medium".into()),
-        ],
-        "whisper-large-v3" => vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3".into()),
-        ],
-        "whisper-large-v3-turbo" => {
-            vec![("asr_engine", "whisper".into()), ("whisper_model", "large-v3-turbo".into()),
-            ]
-        }
+        "crisperwhisper-turbo" => vec![("asr_engine", "whisper".into())],
         "gemma" => vec![("mt", "q4_0".into())],
         "gemma-q5_0" => vec![("mt", "q5_0".into())],
         "gemma-q6_k" => vec![("mt", "q6_k".into())],
@@ -164,11 +151,12 @@ pub fn component_selection(id: &str) -> Vec<(&'static str, String)> {
 pub fn is_selection_key(key: &str) -> bool {
     crate::checks::is_switch(key) || matches!(
         key,
-        "tts" | "asr" | "mt" | "sep" | "asr_engine" | "whisper_model" | "whisper_compute" | "whisper_device"
+        "tts" | "asr" | "mt" | "sep" | "asr_engine"
             // Backend КАЖДОЙ локальной стадии независимо (auto|gpu|cpu): любой движок на любой инстанс.
             // gpu = CUDA, cpu = без NVIDIA. sep=сепарация(BSRoformer CUDA/CPU-сборка), diar=диаризация
             // (Sortformer onnx CUDA-EP/CPU), asr=локальный ASR (Parakeet onnx / Whisper CTranslate2).
             | "local_backend" | "sep_backend" | "diar_backend" | "asr_backend"
+            | "tts_backend"     // voicing engines (Higgs and Supertonic in audiocpp_server, Qwen3-TTS): auto|gpu|vulkan|cpu
             // Лимиты RAM (видимые контролы в настройках, НЕ авто-магия): против OOM на слабой памяти.
             | "llama_ubatch"    // размер prefill-батча Gemma (меньше = меньше пиковый буфер графа prefill)
             | "higgs_ref_secs"  // длина реф-клипа клона голоса (меньше = меньше prefill Higgs; <12с спасает 32ГБ)
@@ -181,6 +169,8 @@ pub fn is_selection_key(key: &str) -> bool {
             | "lead_into_silence" // "1" -> не влезшая фраза начинается раньше, в тишину перед репликой, вместо ускорения
             | "emo_ref_on"      // "1" -> эмоциональный референс сцены (перенос эмоций из оригинального вокала); "0" -> выкл
             | "drama_vram_gb"   // видеопамять для Drama 3, ГБ; "0" (по умолчанию) — авто, см. drama_vram_limit_mb
+            | "tts_idle_unload_min" // через сколько минут простоя выгружать модель озвучки (0 — никогда)
+            | "cloud_daily_limit_usd" // дневной лимит облака для агентов и программ, USD (0 — без лимита)
             | "auto_shorten"    // "1" (по умолчанию) -> не влезшие в слот фразы рендер сокращает через LLM и озвучивает заново
             // Провайдер перевода и отдельно vision: local (своя Gemma) | server (локальный OpenAI-совместимый
             // сервер: Ollama, LM Studio, vLLM) | openrouter. Значение проверяет select_model.
@@ -217,7 +207,9 @@ pub fn is_selection_value(key: &str, value: &str) -> bool {
         "tts_provider" => matches!(value, "local" | "openrouter" | "google"),
         "cloud_ok_recognition" | "cloud_ok_translation" | "cloud_ok_vision" | "cloud_ok_voicing" => matches!(value, "0" | "1"),
         "drama_vram_gb" => value.parse::<u32>().is_ok_and(|gb| gb == 0 || (DRAMA_MIN_LIMIT_GB..=256).contains(&gb)),
-        "google_tts_mode" => matches!(value, "standard" | "batch"),
+        "tts_idle_unload_min" => matches!(value, "0" | "5" | "15" | "30" | "60"),
+        "google_tts_mode" => matches!(value, "standard" | "batch" | "auto"),
+        "cloud_daily_limit_usd" => value.parse::<f64>().is_ok_and(|v| (0.0..=10_000.0).contains(&v)),
         "google_tts_model" => {
             !value.is_empty()
                 && value
@@ -230,7 +222,7 @@ pub fn is_selection_value(key: &str, value: &str) -> bool {
 
 /// Backend конкретной локальной стадии по ключу (sep_backend/diar_backend/asr_backend): "cpu"/"gpu"
 /// перекрывают; "auto"/пусто -> сначала общий local_backend, затем GPU, только если карта и драйвер годятся
-/// под CUDA 13 (hw::gpu_report) — на драйвере до 580 или Pascal «авто» идёт на CPU, а не падает на CUDA.
+/// под CUDA-сборку стадии ([`gpu_runs`]) — иначе «авто» идёт на CPU, а не падает на CUDA.
 /// Любой движок на любой инстанс — стадии независимы.
 pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
     let sel = load_selection(mroot);
@@ -245,12 +237,88 @@ pub fn stage_backend(mroot: &Path, key: &str) -> &'static str {
         .or_else(|| {
             if key == "local_backend" { None } else { pick_bk("local_backend") }
         })
-        .unwrap_or(if crate::hw::gpu_report().cuda13_ok { "gpu" } else { "cpu" })
+        .unwrap_or(if gpu_runs(key) { "gpu" } else { "cpu" })
 }
 
-/// Сборка transcribe.cpp под backend распознавания: GPU — CUDA, CPU — CPU-сборка.
+/// Whether this card runs the CUDA build of a stage (`key`, as in [`stage_backend`]): recognition (transcribe.cpp and the
+/// audio.cpp server), diarization (the audio.cpp server) and separation (BSRoformer.cpp) have CUDA 12.9 builds beside
+/// the CUDA 13 ones, so they run on any card one of them takes; the other stages have CUDA 13 builds only.
+pub fn gpu_runs(key: &str) -> bool {
+    let gpu = crate::hw::gpu_report();
+    if matches!(key, "asr_backend" | "sep_backend" | "diar_backend") { gpu.cuda_build.is_some() } else { gpu.cuda13_ok }
+}
+
+/// The transcribe.cpp build of the recognition device (`asr_backend`, else `local_backend`), as the audio.cpp server's
+/// ([`crate::acpp::build_for`], as Speech Studio picks it): the card's CUDA build (13, or 12.9 where the card or driver
+/// does not run 13), Vulkan, or the processor's. A card chosen that runs no CUDA build gets the CUDA build, which
+/// refuses with the reason.
 pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
-    if stage_backend(mroot, "asr_backend") == "cpu" { dub_asr::tcpp::Build::Cpu } else { dub_asr::tcpp::Build::Cuda }
+    // a Mac's one build (Metal and the processor) lies in the processor build's folder
+    if cfg!(target_os = "macos") {
+        return dub_asr::tcpp::Build::Cpu;
+    }
+    tcpp_build_of(crate::acpp::build_for(server_choice(mroot, "asr_backend")))
+}
+
+/// The transcribe.cpp build of a server build of the recognition device.
+fn tcpp_build_of(build: Result<crate::acpp::Build, String>) -> dub_asr::tcpp::Build {
+    match build {
+        Ok(crate::acpp::Build::Cuda12) => dub_asr::tcpp::Build::Cuda12,
+        Ok(crate::acpp::Build::Vulkan) => dub_asr::tcpp::Build::Vulkan,
+        Ok(crate::acpp::Build::Cpu | crate::acpp::Build::Metal) => dub_asr::tcpp::Build::Cpu,
+        Ok(crate::acpp::Build::Cuda13) | Err(_) => dub_asr::tcpp::Build::Cuda,
+    }
+}
+
+/// Why voice separation cannot run here as set: its GPU build without a usable card, or a processor without the
+/// floor the GPU build's ggml-cpu library is built on (the processor build has none).
+pub fn sep_unavailable(mroot: &Path) -> Option<String> {
+    gpu_stage_unavailable(mroot, "sep_backend", &t!("stage-name-sep"))
+        .or_else(|| (stage_backend(mroot, "sep_backend") == "gpu").then(|| crate::hw::cpu_floor("BSRoformer")).flatten())
+}
+
+/// The build of the separation engine for its device (`sep_backend`, else `local_backend`), as Speech Studio picks it
+/// ([`crate::acpp::build_for`]): the card's CUDA build (13, or 12.9 where the card or driver does not run 13), Vulkan,
+/// or the processor's. A card chosen that runs no CUDA build gets the CUDA build, which refuses with the reason.
+pub fn sep_build(mroot: &Path) -> dub_sep::asset::Build {
+    if cfg!(target_os = "macos") {
+        return dub_sep::asset::Build::Cpu;
+    }
+    sep_build_of(crate::acpp::build_for(server_choice(mroot, "sep_backend")))
+}
+
+/// The separation engine's build of a server build of the separation device.
+fn sep_build_of(build: Result<crate::acpp::Build, String>) -> dub_sep::asset::Build {
+    match build {
+        Ok(crate::acpp::Build::Cuda12) => dub_sep::asset::Build::Cuda12,
+        Ok(crate::acpp::Build::Vulkan) => dub_sep::asset::Build::Vulkan,
+        Ok(crate::acpp::Build::Cpu | crate::acpp::Build::Metal) => dub_sep::asset::Build::Cpu,
+        Ok(crate::acpp::Build::Cuda13) | Err(_) => dub_sep::asset::Build::Cuda13,
+    }
+}
+
+/// The separation engine's program for its device ([`sep_build`]).
+pub fn sep_cli(repo_root: &Path, mroot: &Path) -> PathBuf {
+    dub_sep::engine_cli_of(repo_root, sep_build(mroot).name())
+}
+
+/// Why a local stage set to «GPU (CUDA)» cannot run on this machine: its CUDA build would fall back to the processor
+/// on its own, so the stage stops before it starts and names the reason. None — the stage is not on the GPU or the
+/// card runs the stage's CUDA build ([`gpu_runs`]). `stage` is the stage's name for the message.
+pub fn gpu_stage_unavailable(mroot: &Path, key: &str, stage: &str) -> Option<String> {
+    if stage_backend(mroot, key) != "gpu" || gpu_runs(key) {
+        return None;
+    }
+    let gpu = crate::hw::gpu_report();
+    let card = gpu.summary().unwrap_or_else(|| "-".to_string());
+    let why = match gpu.reason {
+        Some("no_nvidia") => t!("stage-gpu-why-no-nvidia"),
+        Some("no_device") => t!("stage-gpu-why-no-device"),
+        Some("driver_old") => t!("stage-gpu-why-driver-old", card = card, min = gpu.min_driver),
+        Some("gpu_old") => t!("stage-gpu-why-gpu-old", card = card, min = gpu.min_compute.clone()),
+        _ => t!("stage-gpu-why-cuda-init", card = card),
+    };
+    Some(t!("stage-needs-cuda", stage = stage.to_string(), why = why))
 }
 
 /// Глобальный backend локальных стадий (обратная совместимость: пресеты/старые вызовы).
@@ -477,7 +545,7 @@ pub fn cloud_tts_on(mroot: &Path) -> bool {
 pub fn tts_model(mroot: &Path) -> String {
     if tts_provider(mroot) == "google" {
         pick(&load_selection(mroot), "google_tts_model")
-            .unwrap_or("")
+            .unwrap_or(crate::google_tts::DEFAULT_MODEL)
             .to_string()
     } else {
         openrouter_model(mroot, "tts")
@@ -555,13 +623,19 @@ pub fn higgs_ref_secs(mroot: &Path) -> f64 {
     sel_num(mroot, "higgs_ref_secs").filter(|s| *s > 0.0 && *s <= 60.0).unwrap_or(12.0)
 }
 
-/// Выбор ASR-движка для одной джобы: Parakeet на transcribe.cpp (GGUF) либо Whisper (бинарь + модель + квант + девайс).
+/// Выбор ASR-движка для одной джобы: Parakeet и Nemotron на сервере audio.cpp, Parakeet Ultra на transcribe.cpp (GGUF)
+/// либо CrisperWhisper на сервере audio.cpp.
 #[derive(Debug, Clone)]
 pub enum AsrChoice {
-    /// A GGUF model run by transcribe.cpp (`dub_asr::tcpp`), on the build of the recognition backend.
+    /// A GGUF model run by transcribe.cpp (`dub_asr::tcpp`), on the build of the recognition backend (Parakeet Ultra:
+    /// audio.cpp does not read its built-in VAD head).
     Ggml { models_root: PathBuf, build: dub_asr::tcpp::Build, model: &'static dub_asr::tcpp::Model },
-    Whisper { bin: PathBuf, model_dir: PathBuf, model: String, compute: String, device: String,
-    },
+    /// CrisperWhisper 2.0 turbo in the studio's audiocpp_server on the build of the recognition device (`choice`, see
+    /// `acpp::build_for`); the language of «auto» is heard by VoxLingua107 on the transcribe.cpp build of that device.
+    CrisperWhisper { repo_root: PathBuf, models_root: PathBuf, choice: &'static str, build: dub_asr::tcpp::Build },
+    /// A model of transcribe.cpp's catalogue (Parakeet TDT v3, Nemotron 3.5) run by the studio's audiocpp_server on the
+    /// build of the recognition device, reading the same GGUF; `build` is transcribe.cpp's for the language id.
+    Server { repo_root: PathBuf, models_root: PathBuf, choice: &'static str, build: dub_asr::tcpp::Build, model: &'static dub_asr::tcpp::Model },
 }
 
 impl AsrChoice {
@@ -572,34 +646,42 @@ impl AsrChoice {
     pub fn describe(&self) -> String {
         match self {
             AsrChoice::Ggml { model, .. } => format!("transcribe.cpp ({})", model.file),
-            AsrChoice::Whisper { model, compute, device, .. } => {
-                format!("Whisper {model} (compute={compute}, device={device})")
-            }
+            AsrChoice::CrisperWhisper { choice, .. } => format!("CrisperWhisper 2.0 turbo (intended, {choice})"),
+            AsrChoice::Server { model, .. } => format!("audiocpp_server ({})", model.file),
         }
     }
 
-    /// What the window names as the recogniser: the model, its quantization and the transcribe.cpp build, or Whisper's
-    /// model and compute.
+    /// What the window names as the recogniser: the model, its quantization and the transcribe.cpp build, or the
+    /// server's model and the device of its build.
     pub fn label(&self) -> String {
         match self {
             AsrChoice::Ggml { model, build, .. } => {
                 let quant = model.file.trim_end_matches(".gguf").rsplit('-').next().unwrap_or(model.file);
                 let on = match build {
                     dub_asr::tcpp::Build::Cuda => "CUDA",
+                    dub_asr::tcpp::Build::Cuda12 => "CUDA 12",
                     dub_asr::tcpp::Build::Vulkan => "Vulkan",
                     dub_asr::tcpp::Build::Cpu => "CPU",
                 };
                 format!("{} {quant} ({on})", model.name)
             }
-            AsrChoice::Whisper { model, compute, .. } => format!("Whisper {model} {compute}"),
+            AsrChoice::CrisperWhisper { choice, .. } => format!("CrisperWhisper 2.0 turbo ({})", server_device(choice)),
+            AsrChoice::Server { model, choice, .. } => {
+                let quant = model.file.trim_end_matches(".gguf").rsplit('-').next().unwrap_or(model.file);
+                format!("{} {quant} (audio.cpp, {})", model.name, server_device(choice))
+            }
         }
     }
 
     /// Whether it transcribes `lang` (`""` or `auto` is any).
     pub fn knows(&self, lang: &str) -> bool {
         match self {
-            AsrChoice::Ggml { model, .. } => dub_asr::tcpp::knows(model, lang),
-            AsrChoice::Whisper { .. } => true,
+            AsrChoice::Ggml { model, .. } | AsrChoice::Server { model, .. } => dub_asr::tcpp::knows(model, lang),
+            AsrChoice::CrisperWhisper { .. } => {
+                let l = lang.trim().to_ascii_lowercase();
+                let primary = l.split(['-', '_']).next().unwrap_or("");
+                primary.is_empty() || primary == "auto" || acpp_server::language::whisper_code(primary).is_ok()
+            }
         }
     }
 
@@ -609,111 +691,86 @@ impl AsrChoice {
     }
 }
 
-/// Путь к бинарю Whisper: env DUB_STUDIO_WHISPER_BIN, иначе приоритетом XXL-сборка
-/// (<repo>/tools/whisper/Faster-Whisper-XXL/faster-whisper-xxl.exe — свежий движок, CUDA-DLL в
-/// комплекте (_xxl_data), умеет --batched), фолбэк — старый onefile whisper-faster.exe (CPU).
-pub fn whisper_bin(repo_root: &Path) -> PathBuf {
-    if let Ok(p) = std::env::var("DUB_STUDIO_WHISPER_BIN") {
-        return PathBuf::from(p);
+/// What the window names as the device of a server build.
+fn server_device(choice: &str) -> &'static str {
+    match crate::acpp::build_for(choice) {
+        Ok(crate::acpp::Build::Cuda13 | crate::acpp::Build::Cuda12) | Err(_) => "CUDA",
+        Ok(crate::acpp::Build::Vulkan) => "Vulkan",
+        Ok(crate::acpp::Build::Cpu) => "CPU",
+        Ok(crate::acpp::Build::Metal) => "Metal",
     }
-    let wdir = repo_root.join("tools").join("whisper");
-    if cfg!(windows) {
-        let xxl = wdir.join("Faster-Whisper-XXL").join("faster-whisper-xxl.exe");
-        if xxl.is_file() {
-            return xxl;
+}
+
+/// The device the settings choose for a stage run in audiocpp_server (`asr_backend`, `tts_backend`, `diar_backend`):
+/// the stage's own choice, else the common one — `cpu`, `vulkan`, `gpu` or `auto`; [`crate::acpp::build_for`] turns it
+/// into the server's build.
+pub fn server_choice(mroot: &Path, key: &str) -> &'static str {
+    let sel = load_selection(mroot);
+    let choice = |k: &str| -> Option<&'static str> {
+        match pick(&sel, k) {
+            Some("cpu") => Some("cpu"),
+            Some("vulkan") => Some("vulkan"),
+            Some("gpu") | Some("cuda") => Some("gpu"),
+            _ => None,
         }
-        return wdir.join("whisper-faster.exe");
-    }
-    wdir.join("whisper-faster")
+    };
+    choice(key).or_else(|| if key == "local_backend" { None } else { choice("local_backend") }).unwrap_or("auto")
 }
 
-/// Каталог Whisper-моделей: <mroot>/whisper (внутри — faster-whisper-<size>). Есть ли модель на диске.
-fn whisper_model_installed(mroot: &Path, size: &str) -> bool {
-    mroot.join("whisper").join(format!("faster-whisper-{size}")).join("model.bin").is_file()
+/// Скачан ли CrisperWhisper (папка репозитория Hugging Face как есть).
+fn crisperwhisper_installed(mroot: &Path) -> bool {
+    mroot.join(crate::acpp::CRISPERWHISPER_DIR).join("model.safetensors").is_file()
 }
 
-/// Резолв активного ASR: если выбран движок whisper И бинарь+модель на диске — Whisper (модель = выбор,
-/// иначе первый установленный по убыванию качества); иначе — Parakeet (существующий резолв каталога TDT).
-/// Так «выбрал Whisper + скачал модель» применяется без рестарта, а недо-настроенный Whisper тихо
-/// откатывается на Parakeet (analyze не падает).
+/// Резолв активного ASR: выбран движок whisper и CrisperWhisper скачан — CrisperWhisper на сервере; Parakeet v3 и
+/// Nemotron — на сервере audio.cpp, Parakeet Ultra — на transcribe.cpp. Нескачанный CrisperWhisper задача докачивает до
+/// распознавания (ensure_job_components), так что к резолву внутри задачи он уже на диске.
 pub fn resolve_asr_choice(repo_root: &Path, mroot: &Path, sel: &Value) -> AsrChoice {
-    if pick(sel, "asr_engine") == Some("whisper") {
-        let bin = whisper_bin(repo_root);
-        // выбранная модель, если скачана; иначе — лучшая из установленных.
-        let want = pick(sel, "whisper_model").filter(|m| whisper_model_installed(mroot, m));
-        let model = want.map(String::from).or_else(|| {
-            ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny",
-            ]
-                .into_iter()
-                .find(|m| whisper_model_installed(mroot, m))
-                .map(String::from)
-        });
-        if let (true, Some(model)) = (bin.is_file(), model) {
-            // Девайс Whisper: авто по ФАКТУ наличия CUDA-либ. whisper-faster (CTranslate2, CUDA 11)
-            // требует cublas64_11 + cudnn8 РЯДОМ С EXE (официальный Purfview: GPU execution requires
-            // cuBLAS and cuDNN libs next to the executable). CUDA-13 DLL Higgs'а ему не подходят —
-            // имена версионные (cublas64_13 ≠ cublas64_11), cuDNN в дистрибутиве нет вообще. Поэтому:
-            // либы лежат -> cuda (GPU в разы быстрее на длинных), нет -> честный cpu БЕЗ попыток и
-            // фолбэков. Явная настройка whisper_device перекрывает авто-детект.
-            // Backend стадии ASR перекрывает авто: cpu -> строго cpu; иначе cuda если либы рядом.
-            let auto_dev = if stage_backend(mroot, "asr_backend") == "cpu" {
-                "cpu"
-            } else if whisper_cuda_libs_present(&bin) {
-                "cuda"
-            } else {
-                "cpu"
-            };
-            let device = pick(sel, "whisper_device").unwrap_or(auto_dev).to_string();
-            // Квант: веса int8 на обоих устройствах, на GPU активации в float16.
-            let mut compute = pick(sel, "whisper_compute")
-                .filter(|c| c.starts_with("int8"))
-                .unwrap_or(if device == "cuda" { "int8_float16" } else { "int8" })
-                .to_string();
-            // ГАРД: float16/bfloat16 не поддерживаются на CPU — CTranslate2 роняет процесс с
-            // "Requested float16 compute type, but the target device do not support efficient float16".
-            // На cpu коэрсим GPU-only кванты в безопасный int8, чтобы транскрипция не падала.
-            if device == "cpu"
-                && matches!(compute.as_str(), "float16" | "bfloat16" | "int8_float16" | "int8_bfloat16")
-            {
-                compute = "int8".to_string();
-            }
-            return AsrChoice::Whisper { bin, model_dir: mroot.join("whisper"), model, compute, device,
-            };
-        }
+    if pick(sel, "asr_engine") == Some("whisper") && crisperwhisper_installed(mroot) {
+        return crisperwhisper_choice(repo_root, mroot);
     }
     let model = dub_asr::tcpp::chosen(pick(sel, "asr_engine").unwrap_or(""), pick(sel, "asr"))
         .or_else(|| dub_asr::tcpp::model("parakeet-v3"))
         .expect("parakeet-v3 is in dub_asr::tcpp::MODELS");
+    if crate::acpp::SERVER_ASR.contains(&model.id) {
+        return AsrChoice::Server {
+            repo_root: repo_root.to_path_buf(),
+            models_root: mroot.to_path_buf(),
+            choice: server_choice(mroot, "asr_backend"),
+            build: tcpp_build(mroot),
+            model,
+        };
+    }
     AsrChoice::Ggml { models_root: mroot.to_path_buf(), build: tcpp_build(mroot), model }
 }
 
-/// Лежат ли рядом с whisper-faster.exe CUDA-библиотеки CTranslate2 (cuBLAS 11/12 + cuDNN).
-/// Ровно те имена, что требует движок; без них cuda-запуск гарантированно падает.
-/// XXL-сборка — self-contained: cublas64_12 + cudnn64_8 лежат внутри её _xxl_data (проверено по
-/// содержимому архива r245.4) -> для неё сразу true.
-fn whisper_cuda_libs_present(bin: &std::path::Path) -> bool {
-    if bin
-        .file_name()
-        .and_then(|s| s.to_str())
-        .is_some_and(|n| n.eq_ignore_ascii_case("faster-whisper-xxl.exe"))
-    {
-        return true;
+/// CrisperWhisper as this job's recogniser, whatever the settings chose.
+pub fn crisperwhisper_choice(repo_root: &Path, mroot: &Path) -> AsrChoice {
+    AsrChoice::CrisperWhisper {
+        repo_root: repo_root.to_path_buf(),
+        models_root: mroot.to_path_buf(),
+        choice: server_choice(mroot, "asr_backend"),
+        build: tcpp_build(mroot),
     }
-    let Some(dir) = bin.parent() else { return false;
-    };
-    if !cfg!(windows) {
-        return dir.join("libcublas.so.11").is_file() && dir.join("libcudnn.so.8").is_file();
+}
+
+/// The components CrisperWhisper runs on here: its weights, the language id with the transcribe.cpp build it runs
+/// on, and the server build of the recognition device with its CUDA runtime.
+pub fn crisperwhisper_components(mroot: &Path) -> Vec<&'static str> {
+    let mut ids = vec!["crisperwhisper-turbo", "langid", tcpp_build(mroot).dir()];
+    ids.extend(server_components(mroot, "asr_backend"));
+    ids
+}
+
+/// The server build of a stage's device (`asr_backend`, `tts_backend`, `diar_backend`) and its CUDA runtime: none
+/// when DUB_STUDIO_AUDIOCPP_SERVER names a program, or when the card is chosen and runs no CUDA build (the stage says
+/// so when it starts).
+pub fn server_components(mroot: &Path, key: &str) -> Vec<&'static str> {
+    if std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_some() {
+        return Vec::new();
     }
-    let cublas = dir.join("cublas64_11.dll").is_file() || dir.join("cublas64_12.dll").is_file();
-    let cudnn = std::fs::read_dir(dir)
-        .map(|rd| {
-            rd.flatten().any(|e| {
-                let n = e.file_name().to_string_lossy().to_lowercase();
-                n.starts_with("cudnn") && n.ends_with(".dll")
-            })
-        })
-        .unwrap_or(false);
-    cublas && cudnn
+    let Ok(build) = crate::acpp::build_for(server_choice(mroot, key)) else { return Vec::new() };
+    std::iter::once(crate::acpp::component(build)).chain(crate::acpp::runtime_component(build)).collect()
 }
 
 /// Распознаватель transcribe.cpp задачи: модель из кэша процесса выгружается, когда задача отпускает движок, чтобы
@@ -741,13 +798,67 @@ impl dub_asr::AsrEngine for Unloading {
     }
 }
 
-/// Построить ASR-движок из выбора (boxed trait-object): analyze не знает деталей резолва.
-pub fn build_engine(choice: &AsrChoice) -> Box<dyn dub_asr::AsrEngine> {
+/// A recogniser in the server of a job: its weights leave the card when the job lets it go, the server stays.
+struct ServerUnloading(dub_asr::acpp::AcppAsr, &'static str);
+
+impl Drop for ServerUnloading {
+    fn drop(&mut self) {
+        crate::acpp::unload(&[self.1]);
+    }
+}
+
+impl dub_asr::AsrEngine for ServerUnloading {
+    fn transcribe(&mut self, wav: &Path, lang: &str) -> Result<Vec<dub_asr::Segment>, dub_asr::AsrError> {
+        self.0.transcribe(wav, lang)
+    }
+    fn transcribe_turns(&mut self, wav: &Path, turns: &[dub_asr::Turn], lang: &str) -> Result<Vec<dub_asr::SpeakerSegment>, dub_asr::AsrError> {
+        self.0.transcribe_turns(wav, turns, lang)
+    }
+    fn transcribe_many(&mut self, files: &[PathBuf], lang: &str) -> Vec<Result<String, dub_asr::AsrError>> {
+        self.0.transcribe_many(files, lang)
+    }
+    fn transcribe_many_words(&mut self, files: &[PathBuf], lang: &str) -> Vec<Result<Vec<dub_asr::Word>, dub_asr::AsrError>> {
+        self.0.transcribe_many_words(files, lang)
+    }
+}
+
+/// Построить ASR-движок из выбора (boxed trait-object): analyze не знает деталей резолва. CrisperWhisper поднимает
+/// audiocpp_server, и его отказ — ошибка с причиной.
+pub fn build_engine(choice: &AsrChoice) -> Result<Box<dyn dub_asr::AsrEngine>, String> {
+    build_engine_hinted(choice, None)
+}
+
+/// [`build_engine`] with words and spellings to expect in the recording (CrisperWhisper's context text; Parakeet and
+/// Nemotron take none). Nemotron is told the language «auto» hears.
+pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result<Box<dyn dub_asr::AsrEngine>, String> {
     match choice {
-        AsrChoice::Ggml { models_root, build, model } => Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))),
-        AsrChoice::Whisper { bin, model_dir, model, compute, device,
-        } => Box::new(dub_asr::WhisperAsr::new(bin, model_dir, model, compute, device,
-        )),
+        AsrChoice::Ggml { models_root, build, model } => {
+            let _ = prompt;
+            if matches!(build, dub_asr::tcpp::Build::Cuda | dub_asr::tcpp::Build::Cuda12) {
+                if let Some(why) = gpu_stage_unavailable(models_root, "asr_backend", &t!("stage-name-asr")) {
+                    return Err(why);
+                }
+            }
+            Ok(dub_asr::tcpp::with_heard_language(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))), models_root, *build, model))
+        }
+        AsrChoice::CrisperWhisper { repo_root, models_root, choice, build } => {
+            let id = crate::acpp::CRISPERWHISPER;
+            let server = crate::acpp::server(repo_root, models_root, crate::acpp::build_for(choice)?, id)?;
+            let language = dub_asr::acpp::Language::Whisper {
+                engine_dir: dub_asr::tcpp::engine_dir(models_root, *build),
+                langid: dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID),
+            };
+            Ok(Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, id, language).with_prompt(prompt), id)))
+        }
+        AsrChoice::Server { repo_root, models_root, choice, build, model } => {
+            let _ = prompt;
+            let id = model.id;
+            // Nemotron is told the language; Parakeet finds it itself
+            let language = if id == crate::acpp::NEMOTRON { dub_asr::acpp::Language::Told } else { dub_asr::acpp::Language::Own };
+            let server = crate::acpp::server(repo_root, models_root, crate::acpp::build_for(choice)?, id)?;
+            let engine: Box<dyn dub_asr::AsrEngine> = Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, id, language), id));
+            Ok(dub_asr::tcpp::with_heard_language(engine, models_root, *build, model))
+        }
     }
 }
 
@@ -803,16 +914,81 @@ pub fn qwen_quant(tts: &str) -> Option<&'static str> {
     }
 }
 
-/// Почему Qwen3-TTS на этой машине не пойдёт: его ggml считает на CUDA 13 (cuBLAS из models/higgs-engine).
-pub fn qwen_unavailable() -> Option<String> {
-    if cfg!(not(windows)) {
-        return Some(t!("qwen-no-linux"));
+/// The build Qwen3-TTS runs on here, or why it does not: the voicing device of the settings, the processor's floor and,
+/// for CUDA 13, the card and its driver.
+pub fn qwen_build(mroot: &Path) -> Result<crate::acpp::Build, String> {
+    let build = crate::acpp::build_for(server_choice(mroot, "tts_backend"))?;
+    if let Some(why) = crate::hw::cpu_floor("Qwen3-TTS") {
+        return Err(why);
     }
-    let gpu = crate::hw::gpu_report();
-    if gpu.cuda13_ok {
-        return None;
+    if build == crate::acpp::Build::Cuda13 {
+        let gpu = crate::hw::gpu_report();
+        if !gpu.cuda13_ok {
+            return Err(t!("qwen-needs-cuda", card = gpu.summary().unwrap_or_else(|| "-".to_string())));
+        }
     }
-    Some(t!("qwen-needs-cuda", card = gpu.summary().unwrap_or_else(|| "-".to_string())))
+    Ok(build)
+}
+
+/// The ggml device the library runs a build on; the studio exposes one card, so the CUDA device is the first.
+pub fn qwen_device(build: crate::acpp::Build) -> &'static str {
+    use crate::acpp::Build;
+    match build {
+        Build::Cuda13 | Build::Cuda12 => "CUDA0",
+        Build::Vulkan => "Vulkan0",
+        Build::Cpu => "CPU",
+        Build::Metal => "MTL0",
+    }
+}
+
+/// Whether Qwen3-TTS clamps its fp16 activations on a build: on Vulkan always (an AMD card renders silence without it)
+/// and on a CUDA card older than Ampere (compute capability under 8.0, `compute` as the driver gives it: `7.5`), whose
+/// tensor cores accumulate in fp16.
+pub fn qwen_clamp_fp16(build: crate::acpp::Build, compute: Option<&str>) -> bool {
+    use crate::acpp::Build;
+    let cc = compute.and_then(|c| {
+        let (major, minor) = c.split_once('.')?;
+        Some((major.trim().parse::<u32>().ok()?, minor.trim().parse::<u32>().ok()?))
+    });
+    match build {
+        Build::Vulkan => true,
+        Build::Cuda13 | Build::Cuda12 => cc.is_some_and(|cc| cc < (8, 0)),
+        Build::Cpu | Build::Metal => false,
+    }
+}
+
+/// The ggml backend module of a device the library loads beside itself; the CPU one ships with the library, and on a
+/// Mac Metal is linked into it.
+fn qwen_module(build: crate::acpp::Build) -> Option<&'static str> {
+    use crate::acpp::Build;
+    let (cuda, vulkan) = if cfg!(windows) { ("ggml-cuda.dll", "ggml-vulkan.dll") } else { ("libggml-cuda.so", "libggml-vulkan.so") };
+    match build {
+        Build::Cuda13 | Build::Cuda12 => Some(cuda),
+        Build::Vulkan => Some(vulkan),
+        Build::Cpu | Build::Metal => None,
+    }
+}
+
+/// The component of a device's backend module: the CUDA one is the build of this computer's card.
+fn qwen_module_component(build: crate::acpp::Build) -> Option<&'static str> {
+    use crate::acpp::Build;
+    match build {
+        Build::Cuda13 | Build::Cuda12 => Some("qwen3-tts-cuda"),
+        Build::Vulkan => Some("qwen3-tts-vulkan"),
+        Build::Cpu | Build::Metal => None,
+    }
+}
+
+/// The components Qwen3-TTS needs on the voicing device: the engine, the device's backend module and its CUDA runtime.
+pub fn qwen_components(mroot: &Path) -> Vec<&'static str> {
+    let Ok(build) = crate::acpp::build_for(server_choice(mroot, "tts_backend")) else { return vec!["qwen3-tts-engine"] };
+    std::iter::once("qwen3-tts-engine").chain(qwen_module_component(build)).chain(crate::acpp::runtime_component(build)).collect()
+}
+
+/// The library and the backend module of the voicing device are on disk.
+pub fn qwen_library_installed(mroot: &Path, build: crate::acpp::Build) -> bool {
+    let d = qwentts::dir(mroot);
+    d.join(qwentts::LIBRARY).is_file() && qwen_module(build).is_none_or(|m| d.join(m).is_file())
 }
 
 /// Значение слота `tts` и папка весов Drama 3 (apiplant/drama-q4) в каталоге моделей.
@@ -840,13 +1016,22 @@ pub fn drama_installed(mroot: &Path) -> bool {
 }
 
 pub fn drama_dll(mroot: &Path) -> PathBuf {
-    mroot.join("drama-engine").join(if cfg!(windows) { "drama_engine.dll" } else { "libdrama_engine.so" })
+    mroot.join("drama-engine").join(if cfg!(windows) {
+        "drama_engine.dll"
+    } else if cfg!(target_os = "macos") {
+        "libdrama_engine.dylib"
+    } else {
+        "libdrama_engine.so"
+    })
 }
 
 /// Почему Drama 3 на этой машине не пойдёт: None — карта NVIDIA с CUDA 13 не меньше [`DRAMA_MIN_VRAM`], и если модель
 /// не входит в видеопамять целиком (карта меньше [`DRAMA_FULL_VRAM`] или такой лимит в настройках), оперативной
 /// памяти не меньше [`DRAMA_MIN_RAM`].
 pub fn drama_unavailable(mroot: &Path) -> Option<String> {
+    if let Some(why) = crate::hw::cpu_floor("Drama 3") {
+        return Some(why);
+    }
     let gpu = crate::hw::gpu_report();
     let card = gpu.summary().unwrap_or_else(|| "-".to_string());
     if !gpu.cuda13_ok {
@@ -949,8 +1134,94 @@ mod asr_variant_tests {
 
     fn file_of(sel: Value) -> &'static str {
         match resolve_asr_choice(Path::new("."), Path::new("no-models"), &sel) {
-            AsrChoice::Ggml { model, .. } => model.file,
+            AsrChoice::Ggml { model, .. } | AsrChoice::Server { model, .. } => model.file,
             other => panic!("{}", other.describe()),
+        }
+    }
+
+    #[test]
+    fn parakeet_v3_and_nemotron_run_in_the_server_and_ultra_on_transcribe_cpp() {
+        let on = |sel: Value| match resolve_asr_choice(Path::new("."), Path::new("no-models"), &sel) {
+            AsrChoice::Server { model, .. } => format!("server {}", model.id),
+            AsrChoice::Ggml { model, .. } => format!("transcribe.cpp {}", model.id),
+            AsrChoice::CrisperWhisper { .. } => "crisperwhisper".to_string(),
+        };
+        assert_eq!(on(serde_json::json!({})), "server parakeet-v3");
+        assert_eq!(on(serde_json::json!({ "asr_engine": "nemotron" })), "server nemotron");
+        assert_eq!(on(serde_json::json!({ "asr": "ultra-int8" })), "transcribe.cpp parakeet-ultra");
+    }
+
+    /// A card or driver that does not run CUDA 13 (`acpp::cuda_build` Cuda12) gets the CUDA 12.9 build of every engine
+    /// and its runtime; a card chosen that runs no CUDA build keeps the CUDA build, which refuses with the reason.
+    #[test]
+    fn a_cuda_12_card_takes_the_cuda_12_9_build_of_every_engine() {
+        use crate::acpp::Build;
+        assert_eq!(tcpp_build_of(Ok(Build::Cuda12)), dub_asr::tcpp::Build::Cuda12);
+        assert_eq!(sep_build_of(Ok(Build::Cuda12)), dub_sep::asset::Build::Cuda12);
+        assert_eq!(crate::acpp::runtime_component(Build::Cuda12), Some("cuda12-runtime"));
+        assert_eq!(dub_sep::asset::Build::Cuda12.runtime_component(), Some("cuda12-runtime"));
+        assert_eq!(dub_asr::tcpp::Build::Cuda12.dir(), "transcribe-engine-cuda12");
+        assert_eq!(crate::setup::llama_dir(Path::new("R"), Build::Cuda12), Path::new("R").join("tools").join("llama-cuda12"));
+        assert!(crate::setup::llama_parts(Build::Cuda12).files.iter().all(|f| f.dest_rel.starts_with("tools/llama-cuda12/")) || cfg!(target_os = "macos"));
+        for (server, tcpp, sep) in [
+            (Build::Cuda13, dub_asr::tcpp::Build::Cuda, dub_sep::asset::Build::Cuda13),
+            (Build::Vulkan, dub_asr::tcpp::Build::Vulkan, dub_sep::asset::Build::Vulkan),
+            (Build::Cpu, dub_asr::tcpp::Build::Cpu, dub_sep::asset::Build::Cpu),
+        ] {
+            assert_eq!((tcpp_build_of(Ok(server)), sep_build_of(Ok(server))), (tcpp, sep), "{server:?}");
+        }
+        assert_eq!(tcpp_build_of(Err("no CUDA build".into())), dub_asr::tcpp::Build::Cuda);
+        assert_eq!(sep_build_of(Err("no CUDA build".into())), dub_sep::asset::Build::Cuda13);
+    }
+
+    /// Qwen3-TTS runs each build on its ggml device with the backend module of that device beside the library: the
+    /// CUDA one for both CUDA builds (the component carries the card's), Vulkan's, none for the processor and Metal.
+    #[test]
+    fn qwen_takes_the_backend_module_of_the_voicing_device() {
+        use crate::acpp::Build;
+        let (cuda, vulkan) = if cfg!(windows) { ("ggml-cuda.dll", "ggml-vulkan.dll") } else { ("libggml-cuda.so", "libggml-vulkan.so") };
+        for (build, device, module, component) in [
+            (Build::Cuda13, "CUDA0", Some(cuda), Some("qwen3-tts-cuda")),
+            (Build::Cuda12, "CUDA0", Some(cuda), Some("qwen3-tts-cuda")),
+            (Build::Vulkan, "Vulkan0", Some(vulkan), Some("qwen3-tts-vulkan")),
+            (Build::Cpu, "CPU", None, None),
+            (Build::Metal, "MTL0", None, None),
+        ] {
+            assert_eq!((qwen_device(build), qwen_module(build), qwen_module_component(build)), (device, module, component), "{build:?}");
+        }
+        let root = std::env::temp_dir().join(format!("dub_qwen_components_{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("active.json"), r#"{"tts_backend":"vulkan"}"#).unwrap();
+        assert_eq!(qwen_components(&root), ["qwen3-tts-engine", "qwen3-tts-vulkan"]);
+        assert!(!qwen_library_installed(&root, Build::Vulkan));
+        let dir = qwentts::dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(qwentts::LIBRARY), b"").unwrap();
+        assert!(!qwen_library_installed(&root, Build::Vulkan), "the module of the device is missing");
+        assert!(qwen_library_installed(&root, Build::Cpu));
+        std::fs::write(dir.join(vulkan), b"").unwrap();
+        assert!(qwen_library_installed(&root, Build::Vulkan));
+        std::fs::write(root.join("active.json"), r#"{"tts_backend":"cpu"}"#).unwrap();
+        assert_eq!(qwen_components(&root), ["qwen3-tts-engine"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Qwen3-TTS clamps fp16 on Vulkan whatever the card, and on CUDA only for a card older than Ampere.
+    #[test]
+    fn qwen_clamps_fp16_on_vulkan_and_before_ampere() {
+        use crate::acpp::Build;
+        for (build, compute, clamp) in [
+            (Build::Vulkan, None, true),
+            (Build::Vulkan, Some("8.9"), true),
+            (Build::Cuda13, Some("7.5"), true),
+            (Build::Cuda12, Some("6.1"), true),
+            (Build::Cuda13, Some("8.0"), false),
+            (Build::Cuda13, Some("12.0"), false),
+            (Build::Cuda12, None, false),
+            (Build::Cpu, Some("7.5"), false),
+            (Build::Metal, None, false),
+        ] {
+            assert_eq!(qwen_clamp_fp16(build, compute), clamp, "{build:?} {compute:?}");
         }
     }
 
@@ -981,17 +1252,10 @@ mod resolve_live_tests {
         let choice = resolve_asr_choice(repo, &mroot, &sel);
         eprintln!("sel = {}", redact_selection(&sel, false, false));
         eprintln!("resolved = {}", choice.describe());
-        // Ассертим Whisper только когда он РЕАЛЬНО установлен: резолв по контракту тихо откатывается
-        // на Parakeet без бинаря/модели (ревью: иначе тест ложно валится на машине без whisper).
-        let whisper_ready = whisper_bin(repo).is_file()
-            && ["large-v3-turbo", "large-v3", "medium", "small", "base", "tiny",
-            ]
-                .iter()
-                .any(|m| whisper_model_installed(&mroot, m));
-        if pick(&sel, "asr_engine") == Some("whisper") && whisper_ready {
+        if pick(&sel, "asr_engine") == Some("whisper") && crisperwhisper_installed(&mroot) {
             assert!(
-                choice.describe().starts_with("Whisper"),
-                "active.json просит whisper (и он установлен), но резолв дал: {}", choice.describe()
+                choice.describe().starts_with("CrisperWhisper"),
+                "active.json просит whisper (и CrisperWhisper скачан), но резолв дал: {}", choice.describe()
             );
         }
     }

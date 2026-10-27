@@ -34,6 +34,10 @@ pub struct Voice {
     pub mode: String, // clone | autocast | auto | voice
     #[serde(default)]
     pub name: Option<String>,
+    /// The emotion reference of this project: Some(true) clones each line from its own piece of the
+    /// original, Some(false) every line from the speaker's one reference, None follows the setting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub emo_ref: Option<bool>,
     #[serde(flatten)]
     pub extra: Extra,
 }
@@ -47,6 +51,7 @@ impl Default for Voice {
         Voice {
             mode: default_clone(),
             name: None,
+            emo_ref: None,
             extra: Extra::new(),
         }
     }

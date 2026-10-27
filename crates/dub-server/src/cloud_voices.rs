@@ -60,6 +60,11 @@ pub fn list(model: &str) -> Option<&'static Vec<VoiceMeta>> {
     db().get(catalog_model(model)).map(|m| &m.voices)
 }
 
+/// The voice a model speaks with when none is chosen: its first grown-up voice in the catalog, as Speech Studio picks it.
+pub fn default_voice(model: &str) -> Option<&'static str> {
+    list(model)?.iter().find(|v| v.age != "child" && v.age != "teen").map(|v| v.name.as_str())
+}
+
 /// Голоса модели «взрослого» звучания (age adult/unknown/elderly) — не teen/child. Для обычного кастинга,
 /// чтобы взрослому спикеру не достался детский голос (детские зарезервированы под будущий child-детект).
 fn is_adultish(v: &VoiceMeta) -> bool {

@@ -459,9 +459,9 @@ fn shape(name: &str, args: &Value, value: Value) -> Value {
         "settings_get" => json!({
             "settings": value["selection"],
             "choices": {
-                "asr_engine": value["asr_engines"], "whisper_model": value["whisper_models"], "whisper_compute": value["whisper_computes"],
-                "llama_ubatch": value["llama_ubatches"], "higgs_ref_secs": value["higgs_ref_secs_opts"],
-                "local_backend": ["auto", "gpu", "cpu"], "sep_backend": ["auto", "gpu", "cpu"], "diar_backend": ["auto", "gpu", "cpu"], "asr_backend": ["auto", "gpu", "cpu"],
+                "asr_engine": value["asr_engines"],
+                "llama_ubatch": value["llama_ubatches"], "higgs_ref_secs": value["higgs_ref_secs_opts"], "tts_idle_unload_min": ["0", "5", "15", "30", "60"],
+                "local_backend": ["auto", "gpu", "vulkan", "cpu"], "tts_backend": ["auto", "gpu", "vulkan", "cpu"], "sep_backend": ["auto", "gpu", "vulkan", "cpu"], "diar_backend": ["auto", "gpu", "vulkan", "cpu"], "asr_backend": ["auto", "gpu", "vulkan", "cpu"],
             },
         }),
         "projects_list" => {
@@ -992,6 +992,7 @@ const PATCH_OPS: &[(&str, &str)] = &[
     ("translate_style", "translation_style_set"),
     ("rewrite", "rewrite_set"),
     ("recast", "voice_set"),
+    ("emo_ref", "voice_emotion_set"),
     ("gain", "gain_set"),
     ("loudness", "loudness_set"),
     ("voiceover_gain", "voiceover_gain_set"),
@@ -1079,8 +1080,8 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "studio_wait",
-                description: "Wait for work to finish instead of polling: a job (job_id, as project_analyze, project_dub_audio, project_render, project_export_lang, project_retranslate, project_remix, project_align, project_resume, voices_download_pack, segment_shorten, glossary_extract or a one-call tool still at work returned it, or the fetch.id of project_create_from_url), or until one kind of work is over - analyze, dub_audio, render, export_lang, retranslate, remix, align, shorten, download (models and downloads by link), voices_pack, separate, detect_text, glossary - or everything (until: idle, the default). Returns when it is done or after seconds (30 by default, at most 55, under the minute clients allow a call) with how far it got; call it again to keep waiting.",
-                schema: || object(json!({ "job_id": { "type": "string" }, "until": { "type": "string", "enum": ["idle", "analyze", "dub_audio", "render", "export_lang", "retranslate", "remix", "align", "shorten", "download", "voices_pack", "separate", "detect_text", "glossary"] }, "seconds": { "type": "integer" } }), &[]),
+                description: "Wait for work to finish instead of polling: a job (job_id, as project_analyze, project_dub_audio, project_render, project_export_lang, project_retranslate, project_remix, project_align, project_resume, voices_download_pack, voice_denoise, segment_shorten, glossary_extract or a one-call tool still at work returned it, or the fetch.id of project_create_from_url), or until one kind of work is over - analyze, dub_audio, render, export_lang, retranslate, remix, align, shorten, download (models and downloads by link), voices_pack, separate, detect_text, glossary, voice_clean - or everything (until: idle, the default). Returns when it is done or after seconds (30 by default, at most 55, under the minute clients allow a call) with how far it got; call it again to keep waiting.",
+                schema: || object(json!({ "job_id": { "type": "string" }, "until": { "type": "string", "enum": ["idle", "analyze", "dub_audio", "render", "export_lang", "retranslate", "remix", "align", "shorten", "download", "voices_pack", "separate", "detect_text", "glossary", "voice_clean"] }, "seconds": { "type": "integer" } }), &[]),
                 call: |_| composite("wait"),
             },
             Tool {
@@ -1140,6 +1141,24 @@ fn tools() -> &'static [Tool] {
                 call: |args| post("/setup/remove".into(), json!({ "ids": args.get("ids").cloned().unwrap_or_default() })),
             },
             Tool {
+                name: "models_update_plan",
+                description: "The update screen's plan of this release: what is updated (from, to, bytes to download, reason), what is new, what former releases left that is no longer needed (path, bytes freed, reason), the totals, and show: whether the window shows the screen at start. models_update_apply carries it out.",
+                schema: nothing,
+                call: |_| get("/setup/update".into()),
+            },
+            Tool {
+                name: "models_update_apply",
+                description: "The update screen's button: downloads what the plan updates and adds in the background (studio_wait until download waits for it, models_status shows it) and removes what former releases left once all of it is in place; with nothing to download it removes them at once. Answers the download and the plan.",
+                schema: nothing,
+                call: |_| post("/setup/update/apply".into(), json!({})),
+            },
+            Tool {
+                name: "models_update_later",
+                description: "The update screen's «Later»: this release's plan is not shown at start again; models_update_plan and Settings › Models still have it.",
+                schema: nothing,
+                call: |_| post("/setup/update/seen".into(), json!({})),
+            },
+            Tool {
                 name: "models_folder_open",
                 description: "Open the models folder in Explorer, for the user (to put model files there by hand or see what takes the disk); answers its path.",
                 schema: nothing,
@@ -1159,13 +1178,13 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "models_select",
-                description: "Use a downloaded variant for its stage (id from models_status): a quantisation of Higgs (higgs, higgs-q6_k, higgs-q4_k_m), of Gemma (gemma, gemma-q5_0, gemma-q6_k, gemma-q8_0) or of the separator (roformer, roformer-q5, roformer-q4), or a speech recogniser (parakeet, parakeet-fp32, parakeet-ultra, parakeet-ultra-int8, whisper-tiny ... whisper-large-v3-turbo). Applies from the next job, no restart.",
+                description: "Use a downloaded variant for its stage (id from models_status): a quantisation of Higgs (higgs, higgs-q6_k, higgs-q4_k_m), of Gemma (gemma, gemma-q5_0, gemma-q6_k, gemma-q8_0) or of the separator (roformer, roformer-q5, roformer-q4), or a speech recogniser (parakeet, parakeet-ultra, crisperwhisper-turbo). Applies from the next job, no restart.",
                 schema: || id_only("id", "component id from models_status"),
                 call: |args| post("/engine/select".into(), json!({ "id": text(args, "id")? })),
             },
             Tool {
                 name: "settings_get",
-                description: "The studio's settings and the values each takes: the model variant of each stage (tts, mt, sep, asr, asr_engine, whisper_model, whisper_compute, whisper_device), where each local stage runs (local_backend, sep_backend, diar_backend, asr_backend: auto, gpu, cpu), the voicing switches (qc_duration, multitake, breath_on, speech_rate_on, emo_ref_on, duck_on, auto_shorten: rewrite the translation of lines that do not fit their slot and voice them again during a render, lead_into_silence: a line that does not fit starts up to a second earlier, into the silence before it, instead of being sped up; off by default), the checks (\"1\" on, \"0\" off; a sub-check works only while its check is on): asr_repeats with asr_repeat_inside, asr_repeat_lines, asr_long_words (looped recognition); tr_gender (the speaker's gender for the translator) with tr_gender_check (Russian first-person forms); tr_latin (no source words left in Latin); tts_caps and tts_symbols (the text sent to synthesis); qc_audio with qc_repeat, qc_end, qc_silence, qc_cloud (the take's sound); qc_asr (off by default) with qc_asr_letters, qc_asr_repeat; qc_voice_gender (the dub voice against the speaker's gender), the memory limits (llama_ubatch, higgs_ref_secs), who translates and who reads frames (llm_provider, vision_provider: local = the studio's Gemma, server = a local OpenAI-compatible server at srv_url with the models srv_llm and srv_vision, openrouter = the cloud with or_llm and or_vision), the other cloud stages through OpenRouter (or_tts_on, or_tts_model, or_tts_voice, or_tts_autocast, or_asr_on, or_asr, or_concurrency), whether the proxy is on (proxy_on; proxy_settings_set sets its address) and the stage benchmark (bench). The OpenRouter key is never shown: or_key_set says whether there is one.",
+                description: "The studio's settings and the values each takes: the model variant of each stage (tts, mt, sep, asr, asr_engine: parakeet or whisper, which is CrisperWhisper), where each local stage runs, auto, gpu (CUDA 13 or 12.9), vulkan or cpu: local_backend (the common one), tts_backend (Higgs and Supertonic in the audio.cpp engine, Qwen3-TTS on its own backend module), sep_backend (BSRoformer), diar_backend (the audio.cpp engine), asr_backend (the audio.cpp engine and transcribe.cpp), the voicing switches (qc_duration, multitake, breath_on, speech_rate_on, emo_ref_on, duck_on, auto_shorten: rewrite the translation of lines that do not fit their slot and voice them again during a render, lead_into_silence: a line that does not fit starts up to a second earlier, into the silence before it, instead of being sped up; off by default), the checks (\"1\" on, \"0\" off; a sub-check works only while its check is on): asr_repeats with asr_repeat_inside, asr_repeat_lines, asr_long_words (looped recognition); tr_gender (the speaker's gender for the translator) with tr_gender_check (Russian first-person forms); tr_latin (no source words left in Latin); tts_caps and tts_symbols (the text sent to synthesis); qc_audio with qc_repeat, qc_end, qc_silence, qc_cloud (the take's sound); qc_asr (off by default) with qc_asr_letters, qc_asr_repeat; qc_voice_gender (the dub voice against the speaker's gender), the memory limits (llama_ubatch, higgs_ref_secs, tts_idle_unload_min: minutes idle before the voicing model leaves the card, 0, 5, 15, 30 or 60; 0 never), who translates and who reads frames (llm_provider, vision_provider: local = the studio's Gemma, server = a local OpenAI-compatible server at srv_url with the models srv_llm and srv_vision, openrouter = the cloud with or_llm and or_vision), the other cloud stages through OpenRouter (or_tts_on, or_tts_model, or_tts_voice, or_tts_autocast, or_asr_on, or_asr, or_concurrency), whether the proxy is on (proxy_on; proxy_settings_set sets its address) and the stage benchmark (bench). The OpenRouter key is never shown: or_key_set says whether there is one.",
                 schema: nothing,
                 call: |_| get("/engine/capabilities".into()),
             },
@@ -1192,7 +1211,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "settings_set",
-                description: "Change one setting to a text value. TTS: tts_provider=local|openrouter|google, google_tts_model=<id without models/>, google_tts_mode=standard|batch. Voice/autocast use or_tts_voice/or_tts_autocast, parallel requests use or_concurrency (1..16). Applies from the next job. Secrets: openrouter_set_key, google_set_key; proxy: proxy_settings_set.",
+                description: "Change one setting to a text value. TTS: tts_provider=local|openrouter|google, google_tts_model=<id without models/>, google_tts_mode=standard|batch|auto (auto: up to 10 phrases as direct requests, more as one Batch at half the price). Voice/autocast use or_tts_voice/or_tts_autocast, parallel requests use or_concurrency (1..16). cloud_daily_limit_usd caps what agents and programs spend on the cloud a day (0 = no limit; see cloud_spend). Applies from the next job. Secrets: openrouter_set_key, google_set_key; proxy: proxy_settings_set.",
                 schema: || object(json!({ "key": { "type": "string" }, "value": { "type": "string" } }), &["key", "value"]),
                 call: |args| {
                     let key = text(args, "key")?;
@@ -1216,7 +1235,7 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "engine_presets_get",
-                description: "The hardware presets (by graphics card, a weak card with the cloud, the cloud alone), this computer's card, video memory and RAM, and the preset recommended for it.",
+                description: "The hardware presets (by graphics card, a weak card with the cloud, the cloud alone), this computer's card, video memory and RAM, the preset recommended for it, and the preset the settings are on now (custom when none gives them).",
                 schema: nothing,
                 call: |_| get("/engine/presets".into()),
             },
@@ -1311,9 +1330,15 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "project_google_tts_report",
-                description: "Direct Google TTS usage, generated audio duration, wall time, tariff-based cost estimate (not invoice), and persisted Batch names/states for a project. settings_set tts_provider=google, google_tts_model=<id without models/>, google_tts_mode=standard|batch; project_dub_audio or project_render starts the normal pipeline. A local job cancellation pauses polling; the remote Batch continues and resume uses its saved name without submitting again.",
+                description: "A project's Google Gemini voicing: the Batch under way (pending, with its journal), the last job (last: mode, phrases asked, cached, ok, failed with their reasons, cost estimate from the published tariff, not an invoice) and the batches done. settings_set tts_provider=google, google_tts_model=<id without models/>, google_tts_mode=standard|batch|auto; project_dub_audio or project_render voices through it. A phrase already voiced is taken from the project's cache, not asked again; a local job cancellation stops waiting, the Batch goes on in Google and the next job finds it by its name instead of sending it again.",
                 schema: || id_only("pid","project id"),
                 call: |args| get(format!("/projects/{}/google-tts",text(args,"pid")?)),
+            },
+            Tool {
+                name: "cloud_spend",
+                description: "What the cloud voicing cost so far (Google Gemini: the tariff estimate after each run), in all, today, by provider, model and day, with the daily limit for agents and programs (daily_limit_usd, settings_set cloud_daily_limit_usd); pid narrows it to one project.",
+                schema: || object(json!({ "pid": { "type": "string", "description": "project id" } }), &[]),
+                call: |args| get(format!("/cloud/spend{}", query(&[("project", given(args, "pid"))]))),
             },
             Tool {
                 name: "openrouter_status",
@@ -1959,6 +1984,15 @@ fn tools() -> &'static [Tool] {
                 },
             },
             Tool {
+                name: "voice_emotion_set",
+                description: "Emotion of the original for this project's cloned voices: on - every line is cloned from its own piece of the original, so shouting and whispering carry over but the timbre can shift from line to line; off - every line from the speaker's one reference, one steady voice (a narrator, a lecture); default - as Settings - Quality says. Every line becomes dirty.",
+                schema: || object(json!({ "pid": pid(), "value": { "type": "string", "enum": ["on", "off", "default"] }, "response_format": detail() }), &["pid", "value"]),
+                call: |args| {
+                    text(args, "value")?;
+                    edit(args, "emo_ref")
+                },
+            },
+            Tool {
                 name: "gain_set",
                 description: "The dub track's volume in dB (-24 to 24), applied at the next render without voicing again.",
                 schema: || object(json!({ "pid": pid(), "gain_db": { "type": "number" }, "response_format": detail() }), &["pid", "gain_db"]),
@@ -2248,6 +2282,18 @@ fn tools() -> &'static [Tool] {
                 description: "Delete a voice from the library.",
                 schema: || id_only("name", "voice name from voices_list"),
                 call: |args| post("/voices/delete".into(), json!({ "name": text(args, "name")? })),
+            },
+            Tool {
+                name: "voice_denoise",
+                description: "Remove noise from a voice's reference (DPDFNet) before cloning: a job, follow it with studio_wait. db limits how far the noise is pushed down (18 keeps speech natural; 0 or none removes as much as it can). The original is kept and voice_restore brings it back; voices_list names the cleaned voices.",
+                schema: || object(json!({ "name": { "type": "string", "description": "voice name from voices_list" }, "db": { "type": "number", "minimum": 0 } }), &["name"]),
+                call: |args| post("/voices/denoise".into(), json!({ "name": text(args, "name")?, "db": args.get("db").cloned().unwrap_or(Value::Null) })),
+            },
+            Tool {
+                name: "voice_restore",
+                description: "Bring back a voice's sound as it was before voice_denoise.",
+                schema: || id_only("name", "voice name from voices_list"),
+                call: |args| post("/voices/restore".into(), json!({ "name": text(args, "name")? })),
             },
             Tool {
                 name: "voice_from_speaker",

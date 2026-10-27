@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { HUB_GRADIENTS, HUB_TEXT, hubChanged, hubText, reportNotice, stackTheme, type HubItem } from "../lib/studioHub";
+import { HUB_GRADIENTS, HUB_TEXT, hubChanged, hubText, reportNotice, showsNow, stackTheme, type HubItem, type HubView } from "../lib/studioHub";
 
 const MAX_VISIBLE = 3;
 
@@ -21,8 +21,9 @@ function inline(text: string, key: string): ReactNode[] {
   return out;
 }
 
-/** The hub's strips across the top of the window: full width, centred text with links, a close button; at most three. */
-export function HubBars({ items }: { items: HubItem[] }) {
+/** The hub's strips across the top of the window: full width, centred text with links, a close button; at most three,
+ * those of the section the window is in (`view`). An ad carries its label and erid. */
+export function HubBars({ items, view }: { items: HubItem[]; view: HubView }) {
   const { t, i18n } = useTranslation();
   const [closed, setClosed] = useState<Set<string>>(() => new Set());
   const [elapsed, setElapsed] = useState(0);
@@ -32,7 +33,7 @@ export function HubBars({ items }: { items: HubItem[] }) {
     return () => window.clearInterval(timer);
   }, []);
   const visible = items
-    .filter((item) => item.kind === "bar" && item.eligible && !closed.has(item.id) && elapsed >= (item.rules?.delay_s ?? 0))
+    .filter((item) => item.kind === "bar" && !closed.has(item.id) && showsNow(item, elapsed, view))
     .slice(0, MAX_VISIBLE);
   const shownIds = visible.map((item) => item.id).join(",");
   useEffect(() => {
@@ -52,7 +53,10 @@ export function HubBars({ items }: { items: HubItem[] }) {
           <div key={item.id} className="flex items-start justify-between gap-3 px-6 py-2 text-[13px] leading-6"
                style={{ background: HUB_GRADIENTS[theme], color: HUB_TEXT[theme] }}
                onClick={(e) => { if ((e.target as HTMLElement).closest("a")) reportNotice(item.id, "clicked", "link").catch(() => undefined); }}>
-            <div className="w-full text-center">{inline((content?.body || content?.title || "").replace(/\s*\n\s*/g, " "), item.id)}</div>
+            <div className="w-full text-center">
+              {inline((content?.body || content?.title || "").replace(/\s*\n\s*/g, " "), item.id)}
+              {item.ad?.label && <span className="ml-2 text-[11px] opacity-75">{item.ad.erid ? t("hub.adErid", { erid: item.ad.erid }) : t("hub.ad")}</span>}
+            </div>
             {item.dismissible && (
               <button type="button" onClick={() => close(item.id)} aria-label={t("hub.close")} className="shrink-0 rounded-md p-0.5 opacity-85 hover:opacity-100">
                 <X size={16} />

@@ -95,7 +95,7 @@ export type Title = {
 export type Project = {
   meta: { video: string; duration: number; width: number; height: number; fps: number; src_codec: string };
   mode: string; tgt_lang: string;
-  audio: { keep_music: boolean; voice: { mode: string; name?: string | null }; rewrite?: string | null; gain_db?: number; loudness_normalize?: boolean; voiceover_gain_db?: number; translate_style?: string; keep_original_track?: boolean; container?: string };
+  audio: { keep_music: boolean; voice: { mode: string; name?: string | null; emo_ref?: boolean | null }; rewrite?: string | null; gain_db?: number; loudness_normalize?: boolean; voiceover_gain_db?: number; translate_style?: string; keep_original_track?: boolean; container?: string };
   segments: Segment[];
   subs: { mode: string; burn?: boolean; bilingual: Bilingual };
   captions: {
@@ -168,10 +168,10 @@ export const slot = (sel: Selection | undefined, key: string): string | undefine
 };
 export type Capabilities = {
   device: string; tts_quant: string; asr_model: string; asr_label: string; ffmpeg: boolean;
-  languages: string[]; voice_modes: string[]; models?: ModelStack;
+  languages: string[]; voice_modes: string[]; models?: ModelStack; llm_provider?: LlmProviderKind;
   // Выбор ASR-движка (active.json): движок parakeet|whisper + модель/квант Whisper.
   selection?: Selection;
-  asr_engines?: string[]; whisper_models?: string[]; whisper_computes?: string[];
+  asr_engines?: string[];
   // Видимые лимиты RAM (настройки): prefill-батч Gemma + длина реф-клипа клона.
   llama_ubatches?: string[]; higgs_ref_secs_opts?: string[];
 };
@@ -205,19 +205,28 @@ export type DownloadJob = {
   downloaded: number; total: number; speedBps: number; waitingS: number;
   parts: { id: string; done: number; total: number }[];
   errorCode?: string | null; error?: string | null; startedAt: number; updatedAt: number;
+  retireAfter?: boolean;   // the update screen's download: what former releases left goes once it completes
 };
 // Видеокарта против требований CUDA 13 (драйвер 580+, compute capability 7.5+).
 export type GpuReason = "no_nvidia" | "no_device" | "cuda_init" | "driver_old" | "gpu_old";
 export type GpuReport = {
   nvidia: boolean; name?: string | null; driverVersion?: string | null; cudaDriver?: string | null;
   compute?: string | null; cuda13Ok: boolean; reason?: GpuReason | null; minDriver: number; minCompute: string;
+  cudaBuild?: "cuda13" | "cuda12" | null;   // the CUDA build of the engines this card runs; none — no CUDA at all
 };
 export type SetupStatus = {
   components: SetupComponent[]; ready: boolean;
-  downloadPending: number; driverOk: boolean; llamaBuild: string;
+  downloadPending: number; driverOk: boolean; llamaBuild: string; llamaNote: string | null;
   modelsDir: string; freeBytes: number | null; gpu: GpuReport; active: DownloadJob | null;
 };
 export type ImportResult = { imported: string[]; files: number; errors: string[]; status: SetupStatus };
+/** The update screen: what this release updates (from → to), adds and no longer needs, each with its reason. */
+export type UpdateRow = { id: string; name: string; from: string | null; to: string; download: number; reason: string };
+export type UpdateGone = { path: string; size: number; reason: string };
+export type UpdatePlan = {
+  version: string; updated: UpdateRow[]; added: UpdateRow[]; retired: UpdateGone[];
+  download: number; freed: number; show: boolean;
+};
 
 // Отказ маршрутов закачки/удаления: код для текста в UI + подробность для журнала.
 export class SetupError extends Error {
@@ -267,6 +276,10 @@ export const editsSettled = (): Promise<void> => _patchChain.then(() => undefine
 
 // Общие обёртки: GET/POST c JSON-телом -> j<T>. Убирают повтор fetch+headers+JSON.stringify.
 const getJson = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`).then(j<T>);
+/** A read the window makes by itself to keep a screen current (statuses, levels, hardware, queues): the hub counts it
+ * as no feature, so a feature count means a person or an agent asked for it. */
+const POLLED = { "x-hub-skip": "1" };
+const getPolled = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`, { headers: POLLED }).then(j<T>);
 const postJson = <T>(path: string, body: unknown): Promise<T> =>
   fetch(`${BASE}${path}`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }).then(j<T>);
 // POST маршрутов /setup/*: отказ приходит {code, detail} -> SetupError (тело не JSON — код по HTTP-статусу).
@@ -316,6 +329,8 @@ async function coded<T>(r: Response): Promise<T> {
 const sendCoded = <T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> =>
   fetch(`${BASE}${path}`, body === undefined ? { method } : { method, headers: JSON_HEADERS, body: JSON.stringify(body) }).then(coded<T>);
 const getCoded = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`).then(coded<T>);
+/** `getCoded` for a read the window makes by itself (see `POLLED`). */
+const getCodedPolled = <T>(path: string): Promise<T> => fetch(`${BASE}${path}`, { headers: POLLED }).then(coded<T>);
 const postCoded = <T>(path: string, body: unknown): Promise<T> =>
   fetch(`${BASE}${path}`, { method: "POST", headers: JSON_HEADERS, body: JSON.stringify(body) }).then(coded<T>);
 
@@ -346,11 +361,11 @@ export const urlApi = {
   probe: (url: string, cookiesText: string | null) => postCoded<UrlProbe>("/url/probe", { url, cookies_text: cookiesText }),
   start: (req: { url: string; quality: UrlQuality; subs_lang: string | null; cookies_text: string | null }) => postCoded<{ fetch: UrlFetch }>("/projects/from_url", req),
   list: () => getCoded<{ fetches: UrlFetch[] }>("/url/fetches"),
-  get: (id: string) => getCoded<UrlFetch>(`/url/fetches/${encodeURIComponent(id)}`),
+  get: (id: string) => getCodedPolled<UrlFetch>(`/url/fetches/${encodeURIComponent(id)}`),
   cancel: (id: string) => postCoded<{ fetch: UrlFetch }>(`/url/fetches/${encodeURIComponent(id)}/cancel`, {}),
   resume: (id: string) => postCoded<{ fetch: UrlFetch }>(`/url/fetches/${encodeURIComponent(id)}/resume`, {}),
   forget: (id: string) => sendCoded<{ ok: boolean }>("DELETE", `/url/fetches/${encodeURIComponent(id)}`),
-  tool: () => getCoded<UrlTool>("/url/tool"),
+  tool: () => getCodedPolled<UrlTool>("/url/tool"),
   updateTool: () => postCoded<{ started: boolean; tool: UrlTool }>("/url/tool/update", {}),
 };
 
@@ -374,22 +389,33 @@ export const llmProviderOf = (sel: Selection | undefined, stage: "llm" | "vision
   return v === "server" || v === "openrouter" || v === "agent" ? v : "local";
 };
 
+/** Fired after the server took a new engine, model or device choice. */
+export const SELECTION_CHANGED = "dub:selection-changed";
+const selectionChanged = <T,>(answer: T): T => {
+  window.dispatchEvent(new Event(SELECTION_CHANGED));
+  return answer;
+};
+
 export const api = {
   capabilities: () => getJson<Capabilities>("/engine/capabilities"),
-  setupStatus: () => getJson<SetupStatus>("/setup/status"),
+  setupStatus: () => getPolled<SetupStatus>("/setup/status"),
   setupDownload: (ids: string[]) => setupPost<{ download: DownloadJob }>("/setup/download", { ids }),
   setupCancel: () => setupPost<{ paused: boolean }>("/setup/cancel", {}),   // пауза: скачанное остаётся, «Продолжить» докачивает
   setupRemove: (ids: string[]) => setupPost<{ removed: string[]; freedBytes: number; errors: string[]; status: SetupStatus }>("/setup/remove", { ids }),
   setupOpenModels: () => setupPost<{ path: string }>("/setup/open-models", {}),
-  hwSnapshot: () => getJson<HwSnapshot>("/hw/snapshot"),
+  setupUpdate: () => getPolled<UpdatePlan>("/setup/update"),
+  // the update screen's button: downloads in the background, then removes what former releases left
+  setupUpdateApply: () => setupPost<{ download: DownloadJob | null; plan: UpdatePlan }>("/setup/update/apply", {}),
+  setupUpdateSeen: () => setupPost<{ seen: string }>("/setup/update/seen", {}),
+  hwSnapshot: () => getPolled<HwSnapshot>("/hw/snapshot"),
   setupBrowse: (id?: string) => setupPost<ImportResult & { picked: boolean }>("/setup/browse", id ? { id } : {}),
   fonts: () => getJson<{ fonts: Record<string, string> }>("/fonts"),
   setOpts: (edit: Partial<ModelStack>) =>
     fetch(`${BASE}/engine/opts`, { method: "PATCH", headers: JSON_HEADERS, body: JSON.stringify(edit) }).then(j<{ models: ModelStack }>),
   // Сделать вариант модели (квант) активным: id компонента настроек -> пишет models/active.json на бэке.
-  selectModel: (id: string) => postJson<Selection>("/engine/select", { id }),
+  selectModel: (id: string) => postJson<Selection>("/engine/select", { id }).then(selectionChanged),
   // Прямая установка слота выбора (движок/модель/квант ASR) без скачивания: {key,value} -> active.json.
-  setSelection: (key: string, value: string) => postJson<Selection>("/engine/select", { key, value }),
+  setSelection: (key: string, value: string) => postJson<Selection>("/engine/select", { key, value }).then(selectionChanged),
   // Облачные модели (OpenRouter): проверка ключа + фильтрованный каталог по модальности (llm/vision/tts).
   openrouterVerify: (key: string) => postJson<{ ok: boolean; data?: { label?: string; limit?: number; usage?: number }; error?: unknown }>("/engine/openrouter/verify", { key }),
   // Ключ OpenRouter: сервер отдаёт только «задан ли» и источник; PUT сначала проверяет ключ в OpenRouter.
@@ -398,6 +424,7 @@ export const api = {
   saveGoogleKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/google/settings", { api_key: apiKey }),
   deleteGoogleKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/google/settings"),
   googleModels: () => getJson<{models: {name:string;displayName?:string;supportedGenerationMethods?:string[]}[]}>("/engine/google/models"),
+  cloudSpend: () => getJson<{ total: number; today: number; unpriced: number; providers: { key: string; usd: number; runs: number }[]; daily_limit_usd: number }>("/cloud/spend"),
   saveOpenrouterKey: (apiKey: string) => sendCoded<OpenRouterSettings>("PUT", "/engine/openrouter/settings", { api_key: apiKey }),
   deleteOpenrouterKey: () => sendCoded<OpenRouterSettings>("DELETE", "/engine/openrouter/settings"),
   // Прокси: адрес без пароля + флаг. password: нет поля — оставить сохранённый, null — удалить, строка — заменить.
@@ -418,9 +445,9 @@ export const api = {
   // Прокси: проверить связность до HF (закачка моделей) и OpenRouter при таком режиме/адресе — до сохранения.
   proxyTest: (form: { mode: ProxyMode; kind: ProxyKind; url: string; password?: string }) => postJson<ProxyProbe>("/engine/proxy/test", form),
   // Пресеты железа: список + детект GPU/VRAM + рекомендация; применение пишет кванты/облако в active.json.
-  hwPresets: () => getJson<{ presets: { id: string; title: string; subtitle: string }[]; hardware: { gpuName: string; totalVramGb: number; totalRamGb: number; hasGpu: boolean; recommended: string; reason: string } }>("/engine/presets"),
-  applyPreset: (id: string) => postJson<{ ok: boolean; id: string; applied: { key: string; value: string }[] }>("/engine/preset", { id }),
-  voices: () => getJson<{ voices: string[] }>("/voices"),
+  hwPresets: () => getJson<{ presets: { id: string; title: string; subtitle: string }[]; hardware: { gpuName: string; totalVramGb: number; totalRamGb: number; hasGpu: boolean; recommended: string; reason: string }; current: string }>("/engine/presets"),
+  applyPreset: (id: string) => postJson<{ ok: boolean; id: string; applied: { key: string; value: string }[] }>("/engine/preset", { id }).then(selectionChanged),
+  voices: () => getJson<{ voices: string[]; cleaned?: string[] }>("/voices"),
   // Дефолты запуска дубляжа (форма стартового экрана) хранит сервис: одни на все окна и агента.
   launchDefaults: () => getJson<LaunchDefaultsState>("/settings/launch"),
   saveLaunchDefaults: (patch: Partial<LaunchDefaults>) =>
@@ -432,7 +459,7 @@ export const api = {
     throw e;
   }),
   recordDevices: () => getJson<{ devices: string[] }>("/record/devices"),
-  recordLevel: () => getJson<{ level: number }>("/record/level"),
+  recordLevel: () => getPolled<{ level: number }>("/record/level"),
   recordStart: (name: string, device?: string) => postJson<{ ok: boolean; name?: string; error?: string }>("/record/start", { name, device }),
   recordStop: () => fetch(`${BASE}/record/stop`, { method: "POST" }).then(j<{ name: string | null; voices: string[] }>),
   voicesDownloadPack: () => fetch(`${BASE}/voices/download-pack`, { method: "POST" }).then(j<{ job_id: string }>),
@@ -441,6 +468,8 @@ export const api = {
   voiceSampleUrl: (name: string) => `${BASE}/voices/sample?name=${encodeURIComponent(name)}`,   // прослушка выбранного голоса (<audio>)
   voicesRename: (from: string, to: string) => postJson<{ voices: string[] }>("/voices/rename", { from, to }),
   voicesDelete: (name: string) => postJson<{ voices: string[] }>("/voices/delete", { name }),
+  voiceDenoise: (name: string, db?: number) => postJson<{ job_id: string }>("/voices/denoise", { name, db: db ?? null }),
+  voiceRestore: (name: string) => postJson<{ voices: string[]; cleaned: string[] }>("/voices/restore", { name }),
   speakerVoice: (pid: string, speaker: string, name: string) => sendCoded<{ ok: boolean; name: string; voices: string[] }>("POST", `/projects/${pid}/speaker-voice`, { speaker, name }),
   // Слоты голосов из библиотеки (#114): раздать голоса по спикерам по полу/приоритету. Пустые списки -> клон.
   voiceSlots: (pid: string, slots: { male: string[]; female: string[] }) =>
@@ -449,7 +478,7 @@ export const api = {
   createProject: (file: File, subs?: File | null) => {
     const fd = new FormData(); fd.append("file", file);
     if (subs) fd.append("subs", subs);   // готовые субтитры (SRT/ASS) -> analyze возьмёт текст+тайминг вместо ASR
-    return fetch(`${BASE}/projects`, { method: "POST", body: fd }).then(j<{ project_id: string; imported_subs?: boolean }>);
+    return fetch(`${BASE}/projects`, { method: "POST", body: fd }).then(coded<{ project_id: string; imported_subs?: boolean }>);
   },
   analyze: (pid: string, tgt_lang: string, mode = "auto", src_lang = "auto", subs = "auto", rewrite = "", burn = true, detect = true, importTranslated = false, translateStyle = "", casting = false, castingRef = "", contentType = "auto", alignSubs = false, post: AnalyzePost = {}, speakerCount = 0) =>
     requireCloud(mode === "transcribe" || importTranslated ? ["recognition"] : ["recognition", "translation", "vision"]).then(() => fetch(`${BASE}/projects/${pid}/analyze?tgt_lang=${tgt_lang}&mode=${mode}&src_lang=${src_lang}&subs=${subs}&rewrite=${encodeURIComponent(rewrite)}&burn=${burn ? 1 : 0}&detect=${detect ? 1 : 0}&import_translated=${importTranslated ? 1 : 0}&translate_style=${encodeURIComponent(translateStyle)}&casting=${casting ? 1 : 0}&casting_ref=${encodeURIComponent(castingRef)}&content_type=${encodeURIComponent(contentType)}&align_subs=${alignSubs ? 1 : 0}&speaker_count=${speakerCount}${analyzePostQuery(post)}`, { method: "POST" })).then(j<{ job_id: string }>),
@@ -522,7 +551,7 @@ export const api = {
   resumeProject: (pid: string) => fetch(`${BASE}/projects/${pid}/resume`, { method: "POST" }).then(j<{ job_id: string; kind: string; project_id: string }>),
   // MCP-сервер студии: адрес для подключения агента и его статус для раздела настроек «Агент (MCP)».
   mcpUrl: () => `${BASE || window.location.origin}/mcp`,
-  mcpStatus: () => getJson<McpStatus>("/mcp/status"),
+  mcpStatus: () => getPolled<McpStatus>("/mcp/status"),
   // SSE job progress -> onEvent per message; resolves on done, rejects on error
   // signal: the watcher went away (unmount, project switch) — the stream closes, the promise rejects with AbortError.
   watchJob: (jobId: string, onEvent: (e: JobEvent) => void, signal?: AbortSignal) =>

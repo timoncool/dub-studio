@@ -136,6 +136,30 @@ pub const CUDA13_DRIVER: u32 = 580;
 pub const CUDA13_OLDEST: (u32, u32) = (7, 5);
 /// cuDriverGetVersion драйвера, поддерживающего CUDA 13.0 (1000 * major + 10 * minor).
 const CUDA13_DRIVER_API: u32 = 13_000;
+/// Second builds on CUDA 12.9 (SASS 5.2-12.0a, no PTX) for the cards and drivers CUDA 13 left behind: from Maxwell
+/// (compute capability 5.2) on a driver of the CUDA 12 branch (525+); minor version compatibility runs 12.9 there.
+pub const CUDA12_DRIVER: u32 = 525;
+pub const CUDA12_OLDEST: (u32, u32) = (5, 2);
+const CUDA12_DRIVER_API: u32 = 12_000;
+
+/// Which CUDA build of an engine runs on this card: CUDA 13 where it can, else CUDA 12.9.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CudaBuild {
+    Cuda13,
+    Cuda12,
+}
+
+/// The CUDA build for a card of this compute capability on a driver of this CUDA version; None — neither runs.
+pub fn cuda_build(compute: (u32, u32), cuda_driver: u32) -> Option<CudaBuild> {
+    if cuda13_verdict(compute, cuda_driver).is_ok() {
+        Some(CudaBuild::Cuda13)
+    } else if compute >= CUDA12_OLDEST && cuda_driver >= CUDA12_DRIVER_API {
+        Some(CudaBuild::Cuda12)
+    } else {
+        None
+    }
+}
 
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +175,8 @@ pub struct GpuReport {
     pub compute: Option<String>,
     /// Локальные стадии можно считать на GPU этой сборкой.
     pub cuda13_ok: bool,
+    /// The CUDA build the card runs (engines that have both); None — neither.
+    pub cuda_build: Option<CudaBuild>,
     /// Почему нельзя: no_nvidia | no_device | cuda_init | driver_old | gpu_old.
     pub reason: Option<&'static str>,
     pub min_driver: u32,
@@ -185,6 +211,90 @@ pub fn cuda13_verdict(compute: (u32, u32), cuda_driver: u32) -> Result<(), &'sta
     }
 }
 
+/// Why this processor cannot run `engine`, built on the studios' x86-64 floor (AVX2, FMA, F16C, BMI2), in the window's
+/// language; None — it can.
+pub fn cpu_floor(engine: &str) -> Option<String> {
+    let missing = dub_asr::tcpp::cpu_floor_missing();
+    (!missing.is_empty()).then(|| t!("cpu-floor-missing", engine = engine.to_string(), missing = missing.join(", ")))
+}
+
+/// The display adapter that is not Microsoft's software one (Windows: the adapter with the most memory in the display
+/// class of the registry; Linux: the first DRM card on PCI), named for the log, as Speech and YuE2 Studio find it. None
+/// without one, and on a Mac, whose one build is its own. Probed once a process.
+pub fn display_adapter() -> Option<String> {
+    static ADAPTER: OnceLock<Option<String>> = OnceLock::new();
+    ADAPTER.get_or_init(probe_adapter).clone()
+}
+
+#[cfg(windows)]
+fn probe_adapter() -> Option<String> {
+    use std::os::windows::process::CommandExt;
+    const CLASS: &str = r"HKLM\SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}";
+    let query = |value: &str| -> Option<String> {
+        let output = std::process::Command::new("reg").args(["query", CLASS, "/s", "/v", value]).creation_flags(0x0800_0000).output().ok()?;
+        output.status.success().then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    };
+    best_adapter(&query("DriverDesc")?, &query("HardwareInformation.qwMemorySize")?)
+}
+
+/// Joins `reg query /s` listings of the adapter names and memory sizes by their subkey and keeps the adapter with the
+/// most memory that is not Microsoft's.
+#[cfg(any(windows, test))]
+fn best_adapter(names: &str, sizes: &str) -> Option<String> {
+    fn values(listing: &str) -> Vec<(String, String)> {
+        let mut key = String::new();
+        let mut out = Vec::new();
+        for line in listing.lines() {
+            if line.starts_with("HKEY_") {
+                key = line.trim().to_owned();
+            } else if let Some((_, value)) = line.trim().split_once("    REG_") {
+                if let Some((_, data)) = value.split_once("    ") {
+                    out.push((key.clone(), data.trim().to_owned()));
+                }
+            }
+        }
+        out
+    }
+    let names = values(names);
+    values(sizes)
+        .into_iter()
+        .filter_map(|(key, size)| {
+            let bytes = u64::from_str_radix(size.trim_start_matches("0x"), 16).ok()?;
+            let name = names.iter().find(|(name_key, _)| *name_key == key)?.1.clone();
+            (!name.starts_with("Microsoft")).then_some((name, bytes))
+        })
+        .max_by_key(|(_, bytes)| *bytes)
+        .map(|(name, _)| name)
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn probe_adapter() -> Option<String> {
+    let mut cards: Vec<std::path::PathBuf> = std::fs::read_dir("/sys/class/drm")
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with("card") && n.len() > 4 && n[4..].chars().all(|c| c.is_ascii_digit())))
+        .collect();
+    cards.sort();
+    cards.into_iter().find_map(|path| {
+        let read = |name: &str| std::fs::read_to_string(path.join("device").join(name)).ok().map(|v| v.trim().to_owned());
+        let vendor = read("vendor")?;
+        let device = read("device").unwrap_or_default();
+        let who = match vendor.trim_start_matches("0x").to_ascii_lowercase().as_str() {
+            "8086" => "Intel",
+            "1002" | "1022" => "AMD",
+            "10de" => "NVIDIA",
+            _ => "PCI",
+        };
+        Some(format!("{who} display adapter ({vendor}:{device})"))
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn probe_adapter() -> Option<String> {
+    None
+}
+
 /// Отчёт о видеокарте (считается один раз за процесс: драйвер не меняется без перезапуска приложения).
 pub fn gpu_report() -> GpuReport {
     static R: OnceLock<GpuReport> = OnceLock::new();
@@ -208,6 +318,9 @@ fn probe_gpu() -> GpuReport {
             r.reason = Some("cuda_init");
         }
         CudaProbe::Ok { version, compute } => {
+            // `DUB_STUDIO_SIMULATE_CUDA_DRIVER` (the driver's CUDA version, 12080 for 12.8) stands in for the driver's:
+            // a card that runs CUDA 13 is then checked on the builds of an older driver
+            let version = std::env::var("DUB_STUDIO_SIMULATE_CUDA_DRIVER").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(version);
             r.nvidia = true;
             r.cuda_driver = Some(format!("{}.{}", version / 1000, (version % 1000) / 10));
             r.compute = Some(format!("{}.{}", compute.0, compute.1));
@@ -215,6 +328,7 @@ fn probe_gpu() -> GpuReport {
                 Ok(()) => r.cuda13_ok = true,
                 Err(why) => r.reason = Some(why),
             }
+            r.cuda_build = cuda_build(compute, version);
         }
     }
     let mut ng = nvml().lock().unwrap_or_else(|e| e.into_inner());
@@ -341,6 +455,17 @@ mod tests {
         assert_eq!(cuda13_verdict((6, 1), 13_000), Err("gpu_old"), "Pascal CUDA 13 не поддерживает");
         assert_eq!(cuda13_verdict((7, 0), 12_000), Err("gpu_old"), "старая карта важнее старого драйвера");
         assert_eq!(cuda13_verdict((5, 2), 13_040), Err("gpu_old"));
+    }
+
+    #[test]
+    fn cuda12_takes_the_cards_and_drivers_cuda13_left() {
+        assert_eq!(cuda_build((8, 9), 13_040), Some(CudaBuild::Cuda13));
+        assert_eq!(cuda_build((8, 6), 12_080), Some(CudaBuild::Cuda12), "RTX 30 on driver 566");
+        assert_eq!(cuda_build((6, 1), 13_000), Some(CudaBuild::Cuda12), "Pascal");
+        assert_eq!(cuda_build((7, 0), 12_020), Some(CudaBuild::Cuda12), "V100");
+        assert_eq!(cuda_build(CUDA12_OLDEST, 12_000), Some(CudaBuild::Cuda12), "Maxwell 2 on driver 525");
+        assert_eq!(cuda_build((5, 0), 13_000), None, "Maxwell 1");
+        assert_eq!(cuda_build((8, 6), 11_080), None, "driver of the CUDA 11 branch");
     }
 
     #[test]
