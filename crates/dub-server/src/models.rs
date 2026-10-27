@@ -525,7 +525,7 @@ pub fn cloud_tts_on(mroot: &Path) -> bool {
 pub fn tts_model(mroot: &Path) -> String {
     if tts_provider(mroot) == "google" {
         pick(&load_selection(mroot), "google_tts_model")
-            .unwrap_or("")
+            .unwrap_or(crate::google_tts::DEFAULT_MODEL)
             .to_string()
     } else {
         openrouter_model(mroot, "tts")
