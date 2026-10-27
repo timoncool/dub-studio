@@ -2813,9 +2813,20 @@ fn send(agent: &ureq::Agent, url: &str, range: Option<(u64, u64)>, stop: &dyn Fn
     }
 }
 
+static DOWNLOADS_FORBIDDEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// No component is downloaded in this process from now on: a download that would start fails with the code
+/// `downloads_forbidden`. For tests, whose roots have none of the studio's models and must not fetch them.
+pub fn forbid_downloads() {
+    DOWNLOADS_FORBIDDEN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
 /// Построить ureq-агента для закачки. Статусы 4xx/5xx читаем сами (429 и заголовки ожидания). Прокси из
 /// active.json — все запросы через него; иначе Config::default берёт HTTP(S)_PROXY из env.
 fn dl_agent() -> Result<ureq::Agent, DlError> {
+    if DOWNLOADS_FORBIDDEN.load(std::sync::atomic::Ordering::SeqCst) {
+        return Err(DlError::new("downloads_forbidden", "downloads are forbidden in this process"));
+    }
     let mut cfg = ureq::Agent::config_builder()
         .http_status_as_error(false)
         .timeout_connect(Some(Duration::from_secs(30)))

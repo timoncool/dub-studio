@@ -37,6 +37,7 @@ mod guard;
 mod hub;
 pub use hub::flush_on_exit as flush_hub_on_exit;
 pub use models::apply_faces_backend;
+pub use setup::forbid_downloads;
 mod hw;
 mod job_store;
 mod jobs;

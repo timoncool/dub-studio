@@ -12,6 +12,7 @@ use tower::ServiceExt;
 const PID: &str = "abc123def456";
 
 fn fixture_root(tag: &str) -> PathBuf {
+    dub_server::forbid_downloads();
     let root = std::env::temp_dir().join(format!("dub_jobs_api_{tag}_{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let dir = root.join("workspace").join(PID);
@@ -80,12 +81,12 @@ async fn interrupted_job_is_listed_and_resumes_with_same_kind_and_args() {
     assert_eq!(jobs["jobs"][0]["kind"], "retranslate");
     assert_eq!(jobs["project_job"]["kind"], "retranslate");
 
-    // Long-poll до конца: без LLM перевод не выполнен — джоба падает с причиной, проект не меняется.
+    // Long-poll до конца: моделей в корне нет, закачки запрещены — джоба падает с причиной, проект не меняется.
     let (st, snap) = call(&app, "GET", &format!("/jobs/{job_id}?wait=30")).await;
     assert_eq!(st, StatusCode::OK);
     assert_eq!(snap["status"], "error", "{snap}");
     assert_eq!(snap["pid"], PID);
-    assert!(snap["error"].as_str().is_some_and(|e| e.contains("the LLM is unavailable")), "{snap}");
+    assert!(snap["error"].as_str().is_some_and(|e| e.contains("downloads are forbidden")), "{snap}");
     // Снапшот живёт в истории: второй читатель тоже его видит.
     let (_, again) = call(&app, "GET", &format!("/jobs/{job_id}")).await;
     assert_eq!(again["status"], "error");
