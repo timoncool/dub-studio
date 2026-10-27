@@ -75,6 +75,7 @@ jobs:
         with:
           name: dub-studio-linux-x64
           path: out/*
+          retention-days: 1
       - name: Attach to the release
         if: ${{ inputs.tag != '' }}
         run: gh release upload "${{ inputs.tag }}" out/* --clobber

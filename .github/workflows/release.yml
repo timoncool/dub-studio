@@ -89,6 +89,7 @@ jobs:
           name: dub-studio-${{ env.DUB_VERSION }}
           path: release/${{ env.DUB_VERSION }}/*
           if-no-files-found: error
+          retention-days: 1
 
       - name: Draft release
         shell: pwsh

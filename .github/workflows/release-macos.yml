@@ -1,0 +1,75 @@
+name: macOS build
+
+# Dub Studio for Apple silicon (scripts/build-release-macos.sh), started by hand for a release tag, as Speech Studio's
+# release-macos.yml. Engines and models are downloaded in the app; the PP-OCR models come from the portable zip of
+# the last published release. The .dmg is kept as a workflow artifact for a day; the release gets it by hand.
+# Windows and Linux are built on the release machine.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build"
+        required: true
+
+concurrency:
+  group: macos-${{ inputs.tag }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # the repository pins the Windows toolchain for the release machine
+  RUSTUP_TOOLCHAIN: stable
+  CARGO_TERM_COLOR: never
+
+jobs:
+  macos-arm64:
+    runs-on: macos-14
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            desktop/src-tauri -> target
+      - name: Install ffmpeg
+        run: brew list ffmpeg >/dev/null 2>&1 || brew install ffmpeg
+      - name: PP-OCR models
+        run: |
+          set -e
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern '*portable*.zip' --dir "$RUNNER_TEMP/portable"
+          unzip -q "$RUNNER_TEMP"/portable/*.zip -d "$RUNNER_TEMP/portable/x"
+          det="$(find "$RUNNER_TEMP/portable/x" -path '*/models/ocr/det.onnx' | head -n 1)"
+          [ -n "$det" ] || { echo "no models/ocr in the $tag portable zip"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/bundled/models"
+          cp -r "$(dirname "$det")" "$RUNNER_TEMP/bundled/models/ocr"
+          ls -la "$RUNNER_TEMP/bundled/models/ocr"
+      - name: Build
+        run: bash scripts/build-release-macos.sh "$RUNNER_TEMP/bundled"
+      - name: Collect
+        run: |
+          set -e
+          mkdir -p out
+          dmg="$(find desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' | head -n 1)"
+          version="$(node -p "require('./desktop/src-tauri/tauri.conf.json').version")"
+          cp "$dmg" "out/Dub-Studio-${version}-macos-arm64.dmg"
+          (cd out && shasum -a 256 *.dmg)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dub-studio-macos-arm64
+          path: out/*.dmg
+          retention-days: 1
