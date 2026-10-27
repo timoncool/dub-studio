@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Changed
 
+- **Vulkan for every local stage**, as in Speech Studio: voicing (Higgs and Supertonic), recognition (the audio.cpp server and transcribe.cpp), separation and diarization each offer Auto, GPU (CUDA), Vulkan and CPU in Settings → Models; «Auto» takes Vulkan on an AMD or Intel card, and the GPU tab opens on any card that runs CUDA 13 or 12.9. transcribe.cpp has its Vulkan build as a component of its own.
 - **Google Gemini voicing plans a render as Speech Studio does**: a new «Auto» mode sends up to 10 phrases as direct requests and more as one Batch at half the price; direct requests are retried on rate limits and server errors, a refusal for money or access stops the rest at once, and the reasons Google gives are told in plain words. Every phrase voiced is kept in the project and is not paid again; a phrase Google refused names why. Settings → Models (Google) shows what the cloud cost so far and takes a daily limit for agents and programs.
 - **Noise out of a library voice**, as in Speech Studio: DPDFNet (10.5 MB) cleans a voice's reference before cloning, with a limit of how far the noise goes down; the original is kept in voices/.originals and comes back with one call. Renaming or deleting a voice takes its original along.
 - **Parakeet Ultra hears a long recording in pieces cut at its pauses**, as in Speech Studio: Silero VAD v6.2 (1.2 MB, run by transcribe.cpp) finds where the speech is, so silence does not go to the recognizer and a piece never ends mid-word.
