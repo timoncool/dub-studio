@@ -85,6 +85,8 @@ fn start_gemma(o: &LlmOpen, with_mmproj: bool) -> Result<LlmProvider, String> {
     if with_mmproj {
         opts = opts.with_mmproj(o.mmproj);
     }
+    // Gemma does not share the card with the voicing model the process keeps
+    crate::tts_host::unload();
     let server = LlamaServer::start(&opts).map_err(|e| e.localize())?;
     let client = ChatClient::new(server.base_url()).map_err(|e| t!("llm-chat-client", error = e.localize()))?;
     Ok(LlmProvider::Local { _server: server, client })

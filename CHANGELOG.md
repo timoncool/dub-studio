@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Changed
 
+- **The voicing model stays loaded between renders**, as in Speech Studio: voicing a phrase again or the next render takes the model already on the card instead of loading it anew. It leaves after the minutes of Settings → Models → «Unload the voicing model after idle» (15 by default, or never), before the studio's own Gemma starts, on a card under 12 GB before recognition and separation, and when its engine stalls.
 - **One Windows installer**: the release has the NSIS setup.exe and the portable build; the MSI is no longer made, as in the other studios. A studio installed from an MSI of an earlier version is updated by running the new setup.exe.
 - **Supertonic 3 voices in the audio.cpp server**, as in Speech Studio: the server reads the installed int8 model as it is, on the build of the voicing device (the card's CUDA build, Vulkan or the processor); ONNX Runtime no longer runs it. Voicing a dub's audio alone fetches the server build it needs, as a render does.
 - **Diarization runs in the audio.cpp server**, as in Speech Studio: Nemotron 3 Diarization reads the installed model as it is, on the build of the diarization device — the card's CUDA build (13 or 12.9), Vulkan or the processor — and leaves the card when the speakers are found; a job fetches that build, and diarization no longer needs ONNX Runtime for the card and cuDNN.

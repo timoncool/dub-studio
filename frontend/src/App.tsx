@@ -528,6 +528,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
         {[
           { key: "llama_ubatch", label: t("settings.llamaUbatch"), hint: t("settings.llamaUbatchHint"), opts: cap?.llama_ubatches ?? ["0", "512", "256", "128"], def: "0", fmt: (v: string) => (v === "0" ? t("settings.auto") : v) },
           { key: "higgs_ref_secs", label: t("settings.higgsRef"), hint: t("settings.higgsRefHint"), opts: cap?.higgs_ref_secs_opts ?? ["12", "8", "6", "4"], def: "12", fmt: (v: string) => `${v}${t("settings.sec")}` },
+          { key: "tts_idle_unload_min", label: t("settings.idleUnload"), hint: t("settings.idleUnloadHint"), opts: ["0", "5", "15", "30", "60"], def: "15", fmt: (v: string) => (v === "0" ? t("settings.idleNever") : t("settings.idleMinutes", { n: Number(v) })) },
         ].map((row) => {
           const cur = slot(cap?.selection, row.key) ?? row.def;
           return (

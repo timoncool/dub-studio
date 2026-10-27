@@ -879,6 +879,8 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // Бенчмаркинг (галка в настройках, ВЫКЛ по умолчанию): семплер GPU/CPU/VRAM -> bench.json + ⏱ в журнал.
     let mut bench = crate::bench::Bench::start(&paths.work_dir, "analyze", crate::models::bench_enabled(&paths.models_root));
     bench.stage("probe");
+    // separation, diarization and recognition come next: a small card lets the kept voicing model go
+    crate::tts_host::make_room();
 
     // 1) probe (метаданные видео).
     let meta = media::probe(&paths.input)?;

@@ -584,10 +584,10 @@ fn voice_clone_guarded(
     match rx.recv_timeout(Duration::from_secs(GUARD_GRACE_SECS)) {
         Ok(_) if cancelled => Err(crate::jobs::CANCELLED.to_string()),
         Ok(_) => Err(t!("render-synth-timeout", seconds = timeout.as_secs())),
-        Err(_) => Err(format!(
-            "{ENGINE_STUCK}: {}",
-            t!("render-engine-stuck", seconds = timeout.as_secs() + GUARD_GRACE_SECS)
-        )),
+        Err(_) => {
+            crate::tts_host::unload();
+            Err(format!("{ENGINE_STUCK}: {}", t!("render-engine-stuck", seconds = timeout.as_secs() + GUARD_GRACE_SECS)))
+        }
     }
 }
 
@@ -672,10 +672,12 @@ impl HiggsServer {
             Err(acpp_server::AcppError::Cancelled) => Err(crate::jobs::CANCELLED.to_string()),
             Err(e @ acpp_server::AcppError::Stalled { .. }) => {
                 crate::acpp::stop();
+                crate::tts_host::unload();
                 Err(crate::acpp::localize(&e))
             }
             Err(e) if acpp_server::higgs::is_token_cap(&e) => Err(format!("{TOKEN_CAP}: {e}")),
             Err(e) if samples.is_empty() && !self.spoke.load(Ordering::SeqCst) => {
+                crate::tts_host::unload();
                 Err(format!("{ENGINE_FAILED}: {}", t!("render-higgs-engine-failed", error = crate::acpp::localize(&e))))
             }
             Err(e) => Err(crate::acpp::localize(&e)),
@@ -692,6 +694,7 @@ impl HiggsServer {
             if running.load(Ordering::SeqCst) {
                 tracing::warn!("Higgs did not stop {} s after a cancel: its audiocpp_server stops", HIGGS_CANCEL_GRACE.as_secs());
                 crate::acpp::stop();
+                crate::tts_host::unload();
             }
         });
     }
@@ -978,8 +981,31 @@ fn qwen_stress(models_root: &Path, lang: &str) -> bool {
     lang.to_ascii_lowercase().starts_with("ru") && qwentts::stress_installed(models_root)
 }
 
-/// Загрузить локальный TTS, выбранный в настройках, с сообщением в журнал.
+/// The voicing model chosen in the settings: the one the process keeps ([`crate::tts_host`]) when it was made the same
+/// way, else loaded in its place.
+
 fn load_tts(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<Arc<TtsEngine>, String> {
+    crate::tts_host::take(tts_key(paths, lang), || load_tts_engine(paths, lang, progress))
+}
+
+/// What the loaded voicing model was made of: the model and quant, the device's server build, the Drama memory limit,
+/// the language the voices of Qwen3-TTS and Supertonic speak. Another key loads it again.
+fn tts_key(paths: &RenderPaths, lang: &str) -> String {
+    let mr = &paths.models_root;
+    let build = crate::acpp::build_for(crate::models::server_choice(mr, "tts_backend")).map_or_else(|e| e, |b| format!("{b:?}"));
+    if let Some(quant) = crate::models::qwen_quant(&paths.higgs_quant) {
+        format!("qwen:{quant}:{lang}:{}", qwen_stress(mr, lang))
+    } else if paths.higgs_quant == crate::models::SUPERTONIC_TTS {
+        format!("supertonic:{build}:{lang}")
+    } else if paths.higgs_quant == crate::models::DRAMA_TTS {
+        format!("drama:{}:{}", crate::models::drama_vram_limit_mb(mr), paths.higgs_model_root.display())
+    } else {
+        format!("higgs:{}:{}:{build}", paths.higgs_quant, paths.higgs_model_root.display())
+    }
+}
+
+/// Загрузить локальный TTS, выбранный в настройках, с сообщением в журнал.
+fn load_tts_engine(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<TtsEngine, String> {
     if let Some(quant) = crate::models::qwen_quant(&paths.higgs_quant) {
         if let Some(why) = crate::models::qwen_unavailable() {
             return Err(why);
@@ -988,14 +1014,14 @@ fn load_tts(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<Arc<
             return Err(t!("render-qwen-missing"));
         }
         emit(progress, "tts", &t!("render-loading-qwen"));
-        return Ok(Arc::new(TtsEngine::Qwen(QwenVoices {
+        return Ok(TtsEngine::Qwen(QwenVoices {
             models_root: paths.models_root.clone(),
             quant,
             lang: lang.to_string(),
             stress: qwen_stress(&paths.models_root, lang),
             base: std::sync::Mutex::new(None),
             custom: std::sync::Mutex::new(None),
-        })));
+        }));
     }
     if paths.higgs_quant == crate::models::SUPERTONIC_TTS {
         if !crate::supertonic::installed(&paths.models_root) {
@@ -1004,14 +1030,14 @@ fn load_tts(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<Arc<
         emit(progress, "tts", &t!("render-loading-supertonic"));
         let model = crate::supertonic::Model::load(&paths.repo_root, &paths.models_root).map_err(|e| t!("render-supertonic-load-failed", error = e))?;
         tracing::info!("voicing: Supertonic 3 on audiocpp_server {:?}", model.backend());
-        return Ok(Arc::new(TtsEngine::Supertonic(SupertonicVoices { model, models_root: paths.models_root.clone(), lang: lang.to_string() })));
+        return Ok(TtsEngine::Supertonic(SupertonicVoices { model, models_root: paths.models_root.clone(), lang: lang.to_string() }));
     }
     if paths.higgs_quant == crate::models::DRAMA_TTS {
         emit(progress, "tts", &t!("render-loading-drama"));
-        Ok(Arc::new(TtsEngine::Drama(load_drama(paths)?)))
+        Ok(TtsEngine::Drama(load_drama(paths)?))
     } else {
         emit(progress, "tts", &t!("render-loading-higgs"));
-        Ok(Arc::new(TtsEngine::Higgs(load_higgs(paths)?)))
+        Ok(TtsEngine::Higgs(load_higgs(paths)?))
     }
 }
 
@@ -1047,6 +1073,13 @@ impl TtsEngine {
                 })?;
                 Ok((audio, e.sample_rate() as i32))
             }
+        }
+    }
+
+    /// A render takes the model kept from the last one: what it counts per render starts over.
+    pub(crate) fn begin(&self) {
+        if let TtsEngine::Higgs(e) = self {
+            e.spoke.store(false, Ordering::SeqCst);
         }
     }
 
@@ -1522,6 +1555,7 @@ fn build_dub_pass(
             }
             emit(progress, "separate", &t!("atomic-separating", model = "Mel-Band Roformer voc_fv6-Q8_0"),
             );
+            crate::tts_host::make_room();
             let sep = dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model,
             )
                 .map_err(|e| t!("atomic-separation-failed", error = e.localize()))?;
@@ -2596,8 +2630,10 @@ fn build_dub_pass(
     if run_qc_asr && !qc_list.is_empty() {
         emit(progress, "tts", &t!("render-qc-start", count = qc_list.len()),
         );
-        // Higgs и распознаватель не держатся в видеопамяти одновременно.
-        drop(engine.take());
+        // a card under 12 GB does not hold the voicing model next to the recognizer
+        if crate::tts_host::make_room() {
+            drop(engine.take());
+        }
         let files: Vec<PathBuf> = qc_list.iter().map(|q| q.2.clone()).collect();
         let heard = crate::models::build_engine(&paths.asr)?.transcribe_many(&files, &proj.tgt_lang);
         // Сходство QC — в дубль истории, который проверялся.
@@ -2702,7 +2738,9 @@ fn build_dub_pass(
             }
             // финальная сверка пересинтезированных — честный отчёт в журнал
             let files2: Vec<PathBuf> = bad_idx.iter().map(|&i| qc_list[i].2.clone()).collect();
-            drop(engine.take());
+            if crate::tts_host::make_room() {
+                drop(engine.take());
+            }
             let heard2 = crate::models::build_engine(&paths.asr)?.transcribe_many(&files2, &proj.tgt_lang);
             let mut still = 0usize;
             let mut unheard2: Vec<String> = Vec::new();
@@ -3119,6 +3157,7 @@ pub(crate) fn speaker_voice_clip(
     std::fs::create_dir_all(tmp).map_err(|e| format!("{}: {e}", tmp.display()))?;
     let clip = tmp.join("cut44.wav");
     media::cut(input, &clip, a, b, 44_100, 2)?;
+    crate::tts_host::make_room();
     let voc = dub_sep::separate(&clip, &tmp.join("stems"), sep.0, sep.1)
         .map_err(|e| VoiceClipError::Separation(e.localize()))?;
     media::trim_ref(&voc.vocals, out, 0.0, b - a)?;

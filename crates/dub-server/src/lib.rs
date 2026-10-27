@@ -70,6 +70,7 @@ mod supertonic;
 mod takes;
 mod translate;
 mod tts_audit;
+mod tts_host;
 mod update_screen;
 mod tts_text;
 mod tts_trim;
@@ -354,6 +355,7 @@ pub async fn serve(state: AppState, listener: std::net::TcpListener) -> anyhow::
     service::record_port(listener.local_addr()?.port());
     let listener = tokio::net::TcpListener::from_std(listener)?;
     hub::start(&state.repo_root, &state.workspace);
+    tts_host::watch_idle(state.models_root.clone());
     // models another program already has are linked in at start; only what is missing everywhere is downloaded
     let root = state.repo_root.clone();
     tokio::task::spawn_blocking(move || {
