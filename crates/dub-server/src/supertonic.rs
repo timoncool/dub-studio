@@ -43,14 +43,14 @@ pub fn installed(models_root: &Path) -> bool {
         && VOICES.iter().all(|v| d.join("voice_styles").join(format!("{v}.json")).is_file())
 }
 
-/// The model's request options: the preset voice, the flow steps, the speech speed and the noise seed (as a string:
-/// the server reads a JSON number above 2^53 inexactly).
+/// The model's request options: the preset voice, the flow steps, the speech speed and the noise seed. The model's
+/// seed is a u32, so the take's seed goes as its low 32 bits.
 fn request_options(voice: &str, steps: u32, speed: f64, seed: u64) -> Map<String, Value> {
     let mut options = Map::new();
     options.insert("voice_id".into(), json!(voice));
     options.insert("num_inference_steps".into(), json!(steps.max(1)));
     options.insert("speed".into(), json!(speed));
-    options.insert("seed".into(), json!(seed.to_string()));
+    options.insert("seed".into(), json!((seed as u32).to_string()));
     options
 }
 
@@ -111,6 +111,6 @@ mod tests {
         assert_eq!(options["voice_id"], json!("F1"));
         assert_eq!(options["num_inference_steps"], json!(1));
         assert_eq!(options["speed"], json!(1.05));
-        assert_eq!(options["seed"], json!("18446744073709551615"));
+        assert_eq!(options["seed"], json!("4294967295"), "the model reads a u32 seed");
     }
 }
