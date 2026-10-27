@@ -446,7 +446,7 @@ export const api = {
   // Пресеты железа: список + детект GPU/VRAM + рекомендация; применение пишет кванты/облако в active.json.
   hwPresets: () => getJson<{ presets: { id: string; title: string; subtitle: string }[]; hardware: { gpuName: string; totalVramGb: number; totalRamGb: number; hasGpu: boolean; recommended: string; reason: string }; current: string }>("/engine/presets"),
   applyPreset: (id: string) => postJson<{ ok: boolean; id: string; applied: { key: string; value: string }[] }>("/engine/preset", { id }).then(selectionChanged),
-  voices: () => getJson<{ voices: string[] }>("/voices"),
+  voices: () => getJson<{ voices: string[]; cleaned?: string[] }>("/voices"),
   // Дефолты запуска дубляжа (форма стартового экрана) хранит сервис: одни на все окна и агента.
   launchDefaults: () => getJson<LaunchDefaultsState>("/settings/launch"),
   saveLaunchDefaults: (patch: Partial<LaunchDefaults>) =>

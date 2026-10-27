@@ -14,7 +14,7 @@ import UndoToast from "./components/UndoToast";
 import CloudConsentHost from "./components/CloudConsentHost";
 import ServerOffline from "./components/ServerOffline";
 import { motion } from "motion/react";
-import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star, Music, Move, Minimize2, FileText, Users, Mic2, AlignLeft, AlignCenter, AlignRight, ChevronFirst, ChevronLast, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, GripVertical, ScrollText, Clock, Keyboard, Save, ZoomIn, ZoomOut, Sliders, Merge, Scissors, Bot, History, Pin } from "lucide-react";
+import { Upload, Languages, AudioLines, Sparkles, ArrowRight, ShieldCheck, Download, Loader2, Trash2, Plus, Captions, Columns2, FolderDown, ExternalLink, X, Undo2, Redo2, Settings, Eye, EyeOff, Play, Pause, RotateCw, RefreshCw, Square, Droplet, Check, HelpCircle, Copy, Star, Music, Move, Minimize2, FileText, Users, Mic2, AlignLeft, AlignCenter, AlignRight, ChevronFirst, ChevronLast, ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronUp, GripVertical, ScrollText, Clock, Keyboard, Save, ZoomIn, ZoomOut, Sliders, Merge, Scissors, Bot, History, Pin, RotateCcw } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useFloatable, dockSlot } from "./lib/useFloatable";
 import { api, llmProviderOf, slot, SELECTION_CHANGED, ApiError, SetupError, JobCancelledError, type Selection, type AnalyzePost, type AnalyzeResult, type JobKind, type Project, type Capabilities, type SetupStatus, type SetupComponent, type ProjectListing, type LaunchDefaults, type Character, type DownloadJob, type UrlFetch, type ShortenResult } from "./lib/api";
@@ -2558,6 +2558,25 @@ function Editor() {
   const [selTitles, setSelTitles] = useState<Set<number>>(new Set()); // multi-select: titles
   const [fonts, setFonts] = useState<Record<string, string>>({});
   const [voiceList, setVoiceList] = useState<string[]>([]);
+  const [voiceCleaned, setVoiceCleaned] = useState<string[]>([]);   // library voices with the original kept (noise removed)
+  const [denoiseBusy, setDenoiseBusy] = useState<string | null>(null);
+  // Noise out of a library voice (DPDFNet, 18 dB as Speech Studio's default), or its original back.
+  const toggleDenoise = async (name: string) => {
+    setDenoiseBusy(name);
+    try {
+      if (voiceCleaned.includes(name)) {
+        await api.voiceRestore(name);
+        pushActivity(t("voice.restored", { name: prettyVoice(name) }), "work");
+      } else {
+        const { job_id } = await api.voiceDenoise(name, 18);
+        await api.watchJob(job_id, () => {});
+        pushActivity(t("voice.denoised", { name: prettyVoice(name) }), "work");
+      }
+      const v = await api.voices();
+      setVoiceList(v.voices); setVoiceCleaned(v.cleaned ?? []);
+    } catch (err) { await surfaceErr(err); }
+    finally { setDenoiseBusy(null); }
+  };
   const [spkVoiceBusy, setSpkVoiceBusy] = useState<string | null>(null);
   const [voicePreview, setVoicePreview] = useState<string | null>(null);   // имя проигрываемого сэмпла голоса
   const voicePreviewAudio = useRef<HTMLAudioElement | null>(null);
@@ -2579,7 +2598,7 @@ function Editor() {
   // голоса из каталога; если пусто и ещё не пробовали — тихо тянем дефолтный пак (VibeVoice, ~100МБ) в фоне
   useEffect(() => {
     api.voices().then(async (r) => {
-      setVoiceList(r.voices);
+      setVoiceList(r.voices); setVoiceCleaned(r.cleaned ?? []);
       if (r.voices.length === 0 && !localStorage.getItem("voicepack-auto")) {
         localStorage.setItem("voicepack-auto", "1");
         try {
@@ -3775,6 +3794,13 @@ function Editor() {
                     className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                     {voicePreview === cur && cur ? <Pause size={14} className="text-[var(--color-accent)]" /> : <Play size={14} />}
                   </button>
+                  {cur && !cur.includes(":") && (
+                    <button type="button" disabled={!!denoiseBusy} onClick={() => toggleDenoise(cur)}
+                      title={voiceCleaned.includes(cur) ? t("voice.restore") : t("voice.denoise")}
+                      className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                      {denoiseBusy === cur ? <Loader2 size={14} className="animate-spin" /> : voiceCleaned.includes(cur) ? <RotateCcw size={14} /> : <AudioLines size={14} />}
+                    </button>
+                  )}
                 </div>
               );
               if (spks.length <= 1)
