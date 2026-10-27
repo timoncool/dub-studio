@@ -994,7 +994,7 @@ fn ensure_job_components(
     }
     // a transcribe.cpp model that must be told the language hears it by the language id under «auto»
     if !asr_whisper && !models::openrouter_asr_on(models_root) && missing("langid") {
-        if let models::AsrChoice::Ggml { model, .. } = models::resolve_asr_choice(repo_root, models_root, &sel) {
+        if let models::AsrChoice::Ggml { model, .. } | models::AsrChoice::Server { model, .. } = models::resolve_asr_choice(repo_root, models_root, &sel) {
             if dub_asr::tcpp::told_the_language(model) {
                 need.push("langid".to_string());
             }
@@ -1009,12 +1009,16 @@ fn ensure_job_components(
         && tts != models::DRAMA_TTS
         && tts != models::SUPERTONIC_TTS
         && models::qwen_quant(&tts).is_none();
-    if ((asr_whisper && !models::openrouter_asr_on(models_root)) || higgs_voice) && std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_none() {
-        let runtime = if acpp::build() == hw::CudaBuild::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" };
-        for id in ["higgs-engine", runtime] {
-            if missing(id) && !need.iter().any(|n| n == id) {
-                need.push(id.to_string());
-            }
+    let mut server_needs: Vec<&str> = Vec::new();
+    if asr_whisper && !models::openrouter_asr_on(models_root) {
+        server_needs.extend(models::server_components(models_root, "asr_backend"));
+    }
+    if higgs_voice {
+        server_needs.extend(models::server_components(models_root, "tts_backend"));
+    }
+    for id in server_needs {
+        if missing(id) && !need.iter().any(|n| n == id) {
+            need.push(id.to_string());
         }
     }
     // The chosen Higgs quant itself: its GGUF with config.json and tokenizer.json beside it, which the server reads.
@@ -1039,11 +1043,15 @@ fn ensure_job_components(
     // Parakeet → its chosen variant and the transcribe.cpp build of the recognition backend (CUDA or CPU), which the
     // settings may have changed after the first run.
     if !asr_whisper && !models::openrouter_asr_on(models_root) {
-        if let models::AsrChoice::Ggml { build, model, .. } = models::resolve_asr_choice(repo_root, models_root, &sel) {
-            for id in [build.dir(), model.component] {
-                if missing(id) {
-                    need.push(id.to_string());
-                }
+        let ids: Vec<&str> = match models::resolve_asr_choice(repo_root, models_root, &sel) {
+            models::AsrChoice::Ggml { build, model, .. } => vec![build.dir(), model.component],
+            // the model, and the server build of the recognition device with its CUDA runtime
+            models::AsrChoice::Server { model, .. } => std::iter::once(model.component).chain(models::server_components(models_root, "asr_backend")).collect(),
+            models::AsrChoice::CrisperWhisper { .. } => Vec::new(),
+        };
+        for id in ids {
+            if missing(id) && !need.iter().any(|n| n == id) {
+                need.push(id.to_string());
             }
         }
     }
@@ -2565,7 +2573,6 @@ fn render_paths(st: &AppState, dir: &Path, input: PathBuf) -> render::RenderPath
         higgs_model_root,
         higgs_quant,
         fonts_dir: st.fonts_dir.clone(),
-        higgs_backend: "cuda".to_string(),
         max_stretch: st.opts.max_stretch as f64,
         voices_dir: st.voices_dir.clone(),
         asr: models::resolve_asr_choice(&st.repo_root, &st.models_root, &sel),

@@ -527,7 +527,6 @@ mod tests {
             higgs_model_root: none.clone(),
             higgs_quant: "q8_0".into(),
             fonts_dir: none.clone(),
-            higgs_backend: "cuda".into(),
             max_stretch: 1.25,
             voices_dir: none.clone(),
             asr: crate::models::AsrChoice::unused(),

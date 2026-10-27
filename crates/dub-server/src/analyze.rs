@@ -1162,7 +1162,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         // Parakeet knows 25 European languages: a source language outside them, chosen or heard by the language id
         // under «auto», goes to CrisperWhisper before recognition starts, with a line in the journal.
         let mut asr_choice = paths.asr.clone();
-        if let crate::models::AsrChoice::Ggml { models_root, build, .. } = &paths.asr {
+        if let crate::models::AsrChoice::Ggml { models_root, build, .. } | crate::models::AsrChoice::Server { models_root, build, .. } = &paths.asr {
             let lang = if args.src_lang == "auto" {
                 crate::fetch_missing(&paths.repo_root, &["langid"], progress)?;
                 let langid = dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID);
@@ -1177,7 +1177,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 by_crisperwhisper = true;
             }
         }
-        let parakeet = matches!(asr_choice, crate::models::AsrChoice::Ggml { .. });
+        let parakeet = matches!(asr_choice, crate::models::AsrChoice::Ggml { .. } | crate::models::AsrChoice::Server { .. });
         // Backend локального ASR (Parakeet onnx CUDA-EP/CPU, Whisper cuda/cpu) — до создания движка/сессии.
         std::env::set_var("DUB_ASR_BACKEND", crate::models::stage_backend(&paths.models_root, "asr_backend"));
         // Термины глоссария проекта (с прошлого анализа) — подсказка распознавателю, как их писать.

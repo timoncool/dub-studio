@@ -84,7 +84,6 @@ pub struct RenderPaths {
     pub higgs_model_root: PathBuf,
     pub higgs_quant: String,   // квант выбранного варианта Higgs (q8_0/q6_k/q4_k_m) — для audiocpp load_model
     pub fonts_dir: PathBuf,
-    pub higgs_backend: String, // "cuda" | "cpu"
     pub max_stretch: f64,
     pub voices_dir: PathBuf,   // каталог голосов-паков + записей с микрофона
     pub asr: crate::models::AsrChoice, // выбранный ASR-движок — авто-транскрипция реф-клипа (ref_text клона)
@@ -593,21 +592,20 @@ fn voice_clone_guarded(
 }
 
 fn load_higgs(paths: &RenderPaths) -> Result<HiggsServer, String> {
-    if paths.higgs_backend == "cuda" {
+    // the build of the voicing device (`tts_backend`, else `local_backend`; «auto»: the card's CUDA build, else Vulkan
+    // on a card of another make, else the processor), as Speech Studio voices
+    let build = crate::acpp::build_for(crate::models::server_choice(&paths.models_root, "tts_backend")).map_err(|_| {
         let gpu = crate::hw::gpu_report();
-        if gpu.cuda_build.is_none() {
-            let card = gpu.summary().unwrap_or_else(|| "-".to_string());
-            let compute = gpu.compute.as_deref().and_then(|c| c.split_once('.')).and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
-            let oldest = crate::hw::CUDA12_OLDEST;
-            return Err(match compute {
-                Some(c) if c < oldest => t!("render-higgs-gpu-old", card = card, min = format!("{}.{}", oldest.0, oldest.1)),
-                Some(_) => t!("render-higgs-driver-old", card = card, min = crate::hw::CUDA12_DRIVER),
-                None => t!("render-higgs-no-gpu", card = card),
-            });
+        let card = gpu.summary().unwrap_or_else(|| "-".to_string());
+        let compute = gpu.compute.as_deref().and_then(|c| c.split_once('.')).and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
+        let oldest = crate::hw::CUDA12_OLDEST;
+        match compute {
+            Some(c) if c < oldest => t!("render-higgs-gpu-old", card = card, min = format!("{}.{}", oldest.0, oldest.1)),
+            Some(_) => t!("render-higgs-driver-old", card = card, min = crate::hw::CUDA12_DRIVER),
+            None => t!("render-higgs-no-gpu", card = card),
         }
-    }
-    let backend = crate::acpp::backend(if paths.higgs_backend == "cpu" { "cpu" } else { "gpu" });
-    let server = crate::acpp::server(&paths.repo_root, &paths.models_root, backend, crate::acpp::HIGGS)
+    })?;
+    let server = crate::acpp::server(&paths.repo_root, &paths.models_root, build, crate::acpp::HIGGS)
         .map_err(|e| t!("render-higgs-load-failed", error = e))?;
     Ok(HiggsServer {
         server,
@@ -4296,7 +4294,6 @@ mod tests {
             higgs_model_root: PathBuf::new(),
             higgs_quant: String::new(),
             fonts_dir: PathBuf::new(),
-            higgs_backend: "cpu".into(),
             max_stretch: 1.0,
             voices_dir: PathBuf::new(),
             asr: crate::models::AsrChoice::unused(),

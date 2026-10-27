@@ -223,22 +223,35 @@ mod platform {
     const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
         FileSpec { url: asset.url, dest_rel: archive, size: asset.size, sha256: asset.sha256, extract: Extract::Flat }
     }
-    pub const AUDIOCPP_SERVER: Parts = Parts {
+    const SERVER_CUDA13: Parts = Parts {
         size: acpp_server::asset::SERVER_WIN_CUDA13.size,
         files: &[server_file(acpp_server::asset::SERVER_WIN_CUDA13, "tools/audiocpp/_server.zip")],
         markers: &[Marker { rel: "tools/audiocpp/audiocpp_server.exe", expect: 0 }],
     };
-    pub const AUDIOCPP_SERVER_CUDA12: Parts = Parts {
+    const SERVER_CUDA12: Parts = Parts {
         size: acpp_server::asset::SERVER_WIN_CUDA12.size,
         files: &[server_file(acpp_server::asset::SERVER_WIN_CUDA12, "tools/audiocpp-cuda12/_server.zip")],
         markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server.exe", expect: 0 }],
     };
+    const SERVER_VULKAN: Parts = Parts {
+        size: acpp_server::asset::SERVER_WIN_VULKAN.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_VULKAN, "tools/audiocpp-vulkan/_server.zip")],
+        markers: &[Marker { rel: "tools/audiocpp-vulkan/audiocpp_server.exe", expect: 0 }],
+    };
+    const SERVER_CPU: Parts = Parts {
+        size: acpp_server::asset::SERVER_WIN_CPU.size,
+        files: &[server_file(acpp_server::asset::SERVER_WIN_CPU, "tools/audiocpp-cpu/_server.zip")],
+        markers: &[Marker { rel: "tools/audiocpp-cpu/audiocpp_server.exe", expect: 0 }],
+    };
 
-    /// The audiocpp_server build of this card.
-    pub fn audiocpp_server() -> &'static Parts {
-        match crate::acpp::build() {
-            crate::hw::CudaBuild::Cuda13 => &AUDIOCPP_SERVER,
-            crate::hw::CudaBuild::Cuda12 => &AUDIOCPP_SERVER_CUDA12,
+    /// The download of a build of the server.
+    pub fn server_parts(build: acpp_server::asset::Build) -> &'static Parts {
+        match build {
+            acpp_server::asset::Build::Cuda13 => &SERVER_CUDA13,
+            acpp_server::asset::Build::Cuda12 => &SERVER_CUDA12,
+            acpp_server::asset::Build::Vulkan => &SERVER_VULKAN,
+            acpp_server::asset::Build::Cpu => &SERVER_CPU,
+            acpp_server::asset::Build::Metal => &Parts { size: 0, files: &[], markers: &[] },
         }
     }
 
@@ -398,22 +411,35 @@ mod platform {
     const fn server_file(asset: acpp_server::asset::Asset, archive: &'static str) -> FileSpec {
         FileSpec { url: asset.url, dest_rel: archive, size: asset.size, sha256: asset.sha256, extract: Extract::Flat }
     }
-    pub const AUDIOCPP_SERVER: Parts = Parts {
+    const SERVER_CUDA13: Parts = Parts {
         size: acpp_server::asset::SERVER_LINUX_CUDA13.size,
         files: &[server_file(acpp_server::asset::SERVER_LINUX_CUDA13, "tools/audiocpp/_server.tar.gz")],
         markers: &[Marker { rel: "tools/audiocpp/audiocpp_server", expect: 0 }],
     };
-    pub const AUDIOCPP_SERVER_CUDA12: Parts = Parts {
+    const SERVER_CUDA12: Parts = Parts {
         size: acpp_server::asset::SERVER_LINUX_CUDA12.size,
         files: &[server_file(acpp_server::asset::SERVER_LINUX_CUDA12, "tools/audiocpp-cuda12/_server.tar.gz")],
         markers: &[Marker { rel: "tools/audiocpp-cuda12/audiocpp_server", expect: 0 }],
     };
+    const SERVER_VULKAN: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_VULKAN.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_VULKAN, "tools/audiocpp-vulkan/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp-vulkan/audiocpp_server", expect: 0 }],
+    };
+    const SERVER_CPU: Parts = Parts {
+        size: acpp_server::asset::SERVER_LINUX_CPU.size,
+        files: &[server_file(acpp_server::asset::SERVER_LINUX_CPU, "tools/audiocpp-cpu/_server.tar.gz")],
+        markers: &[Marker { rel: "tools/audiocpp-cpu/audiocpp_server", expect: 0 }],
+    };
 
-    /// The audiocpp_server build of this card.
-    pub fn audiocpp_server() -> &'static Parts {
-        match crate::acpp::build() {
-            crate::hw::CudaBuild::Cuda13 => &AUDIOCPP_SERVER,
-            crate::hw::CudaBuild::Cuda12 => &AUDIOCPP_SERVER_CUDA12,
+    /// The download of a build of the server.
+    pub fn server_parts(build: acpp_server::asset::Build) -> &'static Parts {
+        match build {
+            acpp_server::asset::Build::Cuda13 => &SERVER_CUDA13,
+            acpp_server::asset::Build::Cuda12 => &SERVER_CUDA12,
+            acpp_server::asset::Build::Vulkan => &SERVER_VULKAN,
+            acpp_server::asset::Build::Cpu => &SERVER_CPU,
+            acpp_server::asset::Build::Metal => &Parts { size: 0, files: &[], markers: &[] },
         }
     }
 
@@ -558,7 +584,7 @@ mod platform {
     };
 
     // audiocpp_server (acpp_server::asset::SERVER_MACOS): Metal and the processor in one program.
-    pub const AUDIOCPP_SERVER: Parts = Parts {
+    const SERVER_METAL: Parts = Parts {
         size: acpp_server::asset::SERVER_MACOS.size,
         files: &[FileSpec {
             url: acpp_server::asset::SERVER_MACOS.url,
@@ -570,9 +596,12 @@ mod platform {
         markers: &[Marker { rel: "tools/audiocpp-metal/audiocpp_server", expect: 0 }],
     };
 
-    /// The audiocpp_server build of this Mac: its one Metal build.
-    pub fn audiocpp_server() -> &'static Parts {
-        &AUDIOCPP_SERVER
+    /// The download of a build of the server: a Mac has its one Metal build.
+    pub fn server_parts(build: acpp_server::asset::Build) -> &'static Parts {
+        match build {
+            acpp_server::asset::Build::Metal => &SERVER_METAL,
+            _ => &NONE,
+        }
     }
 
     pub const CUDA12_RUNTIME: Parts = NONE;
@@ -778,9 +807,9 @@ pub fn manifest() -> Vec<Component> {
             purpose: t!("setup-comp-higgs-engine-purpose"),
             requirement: Requirement::Required,
             delivery: Delivery::Download,
-            size: platform::audiocpp_server().size,
-            files: platform::audiocpp_server().files,
-            markers: platform::audiocpp_server().markers,
+            size: platform::server_parts(crate::acpp::build()).size,
+            files: platform::server_parts(crate::acpp::build()).files,
+            markers: platform::server_parts(crate::acpp::build()).markers,
             external_url: None,
         },
         Component {
@@ -1345,7 +1374,35 @@ pub fn manifest() -> Vec<Component> {
     if cfg!(target_os = "macos") {
         all.retain(|c| c.id != "drama3");
     }
-    if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
+    // the server's other builds this computer can be set to, fetched when a stage is set to their device: the card's
+    // CUDA build, Vulkan and the processor (none on a Mac, whose one build is the server component)
+    let card = crate::acpp::build_for("gpu").ok();
+    for build in [crate::acpp::Build::Cuda13, crate::acpp::Build::Cuda12, crate::acpp::Build::Vulkan, crate::acpp::Build::Cpu] {
+        let cuda = matches!(build, crate::acpp::Build::Cuda13 | crate::acpp::Build::Cuda12);
+        if build == crate::acpp::build() || (cuda && Some(build) != card) {
+            continue;
+        }
+        let label = match build {
+            crate::acpp::Build::Cuda13 => "CUDA 13",
+            crate::acpp::Build::Cuda12 => "CUDA 12.9",
+            crate::acpp::Build::Vulkan => "Vulkan",
+            crate::acpp::Build::Cpu => "CPU",
+            crate::acpp::Build::Metal => "Metal",
+        };
+        let parts = platform::server_parts(build);
+        all.push(Component {
+            id: crate::acpp::component(build),
+            name: t!("setup-comp-audiocpp-build-name", build = label),
+            purpose: t!("setup-comp-audiocpp-build-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: parts.size,
+            files: parts.files,
+            markers: parts.markers,
+            external_url: None,
+        });
+    }
+    if crate::acpp::cuda_build() == crate::hw::CudaBuild::Cuda12 {
         all.push(Component {
             id: "cuda12-runtime",
             name: "CUDA 12.9 runtime (cudart + cuBLAS + cuFFT)".into(),

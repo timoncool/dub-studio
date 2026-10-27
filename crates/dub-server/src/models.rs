@@ -249,7 +249,7 @@ pub fn tcpp_build(mroot: &Path) -> dub_asr::tcpp::Build {
     // a Mac's one build (Metal and the processor) lies in the processor build's folder
     if cfg!(target_os = "macos") || stage_backend(mroot, "asr_backend") == "cpu" {
         dub_asr::tcpp::Build::Cpu
-    } else if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
+    } else if crate::acpp::cuda_build() == crate::hw::CudaBuild::Cuda12 {
         dub_asr::tcpp::Build::Cuda12
     } else {
         dub_asr::tcpp::Build::Cuda
@@ -268,7 +268,7 @@ pub fn sep_unavailable(mroot: &Path) -> Option<String> {
 pub fn sep_build(mroot: &Path) -> dub_sep::asset::Build {
     if cfg!(target_os = "macos") || stage_backend(mroot, "sep_backend") == "cpu" {
         dub_sep::asset::Build::Cpu
-    } else if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 {
+    } else if crate::acpp::cuda_build() == crate::hw::CudaBuild::Cuda12 {
         dub_sep::asset::Build::Cuda12
     } else {
         dub_sep::asset::Build::Cuda13
@@ -601,14 +601,19 @@ pub fn higgs_ref_secs(mroot: &Path) -> f64 {
     sel_num(mroot, "higgs_ref_secs").filter(|s| *s > 0.0 && *s <= 60.0).unwrap_or(12.0)
 }
 
-/// Выбор ASR-движка для одной джобы: Parakeet на transcribe.cpp (GGUF) либо CrisperWhisper в audiocpp_server.
+/// Выбор ASR-движка для одной джобы: Parakeet и Nemotron на сервере audio.cpp, Parakeet Ultra на transcribe.cpp (GGUF)
+/// либо CrisperWhisper на сервере audio.cpp.
 #[derive(Debug, Clone)]
 pub enum AsrChoice {
-    /// A GGUF model run by transcribe.cpp (`dub_asr::tcpp`), on the build of the recognition backend.
+    /// A GGUF model run by transcribe.cpp (`dub_asr::tcpp`), on the build of the recognition backend (Parakeet Ultra:
+    /// audio.cpp does not read its built-in VAD head).
     Ggml { models_root: PathBuf, build: dub_asr::tcpp::Build, model: &'static dub_asr::tcpp::Model },
-    /// CrisperWhisper 2.0 turbo in the studio's audiocpp_server on the recognition backend; the language of «auto» is
-    /// heard by VoxLingua107 on the transcribe.cpp build of that backend.
-    CrisperWhisper { repo_root: PathBuf, models_root: PathBuf, backend: &'static str, build: dub_asr::tcpp::Build },
+    /// CrisperWhisper 2.0 turbo in the studio's audiocpp_server on the build of the recognition device (`choice`, see
+    /// `acpp::build_for`); the language of «auto» is heard by VoxLingua107 on the transcribe.cpp build of that device.
+    CrisperWhisper { repo_root: PathBuf, models_root: PathBuf, choice: &'static str, build: dub_asr::tcpp::Build },
+    /// A model of transcribe.cpp's catalogue (Parakeet TDT v3, Nemotron 3.5) run by the studio's audiocpp_server on the
+    /// build of the recognition device, reading the same GGUF; `build` is transcribe.cpp's for the language id.
+    Server { repo_root: PathBuf, models_root: PathBuf, choice: &'static str, build: dub_asr::tcpp::Build, model: &'static dub_asr::tcpp::Model },
 }
 
 impl AsrChoice {
@@ -619,12 +624,13 @@ impl AsrChoice {
     pub fn describe(&self) -> String {
         match self {
             AsrChoice::Ggml { model, .. } => format!("transcribe.cpp ({})", model.file),
-            AsrChoice::CrisperWhisper { backend, .. } => format!("CrisperWhisper 2.0 turbo (intended, {backend})"),
+            AsrChoice::CrisperWhisper { choice, .. } => format!("CrisperWhisper 2.0 turbo (intended, {choice})"),
+            AsrChoice::Server { model, .. } => format!("audiocpp_server ({})", model.file),
         }
     }
 
-    /// What the window names as the recogniser: the model, its quantization and the transcribe.cpp build, or
-    /// CrisperWhisper and where it runs.
+    /// What the window names as the recogniser: the model, its quantization and the transcribe.cpp build, or the
+    /// server's model and the device of its build.
     pub fn label(&self) -> String {
         match self {
             AsrChoice::Ggml { model, build, .. } => {
@@ -637,14 +643,18 @@ impl AsrChoice {
                 };
                 format!("{} {quant} ({on})", model.name)
             }
-            AsrChoice::CrisperWhisper { backend, .. } => format!("CrisperWhisper 2.0 turbo ({})", if *backend == "cpu" { "CPU" } else { "CUDA" }),
+            AsrChoice::CrisperWhisper { choice, .. } => format!("CrisperWhisper 2.0 turbo ({})", server_device(choice)),
+            AsrChoice::Server { model, choice, .. } => {
+                let quant = model.file.trim_end_matches(".gguf").rsplit('-').next().unwrap_or(model.file);
+                format!("{} {quant} (audio.cpp, {})", model.name, server_device(choice))
+            }
         }
     }
 
     /// Whether it transcribes `lang` (`""` or `auto` is any).
     pub fn knows(&self, lang: &str) -> bool {
         match self {
-            AsrChoice::Ggml { model, .. } => dub_asr::tcpp::knows(model, lang),
+            AsrChoice::Ggml { model, .. } | AsrChoice::Server { model, .. } => dub_asr::tcpp::knows(model, lang),
             AsrChoice::CrisperWhisper { .. } => {
                 let l = lang.trim().to_ascii_lowercase();
                 let primary = l.split(['-', '_']).next().unwrap_or("");
@@ -659,26 +669,56 @@ impl AsrChoice {
     }
 }
 
+/// What the window names as the device of a server build.
+fn server_device(choice: &str) -> &'static str {
+    match crate::acpp::build_for(choice) {
+        Ok(crate::acpp::Build::Cuda13 | crate::acpp::Build::Cuda12) | Err(_) => "CUDA",
+        Ok(crate::acpp::Build::Vulkan) => "Vulkan",
+        Ok(crate::acpp::Build::Cpu) => "CPU",
+        Ok(crate::acpp::Build::Metal) => "Metal",
+    }
+}
+
+/// The device the settings choose for a stage run in audiocpp_server (`asr_backend`, `tts_backend`, `diar_backend`):
+/// the stage's own choice, else the common one — `cpu`, `vulkan`, `gpu` or `auto`; [`crate::acpp::build_for`] turns it
+/// into the server's build.
+pub fn server_choice(mroot: &Path, key: &str) -> &'static str {
+    let sel = load_selection(mroot);
+    let choice = |k: &str| -> Option<&'static str> {
+        match pick(&sel, k) {
+            Some("cpu") => Some("cpu"),
+            Some("vulkan") => Some("vulkan"),
+            Some("gpu") | Some("cuda") => Some("gpu"),
+            _ => None,
+        }
+    };
+    choice(key).or_else(|| if key == "local_backend" { None } else { choice("local_backend") }).unwrap_or("auto")
+}
+
 /// Скачан ли CrisperWhisper (папка репозитория Hugging Face как есть).
 fn crisperwhisper_installed(mroot: &Path) -> bool {
     mroot.join(crate::acpp::CRISPERWHISPER_DIR).join("model.safetensors").is_file()
 }
 
-/// Резолв активного ASR: выбран движок whisper и CrisperWhisper скачан — CrisperWhisper на бэкенде стадии
-/// распознавания; иначе — Parakeet (вариант из настроек). Нескачанный CrisperWhisper задача докачивает до
+/// Резолв активного ASR: выбран движок whisper и CrisperWhisper скачан — CrisperWhisper на сервере; Parakeet v3 и
+/// Nemotron — на сервере audio.cpp, Parakeet Ultra — на transcribe.cpp. Нескачанный CrisperWhisper задача докачивает до
 /// распознавания (ensure_job_components), так что к резолву внутри задачи он уже на диске.
 pub fn resolve_asr_choice(repo_root: &Path, mroot: &Path, sel: &Value) -> AsrChoice {
     if pick(sel, "asr_engine") == Some("whisper") && crisperwhisper_installed(mroot) {
-        return AsrChoice::CrisperWhisper {
-            repo_root: repo_root.to_path_buf(),
-            models_root: mroot.to_path_buf(),
-            backend: stage_backend(mroot, "asr_backend"),
-            build: tcpp_build(mroot),
-        };
+        return crisperwhisper_choice(repo_root, mroot);
     }
     let model = dub_asr::tcpp::chosen(pick(sel, "asr_engine").unwrap_or(""), pick(sel, "asr"))
         .or_else(|| dub_asr::tcpp::model("parakeet-v3"))
         .expect("parakeet-v3 is in dub_asr::tcpp::MODELS");
+    if crate::acpp::SERVER_ASR.contains(&model.id) {
+        return AsrChoice::Server {
+            repo_root: repo_root.to_path_buf(),
+            models_root: mroot.to_path_buf(),
+            choice: server_choice(mroot, "asr_backend"),
+            build: tcpp_build(mroot),
+            model,
+        };
+    }
     AsrChoice::Ggml { models_root: mroot.to_path_buf(), build: tcpp_build(mroot), model }
 }
 
@@ -687,20 +727,28 @@ pub fn crisperwhisper_choice(repo_root: &Path, mroot: &Path) -> AsrChoice {
     AsrChoice::CrisperWhisper {
         repo_root: repo_root.to_path_buf(),
         models_root: mroot.to_path_buf(),
-        backend: stage_backend(mroot, "asr_backend"),
+        choice: server_choice(mroot, "asr_backend"),
         build: tcpp_build(mroot),
     }
 }
 
 /// The components CrisperWhisper runs on here: its weights, the language id with the transcribe.cpp build it runs
-/// on, and audiocpp_server with the CUDA runtime of its build (none when DUB_STUDIO_AUDIOCPP_SERVER names a program).
+/// on, and the server build of the recognition device with its CUDA runtime.
 pub fn crisperwhisper_components(mroot: &Path) -> Vec<&'static str> {
     let mut ids = vec!["crisperwhisper-turbo", "langid", tcpp_build(mroot).dir()];
-    if std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_none() {
-        ids.push("higgs-engine");
-        ids.push(if crate::acpp::build() == crate::hw::CudaBuild::Cuda12 { "cuda12-runtime" } else { "cuda-runtime" });
-    }
+    ids.extend(server_components(mroot, "asr_backend"));
     ids
+}
+
+/// The server build of a stage's device (`asr_backend`, `tts_backend`, `diar_backend`) and its CUDA runtime: none
+/// when DUB_STUDIO_AUDIOCPP_SERVER names a program, or when the card is chosen and runs no CUDA build (the stage says
+/// so when it starts).
+pub fn server_components(mroot: &Path, key: &str) -> Vec<&'static str> {
+    if std::env::var_os("DUB_STUDIO_AUDIOCPP_SERVER").is_some() {
+        return Vec::new();
+    }
+    let Ok(build) = crate::acpp::build_for(server_choice(mroot, key)) else { return Vec::new() };
+    std::iter::once(crate::acpp::component(build)).chain(crate::acpp::runtime_component(build)).collect()
 }
 
 /// Распознаватель transcribe.cpp задачи: модель из кэша процесса выгружается, когда задача отпускает движок, чтобы
@@ -728,12 +776,12 @@ impl dub_asr::AsrEngine for Unloading {
     }
 }
 
-/// CrisperWhisper of a job: its weights leave the card when the job lets the recogniser go, the server stays.
-struct ServerUnloading(dub_asr::acpp::AcppAsr);
+/// A recogniser in the server of a job: its weights leave the card when the job lets it go, the server stays.
+struct ServerUnloading(dub_asr::acpp::AcppAsr, &'static str);
 
 impl Drop for ServerUnloading {
     fn drop(&mut self) {
-        crate::acpp::unload(&[crate::acpp::CRISPERWHISPER]);
+        crate::acpp::unload(&[self.1]);
     }
 }
 
@@ -758,8 +806,8 @@ pub fn build_engine(choice: &AsrChoice) -> Result<Box<dyn dub_asr::AsrEngine>, S
     build_engine_hinted(choice, None)
 }
 
-/// [`build_engine`] with words and spellings to expect in the recording (CrisperWhisper's context text; Parakeet
-/// takes none).
+/// [`build_engine`] with words and spellings to expect in the recording (CrisperWhisper's context text; Parakeet and
+/// Nemotron take none). Nemotron is told the language «auto» hears.
 pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result<Box<dyn dub_asr::AsrEngine>, String> {
     match choice {
         AsrChoice::Ggml { models_root, build, model } => {
@@ -771,13 +819,23 @@ pub fn build_engine_hinted(choice: &AsrChoice, prompt: Option<String>) -> Result
             }
             Ok(dub_asr::tcpp::with_heard_language(Box::new(Unloading(dub_asr::tcpp::TcppEngine::new(models_root, *build, model))), models_root, *build, model))
         }
-        AsrChoice::CrisperWhisper { repo_root, models_root, backend, build } => {
-            let server = crate::acpp::server(repo_root, models_root, crate::acpp::backend(backend), crate::acpp::CRISPERWHISPER)?;
+        AsrChoice::CrisperWhisper { repo_root, models_root, choice, build } => {
+            let id = crate::acpp::CRISPERWHISPER;
+            let server = crate::acpp::server(repo_root, models_root, crate::acpp::build_for(choice)?, id)?;
             let language = dub_asr::acpp::Language::Whisper {
                 engine_dir: dub_asr::tcpp::engine_dir(models_root, *build),
                 langid: dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID),
             };
-            Ok(Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, crate::acpp::CRISPERWHISPER, language).with_prompt(prompt))))
+            Ok(Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, id, language).with_prompt(prompt), id)))
+        }
+        AsrChoice::Server { repo_root, models_root, choice, build, model } => {
+            let _ = prompt;
+            let id = model.id;
+            // Nemotron is told the language; Parakeet finds it itself
+            let language = if id == crate::acpp::NEMOTRON { dub_asr::acpp::Language::Told } else { dub_asr::acpp::Language::Own };
+            let server = crate::acpp::server(repo_root, models_root, crate::acpp::build_for(choice)?, id)?;
+            let engine: Box<dyn dub_asr::AsrEngine> = Box::new(ServerUnloading(dub_asr::acpp::AcppAsr::new(server, id, language), id));
+            Ok(dub_asr::tcpp::with_heard_language(engine, models_root, *build, model))
         }
     }
 }
@@ -992,9 +1050,21 @@ mod asr_variant_tests {
 
     fn file_of(sel: Value) -> &'static str {
         match resolve_asr_choice(Path::new("."), Path::new("no-models"), &sel) {
-            AsrChoice::Ggml { model, .. } => model.file,
+            AsrChoice::Ggml { model, .. } | AsrChoice::Server { model, .. } => model.file,
             other => panic!("{}", other.describe()),
         }
+    }
+
+    #[test]
+    fn parakeet_v3_and_nemotron_run_in_the_server_and_ultra_on_transcribe_cpp() {
+        let on = |sel: Value| match resolve_asr_choice(Path::new("."), Path::new("no-models"), &sel) {
+            AsrChoice::Server { model, .. } => format!("server {}", model.id),
+            AsrChoice::Ggml { model, .. } => format!("transcribe.cpp {}", model.id),
+            AsrChoice::CrisperWhisper { .. } => "crisperwhisper".to_string(),
+        };
+        assert_eq!(on(serde_json::json!({})), "server parakeet-v3");
+        assert_eq!(on(serde_json::json!({ "asr_engine": "nemotron" })), "server nemotron");
+        assert_eq!(on(serde_json::json!({ "asr": "ultra-int8" })), "transcribe.cpp parakeet-ultra");
     }
 
     #[test]
