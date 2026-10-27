@@ -1021,6 +1021,7 @@ update-why-crisperwhisper = Recognition of other languages in place of Faster-Wh
 update-why-langid = Hears the language of a recording for CrisperWhisper when the source language is left on Auto
 update-why-cuda12 = CUDA 12.9 libraries for the audio.cpp server on older cards and drivers
 update-why-llama = A newer llama.cpp for translation
+update-why-qwen-backends = One Qwen3-TTS engine for every device: CUDA 13 and 12.9, Vulkan on cards of other makes, the processor, Linux and the Mac
 update-why-bsroformer-studio = The studios' own build of voice separation: ready for every NVIDIA card it supports without compiling on the first run, and on Linux it runs on Ubuntu 22.04 and newer
 update-why-ffmpeg = A newer FFmpeg for reading and assembling video and sound
 update-why-ytdlp = A newer yt-dlp with deno: sites change, and links download with the fresh version

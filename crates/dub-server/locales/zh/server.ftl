@@ -811,6 +811,7 @@ update-why-crisperwhisper = 取代 Faster-Whisper 识别其他语言：99 种语
 update-why-langid = 原始语言设为“自动”时，为 CrisperWhisper 识别录音的语言
 update-why-cuda12 = 供 audio.cpp 服务器在较旧显卡和驱动上使用的 CUDA 12.9 库
 update-why-llama = 用于翻译的较新版 llama.cpp
+update-why-qwen-backends = 一个 Qwen3-TTS 引擎适用于所有设备：CUDA 13 和 12.9、其他品牌显卡上的 Vulkan、处理器、Linux 和 Mac
 update-why-bsroformer-studio = 工作室自己构建的人声分离引擎：支持的每款 NVIDIA 显卡首次运行无需编译即可使用，在 Linux 上可运行于 Ubuntu 22.04 及更新版本
 update-why-ffmpeg = 用于读取和合成视频与声音的较新版 FFmpeg
 update-why-ytdlp = 较新的 yt-dlp 与 deno：网站在变化，链接用新版下载

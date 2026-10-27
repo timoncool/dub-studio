@@ -27,6 +27,7 @@ const CHANGES: &[Change] = &[
     Change { what: "higgs-engine", reason: || t!("update-why-audiocpp-server"), replaces: &["models/higgs-engine/audiocpp_engine.dll", "models/higgs-engine/libaudiocpp_engine.so"] },
     Change { what: "transcribe-engine", reason: || t!("update-why-transcribe-avx2"), replaces: &[] },
     Change { what: "transcribe-engine-cpu", reason: || t!("update-why-transcribe-avx2"), replaces: &[] },
+    Change { what: "qwen3-tts-engine", reason: || t!("update-why-qwen-backends"), replaces: &[] },
     Change { what: "crisperwhisper-turbo", reason: || t!("update-why-crisperwhisper"), replaces: &[] },
     Change { what: "langid", reason: || t!("update-why-langid"), replaces: &[] },
     Change { what: "cuda12-runtime", reason: || t!("update-why-cuda12"), replaces: &[] },
@@ -143,7 +144,8 @@ pub fn plan(repo_root: &Path, models_root: &Path, version: &str) -> Plan {
             id: st.id.clone(),
             name: st.name.clone(),
             from,
-            to: c.files.first().map(|f| release_of(f.url)).unwrap_or_default(),
+            // the release of what is still to fetch: a component can share an installed file with the former one
+            to: c.files.iter().find(|f| !setup::file_installed(repo_root, f)).or(c.files.first()).map(|f| release_of(f.url)).unwrap_or_default(),
             download: st.size.saturating_sub(st.bytes_on_disk),
             reason,
         };
