@@ -22,9 +22,15 @@ pub const GLIBCXX_MAX: (u32, u32, u32) = (3, 4, 30);
 
 /// Crates and libraries that choose AVX-512 at run time after a CPUID check, matched as whole crate names in mangled
 /// Rust names (`9crc32fast11specialized…`).
-const DISPATCHING_CRATES: &[&str] = &["crc32fast", "zlib_rs", "aws_lc_rs", "aws_lc_sys", "ort_sys", "ort", "blake3"];
+const DISPATCHING_CRATES: &[&str] = &["crc32fast", "zlib_rs", "aws_lc_rs", "aws_lc_sys", "ort_sys", "ort", "blake3", "aes"];
 /// The same libraries' C and assembly functions, by prefix.
 const DISPATCHING_PREFIXES: &[&str] = &["aws_lc_", "_aws_lc_", "blake3_", "_blake3_"];
+/// Libraries of Ubuntu 22.04's packages that an AppImage carries in usr/lib and that have AVX-512 code: the distribution
+/// runs them on every x86-64 processor, so each picks that code after its own CPUID check. Matched by file name prefix.
+const DISTRO_DISPATCHED: &[&str] = &[
+    "libcrypto.so", "libdav1d.so", "libdeflate.so", "libgfortran.so", "libjavascriptcoregtk-", "libsodium.so", "libvpx.so",
+    "libwebkit2gtk-", "libx264.so", "libx265.so", "libzimg.so",
+];
 /// ggml's CPU variants for AVX-512 processors: ggml loads one only on a processor that has what it was built for.
 const AVX512_GGML_VARIANTS: &[&str] = &["skylakex", "icelake", "cannonlake", "cascadelake", "cooperlake", "zen4", "sapphirerapids"];
 
@@ -93,12 +99,21 @@ impl Functions {
         self.0.is_empty()
     }
 
-    /// The function an address lies in: the one with the nearest start at or below it, when the address is inside
-    /// its size or the size is unknown.
+    /// The function an address lies in: a sized one that covers it, else the nearest start at or below it of size
+    /// unknown (a label), unless a sized function ends between that start and the address.
     fn at(&self, address: u64) -> Option<&str> {
-        let i = self.0.partition_point(|f| f.address <= address).checked_sub(1)?;
-        let f = &self.0[i];
-        (f.size == 0 || address < f.address + f.size).then_some(f.name.as_str())
+        let end = self.0.partition_point(|f| f.address <= address);
+        let mut label = None;
+        for f in self.0[..end].iter().rev() {
+            if f.size == 0 {
+                label.get_or_insert(f.name.as_str());
+            } else if address < f.address + f.size {
+                return Some(f.name.as_str());
+            } else {
+                break;
+            }
+        }
+        label
     }
 
     /// A link map of the build: MSVC `/MAP`, lld `-Map` (rust-lld) or GNU ld `-Map`.
@@ -219,12 +234,16 @@ fn avx512_instructions(file: &object::File) -> Vec<(u64, String)> {
     found
 }
 
-/// The binary's own function symbols (an ELF symbol table; a PE image keeps them in its PDB, so its link map names them).
+/// The binary's own function symbols (an ELF symbol table; a PE image keeps them in its PDB, so its link map names them),
+/// with the untyped labels of code sections that hand-written assembly gives its functions (`blake3_hash_many_avx512`).
 fn own_functions(file: &object::File) -> Functions {
+    let in_code = |s: &object::Symbol| {
+        s.section_index().and_then(|i| file.section_by_index(i).ok()).is_some_and(|section| section.kind() == SectionKind::Text)
+    };
     let all = file
         .symbols()
         .chain(file.dynamic_symbols())
-        .filter(|s| s.kind() == SymbolKind::Text && s.is_definition())
+        .filter(|s| s.is_definition() && (s.kind() == SymbolKind::Text || (s.kind() == SymbolKind::Unknown && in_code(s))))
         .filter_map(|s| Some(Function { address: s.address(), size: s.size(), name: s.name().ok()?.to_string() }))
         .collect();
     Functions::new(all)
@@ -464,7 +483,7 @@ pub fn check_file(root: &Path, path: &Path, how: &Tree) -> Result<Option<Vec<Pro
         return Ok(None);
     }
     let data = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut problems = if how.vendor_dispatched.iter().any(|p| lowered.starts_with(p)) {
+    let mut problems = if how.vendor_dispatched.iter().chain(DISTRO_DISPATCHED).any(|p| lowered.starts_with(p)) {
         Vec::new()
     } else {
         avx512(path, &data, how.maps.get(&name))?
@@ -565,6 +584,44 @@ mod tests {
         assert_eq!(avx512(p, &elf_with_code(&unguarded, "_ZN10dub_server4mixE"), None).unwrap().len(), 1, "a guard for AVX2 is not one for AVX-512");
     }
 
+    /// A linked, unstripped Linux program (gcc -O2, PIE; `testdata/avx512-pie.c`): its symbol table names the global
+    /// and the local function the AVX-512 lies in.
+    #[test]
+    fn an_unstripped_linux_program_names_its_avx512_functions() {
+        let data = include_bytes!("../testdata/avx512-pie.elf");
+        let found = avx512(Path::new("avx512-pie"), data, None).unwrap();
+        let places: Vec<&str> = found.iter().map(|p| match p {
+            Problem::Avx512 { place, .. } => place.as_str(),
+            other => panic!("{other}"),
+        }).collect();
+        assert_eq!(places, vec!["add16", "local_add"], "{found:?}");
+    }
+
+    /// DUB_COMPAT_AVX512: a binary; prints the places of its AVX-512 outside the dispatchers.
+    #[test]
+    #[ignore]
+    fn a_binary_names_its_avx512_places() {
+        let Ok(path) = std::env::var("DUB_COMPAT_AVX512") else { return };
+        let path = PathBuf::from(path);
+        let data = std::fs::read(&path).unwrap();
+        for problem in avx512(&path, &data, None).unwrap() {
+            println!("[..] {problem}");
+        }
+    }
+
+    /// DUB_COMPAT_TREE: a program folder (an extracted AppDir); prints every binary's problems under the default checks.
+    #[test]
+    #[ignore]
+    fn a_folder_names_its_problems() {
+        let Ok(root) = std::env::var("DUB_COMPAT_TREE") else { return };
+        let root = PathBuf::from(root);
+        for (path, problems) in check_tree(&root, &Tree::default()).unwrap() {
+            for problem in problems {
+                println!("[..] {}: {problem}", path.strip_prefix(&root).unwrap_or(&path).display());
+            }
+        }
+    }
+
     /// DUB_COMPAT_ELF: a Linux library; prints the symbol versions it needs and its problems.
     #[test]
     #[ignore]
@@ -585,7 +642,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("dub-compat-t-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let code = elf_with_code(VPXORD_ZMM0_RET, "f");
-        for name in ["libmine.so", "libcublas.so.13", "libunused.so"] {
+        for name in ["libmine.so", "libcublas.so.13", "libunused.so", "libx265.so.199"] {
             std::fs::write(dir.join(name), &code).unwrap();
         }
         std::fs::write(dir.join("notes.txt"), b"text").unwrap();
