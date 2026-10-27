@@ -119,7 +119,7 @@ Sur une machine NVIDIA, la seule chose à installer à la main est un **[pilote 
 
 ## Démarrage rapide
 
-1. **Téléchargez** la version portable depuis [Releases](https://github.com/timoncool/dub-studio/releases) et décompressez où vous voulez (ou installez via `-setup.exe` / `.msi`).
+1. **Téléchargez** la version portable depuis [Releases](https://github.com/timoncool/dub-studio/releases) et décompressez où vous voulez (ou installez via `-setup.exe`).
 2. **Lancez** `Dub Studio.exe`.
 3. Dans le panneau **premier lancement**, cliquez **Tout télécharger** —— l'app récupère modèles, moteurs et runtime (~15 Go, une fois).
 4. **Déposez une vidéo**, choisissez la langue cible → la passe auto produit le premier jet. Réglez tout dans l'éditeur puis cliquez **Exporter**.

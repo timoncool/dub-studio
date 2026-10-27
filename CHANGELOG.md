@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Changed
 
+- **One Windows installer**: the release has the NSIS setup.exe and the portable build; the MSI is no longer made, as in the other studios. A studio installed from an MSI of an earlier version is updated by running the new setup.exe.
 - **Supertonic 3 voices in the audio.cpp server**, as in Speech Studio: the server reads the installed int8 model as it is, on the build of the voicing device (the card's CUDA build, Vulkan or the processor); ONNX Runtime no longer runs it. Voicing a dub's audio alone fetches the server build it needs, as a render does.
 - **Diarization runs in the audio.cpp server**, as in Speech Studio: Nemotron 3 Diarization reads the installed model as it is, on the build of the diarization device — the card's CUDA build (13 or 12.9), Vulkan or the processor — and leaves the card when the speakers are found; a job fetches that build, and diarization no longer needs ONNX Runtime for the card and cuDNN.
 - **Parakeet TDT v3 and Nemotron 3.5 recognise in the audio.cpp server**, as in Speech Studio: the server reads the same GGUF, on the build of the recognition device — the card's CUDA build, Vulkan on a card of another make, or the processor — and Higgs voices take the build of the voicing device the same way; Parakeet Ultra stays on transcribe.cpp. The server's other builds are components of their own, fetched when a stage is set to them.

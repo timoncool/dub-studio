@@ -119,7 +119,7 @@ Dub Studio 打开时会在 `http://127.0.0.1:8793/mcp` 提供 MCP 服务：Claud
 
 ## 快速开始
 
-1. 从 [Releases](https://github.com/timoncool/dub-studio/releases) **下载**便携版并解压到任意文件夹（或用 `-setup.exe` / `.msi` 安装）。
+1. 从 [Releases](https://github.com/timoncool/dub-studio/releases) **下载**便携版并解压到任意文件夹（或用 `-setup.exe` 安装）。
 2. **运行** `Dub Studio.exe`。
 3. 在**首次运行**面板点击**全部下载** —— 应用获取模型、引擎与运行库（约 15 GB，一次）。若缺 NVIDIA 驱动，按钮会打开下载页。
 4. **拖入视频**，选择目标语言 → 自动流程出初稿。在编辑器里微调后点击**导出**。

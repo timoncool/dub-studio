@@ -121,8 +121,8 @@ if ($DryRun) {
     Write-Host '[PLAN] cargo test --workspace'
     Write-Host '[PLAN] cargo test --manifest-path desktop/src-tauri/Cargo.toml'
     Write-Host "[PLAN] stage into $stagingRoot"
-    Write-Host "[PLAN] tauri build --config $bundleConfigPath (NSIS + MSI, signed)"
-    Write-Host "[PLAN] release\${Version}: setup.exe (+.sig), msi (+.sig), portable zip, latest.json"
+    Write-Host "[PLAN] tauri build --config $bundleConfigPath (NSIS, signed)"
+    Write-Host "[PLAN] release\${Version}: setup.exe (+.sig), portable zip, latest.json"
     Write-Host '[OK] dry run finished, nothing was built'
     return
 }
@@ -186,12 +186,10 @@ try {
     # Exact version in the filter: a bundle folder keeps installers of earlier builds.
     $nsisInstaller = Get-ChildItem -Recurse -File (Join-Path $bundleRoot 'nsis') -Filter "*_$($Version)_x64-setup.exe" | Select-Object -First 1
     if (-not $nsisInstaller) { Fail "the NSIS installer for $Version is missing in $bundleRoot" }
-    $msiInstaller = Get-ChildItem -Recurse -File (Join-Path $bundleRoot 'msi') -Filter "*_$($Version)_x64_*.msi" | Select-Object -First 1
-    if (-not $msiInstaller) { Fail "the MSI for $Version is missing in $bundleRoot" }
 
     # GitHub replaces spaces in asset names with dots; the manifest must name the asset as it is served.
     $assets = @{}
-    foreach ($installer in $nsisInstaller, $msiInstaller) {
+    foreach ($installer in @($nsisInstaller)) {
         $signaturePath = "$($installer.FullName).sig"
         if (-not (Test-Path $signaturePath)) { Fail "the updater signature is missing: $signaturePath" }
         $assetName = $installer.Name -replace ' ', '.'
@@ -239,10 +237,6 @@ try {
             'windows-x86_64-nsis' = [ordered]@{
                 signature = $assets['.exe'].signature
                 url = "$downloadBase/$($assets['.exe'].name)"
-            }
-            'windows-x86_64-msi' = [ordered]@{
-                signature = $assets['.msi'].signature
-                url = "$downloadBase/$($assets['.msi'].name)"
             }
         }
     }

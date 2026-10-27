@@ -119,7 +119,7 @@ En un equipo con NVIDIA, lo único que instalas a mano es un **[controlador NVID
 
 ## Inicio rápido
 
-1. **Descarga** la versión portátil desde [Releases](https://github.com/timoncool/dub-studio/releases) y descomprime donde quieras (o instala con `-setup.exe` / `.msi`).
+1. **Descarga** la versión portátil desde [Releases](https://github.com/timoncool/dub-studio/releases) y descomprime donde quieras (o instala con `-setup.exe`).
 2. **Ejecuta** `Dub Studio.exe`.
 3. En el panel de **primer arranque** pulsa **Descargar todo** —— la app obtiene modelos, motores y runtime (~15 GB, una vez).
 4. **Suelta un vídeo**, elige el idioma destino → el pase automático crea el primer borrador. Ajusta todo en el editor y pulsa **Exportar**.
