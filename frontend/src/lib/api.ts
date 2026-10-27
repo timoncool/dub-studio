@@ -216,7 +216,7 @@ export type GpuReport = {
 };
 export type SetupStatus = {
   components: SetupComponent[]; ready: boolean;
-  downloadPending: number; driverOk: boolean; llamaBuild: string;
+  downloadPending: number; driverOk: boolean; llamaBuild: string; llamaNote: string | null;
   modelsDir: string; freeBytes: number | null; gpu: GpuReport; active: DownloadJob | null;
 };
 export type ImportResult = { imported: string[]; files: number; errors: string[]; status: SetupStatus };

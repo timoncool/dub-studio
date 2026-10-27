@@ -151,7 +151,7 @@ pub fn verify_captions_e2e(
         repo_root: repo_root.to_path_buf(),
         asr: models::AsrChoice::unused(), // ocr::stage не трогает ASR (verify-путь)
         sortformer_onnx: unused.clone(),
-        llama_bin: dub_llm::resolve_llama_bin(&repo_root.join("tools").join("llama")),
+        llama_bin: dub_llm::resolve_llama_bin(&setup::llama_dir(repo_root, setup::llama_build())),
         mt_model,
         mmproj,
         models_root: mroot,
@@ -252,7 +252,7 @@ pub fn ensure_library_path(repo_root: &Path) {
 pub fn augment_path_for_tools(repo_root: &Path) {
     let mut dirs = vec![
         repo_root.join("tools").join("ffmpeg"),
-        repo_root.join("tools").join("llama"),
+        setup::llama_dir(repo_root, setup::llama_build()),
         repo_root.join("models").join("higgs-engine"),
     ];
     if crate::hw::gpu_report().cuda_build == Some(crate::hw::CudaBuild::Cuda12) {
@@ -396,9 +396,9 @@ impl AppState {
             Err(e) => tracing::error!("secrets from active.json were not moved to the store: {e:#}"),
         }
         let sortformer_onnx = crate::acpp::diar_onnx(&mroot);
-        // llama-server: env-override, иначе <repo>/tools/llama/llama-server(.exe) (негитуемый каталог,
-        // кладёт установщик/раунд 3). Существование проверяет сама стадия перевода (fail-safe).
-        let llama_bin = dub_llm::resolve_llama_bin(&repo_root.join("tools").join("llama"));
+        // llama-server: env-override, иначе llama-server(.exe) сборки этой карты (tools/llama, llama-cuda12,
+        // llama-vulkan, llama-cpu). Существование проверяет сама стадия перевода.
+        let llama_bin = dub_llm::resolve_llama_bin(&setup::llama_dir(&repo_root, setup::llama_build()));
         let bsroformer_cli = std::env::var("DUB_STUDIO_BSROFORMER_DIR")
             .map(|d| PathBuf::from(d).join(dub_sep::ENGINE_CLI_FILE))
             .unwrap_or_else(|_| dub_sep::engine_dir(&repo_root).join(dub_sep::ENGINE_CLI_FILE));

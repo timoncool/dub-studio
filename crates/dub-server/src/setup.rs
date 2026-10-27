@@ -155,6 +155,78 @@ const fn sep_file(build: dub_sep::asset::Build) -> FileSpec {
 // Сборка llama.cpp одна на обе платформы.
 const GH_LLAMA_BUILD: &str = "b11900";
 
+/// The llama.cpp build of this computer's card, as YuE2 and Speech Studio pick it: CUDA 13, CUDA 12, Vulkan on another
+/// card, the processor without one (the build «auto» of the engines, `acpp::build`).
+pub fn llama_parts(build: crate::acpp::Build) -> &'static Parts {
+    match build {
+        crate::acpp::Build::Cuda13 => &platform::LLAMA,
+        crate::acpp::Build::Cuda12 => &platform::LLAMA_CUDA12,
+        crate::acpp::Build::Vulkan => &platform::LLAMA_VULKAN,
+        crate::acpp::Build::Cpu | crate::acpp::Build::Metal => &platform::LLAMA_CPU,
+    }
+}
+
+/// The oldest glibc the upstream llama.cpp CUDA builds for Linux start on (b11900 needs GLIBC_2.38 and GLIBCXX_3.4.32).
+const LLAMA_CUDA_GLIBC: (u32, u32) = (2, 38);
+
+/// The llama.cpp build Gemma runs on: the card's build, except a CUDA one on a Linux whose glibc is older than the
+/// upstream CUDA builds need; the card then runs the Vulkan build.
+pub fn llama_build() -> crate::acpp::Build {
+    llama_build_for(crate::acpp::build(), glibc_version())
+}
+
+fn llama_build_for(card: crate::acpp::Build, glibc: Option<(u32, u32)>) -> crate::acpp::Build {
+    use crate::acpp::Build;
+    match (card, glibc) {
+        (Build::Cuda13 | Build::Cuda12, Some(version)) if version < LLAMA_CUDA_GLIBC => Build::Vulkan,
+        _ => card,
+    }
+}
+
+/// Why Gemma does not run the card's CUDA build, for Settings; None when it does.
+pub fn llama_note() -> Option<String> {
+    let glibc = glibc_version()?;
+    (llama_build() != crate::acpp::build()).then(|| {
+        t!(
+            "setup-llama-vulkan-glibc",
+            glibc = format!("{}.{}", glibc.0, glibc.1),
+            need = format!("{}.{}", LLAMA_CUDA_GLIBC.0, LLAMA_CUDA_GLIBC.1)
+        )
+    })
+}
+
+/// The C library version of this Linux (`gnu_get_libc_version`); None on other systems.
+pub fn glibc_version() -> Option<(u32, u32)> {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    {
+        let text = unsafe { std::ffi::CStr::from_ptr(libc::gnu_get_libc_version()) };
+        parse_glibc(text.to_str().ok()?)
+    }
+    #[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+    {
+        None
+    }
+}
+
+#[cfg(any(all(target_os = "linux", target_env = "gnu"), test))]
+fn parse_glibc(text: &str) -> Option<(u32, u32)> {
+    let mut parts = text.trim().split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.chars().take_while(char::is_ascii_digit).collect::<String>().parse().ok()?;
+    Some((major, minor))
+}
+
+/// The folder of a llama.cpp build: CUDA 13 in tools/llama, where former versions put it, the others beside it.
+pub fn llama_dir(repo_root: &Path, build: crate::acpp::Build) -> PathBuf {
+    let folder = match build {
+        crate::acpp::Build::Cuda13 => "llama",
+        crate::acpp::Build::Cuda12 => "llama-cuda12",
+        crate::acpp::Build::Vulkan => "llama-vulkan",
+        crate::acpp::Build::Cpu | crate::acpp::Build::Metal => "llama-cpu",
+    };
+    repo_root.join("tools").join(folder)
+}
+
 /// Windows x64: zip-релизы, PyPI-колёса win_amd64, redist NVIDIA windows-x86_64.
 #[cfg(windows)]
 mod platform {
@@ -309,6 +381,22 @@ mod platform {
             FileSpec { url: GH_LLAMA, dest_rel: "tools/llama/_llama.zip", size: 164_721_212, sha256: "0d75ad36367da00622c146a97e82fac3dcfcbe960afc2f0234eef026886b16f6", extract: Extract::Flat },
         ],
         markers: &[Marker { rel: "tools/llama/llama-server.exe", expect: 0 }],
+    };
+    // the same release's other builds: CUDA 12.4 (cudart and cuBLAS 12 from cuda12-runtime), Vulkan and the processor
+    pub const LLAMA_CUDA12: Parts = Parts {
+        size: 279_417_051,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-cuda-12.4-x64.zip", dest_rel: "tools/llama-cuda12/_llama.zip", size: 279_417_051, sha256: "387ad76c926cdb301971851a11df018165a7b4df4b1b7c64cf4b09a367ec82bc", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cuda12/llama-server.exe", expect: 0 }],
+    };
+    pub const LLAMA_VULKAN: Parts = Parts {
+        size: 37_051_563,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-vulkan-x64.zip", dest_rel: "tools/llama-vulkan/_llama.zip", size: 37_051_563, sha256: "baf0183b1906d7cc0cfe9a0bd3fae34ceb4048acecc371ff3b7a91456783d051", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-vulkan/llama-server.exe", expect: 0 }],
+    };
+    pub const LLAMA_CPU: Parts = Parts {
+        size: 24_228_419,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-win-cpu-x64.zip", dest_rel: "tools/llama-cpu/_llama.zip", size: 24_228_419, sha256: "d3bbbbb7d1b4979b72052fd73cdeeb5a4d5a4e6a3f52aeb40abd6f116558e323", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cpu/llama-server.exe", expect: 0 }],
     };
 
     pub const ORT: Parts = Parts {
@@ -488,6 +576,22 @@ mod platform {
         ],
         markers: &[Marker { rel: "tools/llama/llama-server", expect: 0 }],
     };
+    // the same release's other builds: CUDA 12.8 (cudart and cuBLAS 12 from cuda12-runtime), Vulkan and the processor
+    pub const LLAMA_CUDA12: Parts = Parts {
+        size: 182_211_176,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-cuda-12.8-x64.tar.gz", dest_rel: "tools/llama-cuda12/_llama.tar.gz", size: 182_211_176, sha256: "618c17e4e4ccc11953f21452ca34e4786a1554dc405e98a2c4d53d7c2ed5b415", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cuda12/llama-server", expect: 0 }],
+    };
+    pub const LLAMA_VULKAN: Parts = Parts {
+        size: 35_162_561,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-vulkan-x64.tar.gz", dest_rel: "tools/llama-vulkan/_llama.tar.gz", size: 35_162_561, sha256: "111ee8d3f61723859e57195bb9ba21241eb598163621840aaf3b5c066950c092", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-vulkan/llama-server", expect: 0 }],
+    };
+    pub const LLAMA_CPU: Parts = Parts {
+        size: 22_497_562,
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-ubuntu-x64.tar.gz", dest_rel: "tools/llama-cpu/_llama.tar.gz", size: 22_497_562, sha256: "3effcc3009af64d6f30c217827d7982b3934577d282feb243b11fb6789ed124e", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cpu/llama-server", expect: 0 }],
+    };
 
     pub const ORT: Parts = Parts {
         size: 9_128_991,
@@ -624,10 +728,13 @@ mod platform {
     pub const BSROFORMER_CPU: Parts = Parts { size: SEP_CPU[0].size, files: &SEP_CPU, markers: &[Marker { rel: "tools/bsroformer-cpu/bs_roformer-cli", expect: 0 }] };
 
     // llama.cpp b11900 macos-arm64: Metal and the processor, rpath @loader_path.
-    pub const LLAMA: Parts = Parts {
+    pub const LLAMA: Parts = NONE;
+    pub const LLAMA_CUDA12: Parts = NONE;
+    pub const LLAMA_VULKAN: Parts = NONE;
+    pub const LLAMA_CPU: Parts = Parts {
         size: 16_295_973,
-        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-macos-arm64.tar.gz", dest_rel: "tools/llama/_llama.tar.gz", size: 16_295_973, sha256: "6d3af8649e687b288395ee79f4423a21376892edb94520fa6320bfd3eb81700b", extract: Extract::Flat }],
-        markers: &[Marker { rel: "tools/llama/llama-server", expect: 0 }],
+        files: &[FileSpec { url: "https://github.com/ggml-org/llama.cpp/releases/download/b11900/llama-b11900-bin-macos-arm64.tar.gz", dest_rel: "tools/llama-cpu/_llama.tar.gz", size: 16_295_973, sha256: "6d3af8649e687b288395ee79f4423a21376892edb94520fa6320bfd3eb81700b", extract: Extract::Flat }],
+        markers: &[Marker { rel: "tools/llama-cpu/llama-server", expect: 0 }],
     };
 
     pub const ORT: Parts = Parts {
@@ -1247,9 +1354,9 @@ pub fn manifest() -> Vec<Component> {
             requirement: Requirement::Required,
             delivery: Delivery::Download,
             // Размер сжатого zip (для прогресса закачки); распакованный footprint ~183 МБ.
-            size: platform::LLAMA.size,
-            files: platform::LLAMA.files,
-            markers: platform::LLAMA.markers,
+            size: llama_parts(llama_build()).size,
+            files: llama_parts(llama_build()).files,
+            markers: llama_parts(llama_build()).markers,
             external_url: None,
         },
         Component {
@@ -2077,6 +2184,8 @@ pub struct SetupStatus {
     pub driver_ok: bool,
     /// build-строки для диагностики (llama-билд и т.п.).
     pub llama_build: String,
+    /// Why Gemma runs another build than the card's (a CUDA build the system cannot start); None when it does not.
+    pub llama_note: Option<String>,
     /// Папка моделей (куда кладёт «Первый запуск»).
     pub models_dir: String,
     /// Свободно на томе моделей, байт; None — ОС не ответила, место не проверяется.
@@ -2201,6 +2310,7 @@ pub fn setup_status(repo_root: &Path) -> SetupStatus {
         download_pending,
         driver_ok: gpu.nvidia,
         llama_build: GH_LLAMA_BUILD.to_string(),
+        llama_note: llama_note(),
         models_dir: mroot.to_string_lossy().to_string(),
         free_bytes: free_bytes(&mroot),
         gpu,
@@ -3874,6 +3984,22 @@ mod tests {
     fn sized(path: &Path, size: u64) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         File::create(path).unwrap().set_len(size).unwrap();
+    }
+
+    #[test]
+    fn a_linux_older_than_glibc_2_38_runs_gemma_on_vulkan_instead_of_cuda() {
+        use crate::acpp::Build;
+        assert_eq!(parse_glibc("2.35"), Some((2, 35)));
+        assert_eq!(parse_glibc("2.39\n"), Some((2, 39)));
+        assert_eq!(parse_glibc("2.38-ubuntu"), Some((2, 38)));
+        assert_eq!(parse_glibc("x"), None);
+        for card in [Build::Cuda13, Build::Cuda12] {
+            assert_eq!(llama_build_for(card, Some((2, 35))), Build::Vulkan);
+            assert_eq!(llama_build_for(card, Some((2, 38))), card);
+            assert_eq!(llama_build_for(card, None), card);
+        }
+        assert_eq!(llama_build_for(Build::Cpu, Some((2, 35))), Build::Cpu);
+        assert_eq!(llama_build_for(Build::Vulkan, Some((2, 35))), Build::Vulkan);
     }
 
     #[test]

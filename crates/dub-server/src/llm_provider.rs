@@ -85,6 +85,10 @@ fn start_gemma(o: &LlmOpen, with_mmproj: bool) -> Result<LlmProvider, String> {
     if with_mmproj {
         opts = opts.with_mmproj(o.mmproj);
     }
+    // the processor's build has no card to put layers on
+    if crate::setup::llama_build() == crate::acpp::Build::Cpu {
+        opts.n_gpu_layers = 0;
+    }
     // Gemma does not share the card with the voicing model the process keeps
     crate::tts_host::unload();
     let server = LlamaServer::start(&opts).map_err(|e| e.localize())?;

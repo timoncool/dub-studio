@@ -98,12 +98,9 @@ fn search_dirs(root: &Path) -> Vec<PathBuf> {
     vec![root.join("tools").join("ffmpeg"), root.join("tools").join("llama"), root.join("models").join("higgs-engine")]
 }
 
-/// Что грузят процессы Dub: (компонент, файл). ggml-cuda.dll llama.cpp и BSRoformer, подбиблиотеки cuDNN
-/// грузятся LoadLibrary'ем, поэтому проверяются отдельными точками входа.
-pub const ENTRY_POINTS: &[(&str, &str)] = &[
-    ("llama", "tools/llama/llama-server.exe"),
-    ("llama", "tools/llama/ggml-cuda.dll"),
-    ("higgs-engine", "tools/audiocpp/audiocpp_server.exe"),
+/// Что грузят процессы Dub: (компонент, файл). ggml-cuda.dll BSRoformer, подбиблиотеки cuDNN грузятся
+/// LoadLibrary'ем, поэтому проверяются отдельными точками входа; llama.cpp и сервер audio.cpp — в [`entry_points`].
+const FIXED_ENTRY_POINTS: &[(&str, &str)] = &[
     ("drama3", "models/drama-engine/drama_engine.dll"),
     ("onnxruntime", "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll"),
     ("onnxruntime-gpu", "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime_providers_cuda.dll"),
@@ -119,6 +116,36 @@ pub const ENTRY_POINTS: &[(&str, &str)] = &[
     ("bsroformer-engine-cpu", "tools/bsroformer-cpu/bs_roformer-cli.exe"),
     ("ffmpeg", "tools/ffmpeg/ffmpeg.exe"),
 ];
+
+/// The fixed entry points, those of each build of the server this computer lists, and Qwen's library with the backend
+/// modules it loads at run time.
+pub fn entry_points() -> Vec<(&'static str, String)> {
+    use crate::acpp::Build;
+    let manifest = setup::manifest();
+    let listed = |id: &str| manifest.iter().any(|c| c.id == id);
+    let mut out: Vec<(&'static str, String)> = FIXED_ENTRY_POINTS.iter().map(|(c, rel)| (*c, rel.to_string())).collect();
+    // the llama.cpp build of this computer's card, and the backend it loads at run time
+    let llama = setup::llama_dir(Path::new(""), setup::llama_build());
+    out.push(("llama", llama.join("llama-server.exe").to_string_lossy().into_owned()));
+    let backend = match setup::llama_build() {
+        Build::Cuda13 | Build::Cuda12 => Some("ggml-cuda.dll"),
+        Build::Vulkan => Some("ggml-vulkan.dll"),
+        Build::Cpu | Build::Metal => None,
+    };
+    out.extend(backend.map(|lib| ("llama", llama.join(lib).to_string_lossy().into_owned())));
+    for build in [Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu] {
+        let server = crate::acpp::component(build);
+        if listed(server) {
+            out.push((server, format!("tools/{}/audiocpp_server.exe", build.folder())));
+        }
+    }
+    for (component, file) in [("qwen3-tts-engine", "qwen.dll"), ("qwen3-tts-engine", "ggml-cpu.dll"), ("qwen3-tts-vulkan", "ggml-vulkan.dll"), ("qwen3-tts-cuda", "ggml-cuda.dll")] {
+        if listed(component) {
+            out.push((component, format!("models/qwen3-tts/{file}")));
+        }
+    }
+    out
+}
 
 /// Итог проверки одной точки входа.
 #[derive(Debug, Default)]
@@ -195,7 +222,7 @@ pub fn check_components(root: &Path, include: &dyn Fn(&str) -> bool, seen: &mut 
         .map(|(n, d, _)| (n, d))
         .collect();
     let mut problems = Vec::new();
-    for (component, rel) in ENTRY_POINTS.iter().filter(|(component, _)| include(component)) {
+    for (component, rel) in entry_points().iter().filter(|(component, _)| include(component)) {
         let entry = root.join(rel);
         if !entry.is_file() {
             problems.push(format!("{component}: no {rel} after installation"));
@@ -247,7 +274,8 @@ mod tests {
     fn cross_component_imports_are_installed_where_the_loader_looks() {
         let root = Path::new("R");
         let manifest = setup::manifest();
-        for (component, rel) in ENTRY_POINTS {
+        let entries = entry_points();
+        for (component, rel) in &entries {
             let c = manifest.iter().find(|c| c.id == *component).unwrap_or_else(|| panic!("нет компонента {component}"));
             assert_eq!(c.delivery, Delivery::Download, "{component}");
             assert!(
@@ -258,7 +286,7 @@ mod tests {
         let dirs = search_dirs(root);
         let known = manifest_basenames(root);
         for (importer, dll, provider, _) in CROSS_COMPONENT {
-            assert!(ENTRY_POINTS.iter().any(|(c, _)| c == importer), "{importer} не проверяется");
+            assert!(entries.iter().any(|(c, _)| c == importer), "{importer} не проверяется");
             let lowered = dll.to_ascii_lowercase();
             let hit = known.iter().find(|(n, _, id)| *n == lowered && id == provider);
             let Some((_, dir, _)) = hit else { panic!("{dll} ({importer}) не значится в маркерах {provider}") };
@@ -287,7 +315,7 @@ mod tests {
     #[ignore]
     fn downloaded_runtime_can_be_loaded() {
         let root = PathBuf::from(std::env::var("DUB_DLL_STAGING").expect("DUB_DLL_STAGING = пустой корень для закачки"));
-        let mut ids: Vec<String> = ENTRY_POINTS.iter().map(|(c, _)| c.to_string()).collect();
+        let mut ids: Vec<String> = entry_points().iter().map(|(c, _)| c.to_string()).collect();
         ids.extend(CROSS_COMPONENT.iter().map(|(_, _, p, _)| p.to_string()));
         ids.sort();
         ids.dedup();

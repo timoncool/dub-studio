@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Changed
 
+- **Gemma runs on the llama.cpp build of the card**, as in Speech Studio: CUDA 13, CUDA 12 on older cards and drivers, Vulkan on a card of another make, the processor without one. On a Linux whose glibc is older than 2.38, which the CUDA builds of llama.cpp need, it takes the Vulkan build, and Settings → Models says why.
 - **The voicing model stays loaded between renders**, as in Speech Studio: voicing a phrase again or the next render takes the model already on the card instead of loading it anew. It leaves after the minutes of Settings → Models → «Unload the voicing model after idle» (15 by default, or never), before the studio's own Gemma starts, on a card under 12 GB before recognition and separation, and when its engine stalls.
 - **One Windows installer**: the release has the NSIS setup.exe and the portable build; the MSI is no longer made, as in the other studios. A studio installed from an MSI of an earlier version is updated by running the new setup.exe.
 - **Supertonic 3 voices in the audio.cpp server**, as in Speech Studio: the server reads the installed int8 model as it is, on the build of the voicing device (the card's CUDA build, Vulkan or the processor); ONNX Runtime no longer runs it. Voicing a dub's audio alone fetches the server build it needs, as a render does.

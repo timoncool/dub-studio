@@ -553,6 +553,7 @@ setup-comp-bsroformer-engine-cpu-name = 人声分离引擎（处理器）
 setup-comp-bsroformer-engine-cpu-purpose = 适用于没有 NVIDIA 显卡的电脑：在处理器上运行，较慢
 setup-comp-llama-name = 翻译服务器（llama.cpp）
 setup-comp-llama-purpose = 运行 Gemma 进行翻译和识别画面文字的程序
+setup-llama-vulkan-glibc = Gemma 通过 Vulkan 在显卡上运行：llama.cpp 的 CUDA 版本需要 glibc { $need } 或更新，本系统为 { $glibc }
 setup-comp-onnxruntime-purpose = 识别语音、画面文字和说话人所需
 setup-comp-onnxruntime-gpu-purpose = 让语音和说话人识别在显卡上运行，而不是处理器
 setup-comp-ffmpeg-purpose = 读取并合成视频和音频

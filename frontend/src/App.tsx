@@ -507,6 +507,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <>
             {variantPicker("Gemma-4 12B QAT + vision", ["gemma", "gemma-q5_0", "gemma-q6_k", "gemma-q8_0"])}
             {rowOf("llama")}
+            {status.llamaNote && <p className="text-[11px] text-[var(--color-muted)] px-1">{status.llamaNote}</p>}
           </>
         )}
       </>)}
