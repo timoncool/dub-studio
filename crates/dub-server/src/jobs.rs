@@ -74,10 +74,12 @@ pub enum JobKind {
     Shorten,
     /// «Собрать глоссарий из текста» (кандидаты в итоге джобы).
     Glossary,
+    /// A library voice without noise (DPDFNet), as Speech Studio's `voice_clean` jobs.
+    VoiceClean,
 }
 
 impl JobKind {
-    const ALL: [JobKind; 14] = [
+    const ALL: [JobKind; 15] = [
         JobKind::Analyze,
         JobKind::Retranslate,
         JobKind::Remix,
@@ -92,6 +94,7 @@ impl JobKind {
         JobKind::DetectText,
         JobKind::Shorten,
         JobKind::Glossary,
+        JobKind::VoiceClean,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -110,6 +113,7 @@ impl JobKind {
             JobKind::DetectText => "detect_text",
             JobKind::Shorten => "shorten",
             JobKind::Glossary => "glossary",
+            JobKind::VoiceClean => "voice_clean",
         }
     }
 
@@ -126,7 +130,7 @@ impl JobKind {
             JobKind::DubAudio | JobKind::Render | JobKind::ExportLang => Some("audio"),
             JobKind::Separate => Some("separate"),
             JobKind::DetectText => Some("detect_text"),
-            JobKind::Download | JobKind::VoicesPack | JobKind::Frame => None,
+            JobKind::Download | JobKind::VoicesPack | JobKind::Frame | JobKind::VoiceClean => None,
         }
     }
 }

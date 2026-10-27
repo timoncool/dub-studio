@@ -1210,6 +1210,18 @@ pub fn manifest() -> Vec<Component> {
             markers: &[Marker { rel: "models/crisperwhisper2-turbo/model.safetensors", expect: 1_617_907_538 }],
             external_url: None,
         },
+        // Noise suppression of a library voice and of a recording to transcribe (DPDFNet, ONNX), as in Speech Studio.
+        Component {
+            id: "dpdfnet",
+            name: t!("setup-comp-dpdfnet-name"),
+            purpose: t!("setup-comp-dpdfnet-purpose"),
+            requirement: Requirement::Recommended,
+            delivery: Delivery::Download,
+            size: 10_493_337,
+            files: &[FileSpec { url: "https://huggingface.co/Ceva-IP/DPDFNet/resolve/dd6818d00f50c836fed43a6243ebe49116de5964/onnx/dpdfnet2_48khz_hr.onnx", dest_rel: "models/dpdfnet/dpdfnet2_48khz_hr.onnx", size: 10_493_337, sha256: "7f0575a5cec0ba4ffd8f8bd657e06d007e4ccdd955d76faab922b9d3291dc14b", extract: Extract::None }],
+            markers: &[Marker { rel: "models/dpdfnet/dpdfnet2_48khz_hr.onnx", expect: 10_493_337 }],
+            external_url: None,
+        },
         // Where the speech is (Silero VAD v6.2 on transcribe.cpp): a long recording goes to Parakeet Ultra in pieces cut
         // at the pauses, as in Speech Studio.
         Component {

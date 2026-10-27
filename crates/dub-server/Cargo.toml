@@ -6,6 +6,7 @@ license.workspace = true
 description = "axum-сервер Dub Studio: тот же REST/SSE контракт, что backend/app.py"
 
 [dependencies]
+tempfile = "3"
 fluent-templates = "0.15.1"
 dub-core = { path = "../dub-core" }
 dub-asr = { path = "../dub-asr", features = ["cuda"] }
@@ -83,6 +84,5 @@ windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Securit
 libc = "0.2"
 
 [dev-dependencies]
-tempfile = "3"
 # Поддельный HTTP-сервер для тестов провайдеров.
 dub-llm = { path = "../dub-llm", features = ["test-support"] }

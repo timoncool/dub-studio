@@ -467,6 +467,8 @@ export const api = {
   voiceSampleUrl: (name: string) => `${BASE}/voices/sample?name=${encodeURIComponent(name)}`,   // прослушка выбранного голоса (<audio>)
   voicesRename: (from: string, to: string) => postJson<{ voices: string[] }>("/voices/rename", { from, to }),
   voicesDelete: (name: string) => postJson<{ voices: string[] }>("/voices/delete", { name }),
+  voiceDenoise: (name: string, db?: number) => postJson<{ job_id: string }>("/voices/denoise", { name, db: db ?? null }),
+  voiceRestore: (name: string) => postJson<{ voices: string[]; cleaned: string[] }>("/voices/restore", { name }),
   speakerVoice: (pid: string, speaker: string, name: string) => sendCoded<{ ok: boolean; name: string; voices: string[] }>("POST", `/projects/${pid}/speaker-voice`, { speaker, name }),
   // Слоты голосов из библиотеки (#114): раздать голоса по спикерам по полу/приоритету. Пустые списки -> клон.
   voiceSlots: (pid: string, slots: { male: string[]; female: string[] }) =>

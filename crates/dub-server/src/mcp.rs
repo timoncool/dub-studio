@@ -1080,8 +1080,8 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "studio_wait",
-                description: "Wait for work to finish instead of polling: a job (job_id, as project_analyze, project_dub_audio, project_render, project_export_lang, project_retranslate, project_remix, project_align, project_resume, voices_download_pack, segment_shorten, glossary_extract or a one-call tool still at work returned it, or the fetch.id of project_create_from_url), or until one kind of work is over - analyze, dub_audio, render, export_lang, retranslate, remix, align, shorten, download (models and downloads by link), voices_pack, separate, detect_text, glossary - or everything (until: idle, the default). Returns when it is done or after seconds (30 by default, at most 55, under the minute clients allow a call) with how far it got; call it again to keep waiting.",
-                schema: || object(json!({ "job_id": { "type": "string" }, "until": { "type": "string", "enum": ["idle", "analyze", "dub_audio", "render", "export_lang", "retranslate", "remix", "align", "shorten", "download", "voices_pack", "separate", "detect_text", "glossary"] }, "seconds": { "type": "integer" } }), &[]),
+                description: "Wait for work to finish instead of polling: a job (job_id, as project_analyze, project_dub_audio, project_render, project_export_lang, project_retranslate, project_remix, project_align, project_resume, voices_download_pack, voice_denoise, segment_shorten, glossary_extract or a one-call tool still at work returned it, or the fetch.id of project_create_from_url), or until one kind of work is over - analyze, dub_audio, render, export_lang, retranslate, remix, align, shorten, download (models and downloads by link), voices_pack, separate, detect_text, glossary, voice_clean - or everything (until: idle, the default). Returns when it is done or after seconds (30 by default, at most 55, under the minute clients allow a call) with how far it got; call it again to keep waiting.",
+                schema: || object(json!({ "job_id": { "type": "string" }, "until": { "type": "string", "enum": ["idle", "analyze", "dub_audio", "render", "export_lang", "retranslate", "remix", "align", "shorten", "download", "voices_pack", "separate", "detect_text", "glossary", "voice_clean"] }, "seconds": { "type": "integer" } }), &[]),
                 call: |_| composite("wait"),
             },
             Tool {
@@ -2276,6 +2276,18 @@ fn tools() -> &'static [Tool] {
                 description: "Delete a voice from the library.",
                 schema: || id_only("name", "voice name from voices_list"),
                 call: |args| post("/voices/delete".into(), json!({ "name": text(args, "name")? })),
+            },
+            Tool {
+                name: "voice_denoise",
+                description: "Remove noise from a voice's reference (DPDFNet) before cloning: a job, follow it with studio_wait. db limits how far the noise is pushed down (18 keeps speech natural; 0 or none removes as much as it can). The original is kept and voice_restore brings it back; voices_list names the cleaned voices.",
+                schema: || object(json!({ "name": { "type": "string", "description": "voice name from voices_list" }, "db": { "type": "number", "minimum": 0 } }), &["name"]),
+                call: |args| post("/voices/denoise".into(), json!({ "name": text(args, "name")?, "db": args.get("db").cloned().unwrap_or(Value::Null) })),
+            },
+            Tool {
+                name: "voice_restore",
+                description: "Bring back a voice's sound as it was before voice_denoise.",
+                schema: || id_only("name", "voice name from voices_list"),
+                call: |args| post("/voices/restore".into(), json!({ "name": text(args, "name")? })),
             },
             Tool {
                 name: "voice_from_speaker",

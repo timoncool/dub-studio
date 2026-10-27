@@ -72,6 +72,8 @@ mod translate;
 mod tts_audit;
 mod tts_host;
 mod vad;
+mod denoise;
+mod voice_library;
 mod update_screen;
 mod tts_text;
 mod tts_trim;
@@ -580,6 +582,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/voices/get", post(voices_get))
         .route("/voices/rename", post(voices_rename))
         .route("/voices/delete", post(voices_delete))
+        .route("/voices/denoise", post(voices_denoise))
+        .route("/voices/restore", post(voices_restore))
         .route("/projects/{pid}/speaker-voice", post(speaker_voice))
         .route("/projects/{pid}/voice-slots", post(voice_slots_assign))
         .route("/projects/{pid}/casting", get(casting_get).post(casting_save),
@@ -1148,10 +1152,12 @@ fn list_voice_names(dir: &Path) -> Vec<String> {
 
 /// GET /voices — список голосов из каталога (пак + записи с микрофона).
 async fn voices_list(State(st): State<AppState>) -> Json<Value> {
-    let mut voices = list_voice_names(&st.voices_dir);
-    voices.extend(qwen_voice_names(&st.models_root));
-    voices.extend(supertonic_voice_names(&st.models_root));
-    Json(json!({ "voices": voices }))
+    let mut listing = voices_listing(&st.voices_dir);
+    if let Some(voices) = listing["voices"].as_array_mut() {
+        voices.extend(qwen_voice_names(&st.models_root).into_iter().map(Value::from));
+        voices.extend(supertonic_voice_names(&st.models_root).into_iter().map(Value::from));
+    }
+    Json(listing)
 }
 
 /// Девять голосов Qwen3-TTS (`qwen:<id>`), когда он выбран движком озвучки: их дают персонажам, как записи пака.
@@ -1828,26 +1834,66 @@ async fn voices_get(State(st): State<AppState>, Json(body): Json<Value>) -> Json
     }
 }
 
-/// POST /voices/rename {from, to} — переименовать голос (mp3/wav + txt).
+/// POST /voices/rename {from, to} — переименовать голос со всеми его файлами, и с исходником в `.originals`.
+
 async fn voices_rename(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let from = sanitize_voice_name(body.get("from").and_then(|v| v.as_str()).unwrap_or(""));
     let to = sanitize_voice_name(body.get("to").and_then(|v| v.as_str()).unwrap_or(""));
-    for ext in ["wav", "mp3", "txt"] {
-        let src = st.voices_dir.join(format!("{from}.{ext}"));
-        if src.is_file() {
-            let _ = std::fs::rename(&src, st.voices_dir.join(format!("{to}.{ext}")));
-        }
+    match voice_library::rename(&st.voices_dir, &from, &to) {
+        Ok(()) => Json(voices_listing(&st.voices_dir)),
+        Err(e) => Json(json!({ "error": e, "voices": list_voice_names(&st.voices_dir) })),
     }
-    Json(json!({ "voices": list_voice_names(&st.voices_dir) }))
 }
 
-/// POST /voices/delete {name} — удалить голос.
+/// POST /voices/delete {name} — удалить голос со всеми его файлами.
+
 async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
-    for ext in ["wav", "mp3", "txt"] {
-        let _ = std::fs::remove_file(st.voices_dir.join(format!("{name}.{ext}")));
+    match voice_library::delete(&st.voices_dir, &name) {
+        Ok(()) => Json(voices_listing(&st.voices_dir)),
+        Err(e) => Json(json!({ "error": e, "voices": list_voice_names(&st.voices_dir) })),
     }
-    Json(json!({ "voices": list_voice_names(&st.voices_dir) }))
+}
+
+/// The library voices and those of them whose sound was cleaned, with the original kept (`voices/.originals`).
+fn voices_listing(dir: &Path) -> Value {
+    let voices = list_voice_names(dir);
+    let cleaned: Vec<&String> = voices.iter().filter(|n| voice_library::original_path(dir, n).is_some()).collect();
+    json!({ "voices": voices, "cleaned": cleaned })
+}
+
+/// POST /voices/denoise {name, db?} — a library voice without noise (DPDFNet): a job; `db` limits how far the noise
+/// goes down, none removes what it can. The original stays in `voices/.originals`.
+async fn voices_denoise(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
+    let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
+    let Some(audio) = voice_library::audio_path(&st.voices_dir, &name) else {
+        return (StatusCode::NOT_FOUND, format!("no voice named {name}")).into_response();
+    };
+    let limit = body.get("db").and_then(Value::as_f64).filter(|d| *d > 0.0).map(|d| d.min(100.0) as f32);
+    let (dir, repo_root, models_root) = (st.voices_dir.clone(), st.repo_root.clone(), st.models_root.clone());
+    let job: jobs::JobFn = Box::new(move |progress: jobs::ProgressFn| {
+        let cb = |ev: Value| progress(ev);
+        fetch_missing(&repo_root, &["dpdfnet"], &cb)?;
+        let work = tempfile::Builder::new().prefix("denoise-").tempdir().map_err(|e| e.to_string())?;
+        let out = work.path().join("denoised.wav");
+        let msg = t!("voice-denoising", name = name.clone());
+        denoise::denoise_file(&models_root, &audio, &out, limit, &|f| cb(json!({ "stage": "voice_clean", "msg": msg, "pct": (f * 100.0) as i64 })))?;
+        voice_library::replace_with_cleaned(&dir, &name, &out)?;
+        Ok(json!({ "name": name, "denoised": true }))
+    });
+    match st.jobs.enqueue(jobs::JobMeta::new(jobs::JobKind::VoiceClean, None), job).await {
+        Ok(job_id) => Json(json!({ "job_id": job_id })).into_response(),
+        Err(e) => enqueue_error(e),
+    }
+}
+
+/// POST /voices/restore {name} — the voice's sound as it was before it was cleaned.
+async fn voices_restore(State(st): State<AppState>, Json(body): Json<Value>) -> Response {
+    let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
+    match voice_library::restore_original(&st.voices_dir, &name) {
+        Ok(()) => Json(voices_listing(&st.voices_dir)).into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, e).into_response(),
+    }
 }
 
 /// POST /voices/download-pack — скачать пак голосов (VibeVoice) и распаковать в каталог голосов.
