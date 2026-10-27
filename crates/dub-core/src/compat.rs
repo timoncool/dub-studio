@@ -194,8 +194,9 @@ fn needs_avx512(instruction: &Instruction) -> bool {
 /// `cmp dword ptr [__isa_available], 6` and a jump past it to the plain loop when the processor has less.
 const MSVC_ISA_AVX512: u64 = 6;
 
-/// A guard of MSVC's vectorized loops: `cmp dword ptr [rip+x], 6` (or more) and `jl`/`jb` forward; the code between them
-/// and the jump's target runs only on an AVX-512 processor.
+/// A guard of MSVC's vectorized loops: `cmp dword ptr [rip+x], 6` (or more) and, after instructions that leave the flags
+/// as they are, `jl`/`jb` forward; the code between the jump and its target runs only on an AVX-512 processor.
+/// `cmp`: the compare still deciding the flags at `jump`.
 fn isa_guard(cmp: &Instruction, jump: &Instruction) -> Option<(u64, u64)> {
     use iced_x86::{Code, OpKind, Register};
     let compares_memory = matches!(cmp.code(), Code::Cmp_rm32_imm8 | Code::Cmp_rm32_imm32)
@@ -207,31 +208,72 @@ fn isa_guard(cmp: &Instruction, jump: &Instruction) -> Option<(u64, u64)> {
 }
 
 /// The AVX-512 instructions of the executable sections that no MSVC `__isa_available` guard covers: address and
-/// mnemonic.
+/// mnemonic. The switch tables MSVC keeps in a PE's code (runs of offsets into the code) are skipped, not decoded.
 fn avx512_instructions(file: &object::File) -> Vec<(u64, String)> {
     let mut found = Vec::new();
     let mut guarded: Vec<(u64, u64)> = Vec::new();
     let mut instruction = Instruction::default();
-    let mut previous = Instruction::default();
+    let code: Vec<(u64, u64)> =
+        file.sections().filter(|s| s.kind() == SectionKind::Text).map(|s| (s.address(), s.address() + s.size())).collect();
+    let pe = matches!(file.format(), object::BinaryFormat::Pe);
+    let base = file.relative_address_base();
     for section in file.sections().filter(|s| s.kind() == SectionKind::Text) {
         let Ok(bytes) = section.data() else { continue };
         let mut decoder = Decoder::with_ip(64, bytes, section.address(), DecoderOptions::NONE);
+        // the last compare whose flags no instruction since has changed
+        let mut flags_from: Option<Instruction> = None;
         while decoder.can_decode() {
+            if pe {
+                let at = decoder.position();
+                let table = switch_table_len(&bytes[at..], section.address() + at as u64, base, &code);
+                if table > 0 {
+                    decoder.set_position(at + table).expect("inside the section");
+                    decoder.set_ip(section.address() + (at + table) as u64);
+                    flags_from = None;
+                    continue;
+                }
+            }
             decoder.decode_out(&mut instruction);
             if instruction.is_invalid() {
+                flags_from = None;
                 continue;
             }
-            if let Some(range) = isa_guard(&previous, &instruction) {
+            if let Some(range) = flags_from.as_ref().and_then(|cmp| isa_guard(cmp, &instruction)) {
                 guarded.push(range);
             }
             if needs_avx512(&instruction) {
                 found.push((instruction.ip(), format!("{:?}", instruction.mnemonic()).to_ascii_lowercase()));
             }
-            previous = instruction;
+            if instruction.mnemonic() == iced_x86::Mnemonic::Cmp {
+                flags_from = Some(instruction);
+            } else if instruction.rflags_modified() != 0 || instruction.flow_control() != iced_x86::FlowControl::Next {
+                flags_from = None;
+            }
         }
     }
     found.retain(|(ip, _)| !guarded.iter().any(|(from, to)| (*from..*to).contains(ip)));
     found
+}
+
+/// The fewest offsets in a row taken for a switch table: four dwords that each land in the code are not instructions.
+const SWITCH_TABLE_MIN: usize = 4;
+
+/// The bytes of a switch table at `ip` (`bytes` from there): 4-aligned dwords, each an image offset from `base` that
+/// lands in one of the code ranges, at least [`SWITCH_TABLE_MIN`] of them; 0 when there is none.
+fn switch_table_len(bytes: &[u8], ip: u64, base: u64, code: &[(u64, u64)]) -> usize {
+    if ip % 4 != 0 {
+        return 0;
+    }
+    let entries = bytes
+        .chunks_exact(4)
+        .map(|d| base + u32::from_le_bytes([d[0], d[1], d[2], d[3]]) as u64)
+        .take_while(|target| code.iter().any(|(from, to)| (*from..*to).contains(target)))
+        .count();
+    if entries >= SWITCH_TABLE_MIN {
+        entries * 4
+    } else {
+        0
+    }
 }
 
 /// The binary's own function symbols (an ELF symbol table; a PE image keeps them in its PDB, so its link map names them),
@@ -580,6 +622,12 @@ mod tests {
         // cmp dword ptr [rip+0x100], 6; jl past the loop; the AVX-512 loop; ret
         let guarded: Vec<u8> = [&[0x83, 0x3d, 0x00, 0x01, 0x00, 0x00, 0x06, 0x7c, 0x06][..], &VPXORD_ZMM0_RET[..6], &[0xc3]].concat();
         assert!(avx512(p, &elf_with_code(&guarded, "_ZN10dub_server4mixE"), None).unwrap().is_empty(), "MSVC's __isa_available guard");
+        // the same with `mov [rbp+10h], rbx` between the compare and the jump, which leaves the flags as they are
+        let moved: Vec<u8> = [&[0x83, 0x3d, 0x00, 0x01, 0x00, 0x00, 0x06, 0x48, 0x89, 0x5d, 0x10, 0x7c, 0x06][..], &VPXORD_ZMM0_RET[..6], &[0xc3]].concat();
+        assert!(avx512(p, &elf_with_code(&moved, "_ZN10dub_server4mixE"), None).unwrap().is_empty(), "a move between keeps the guard");
+        // `add eax, 1` between sets the flags anew: the jump no longer follows the compare
+        let added: Vec<u8> = [&[0x83, 0x3d, 0x00, 0x01, 0x00, 0x00, 0x06, 0x83, 0xc0, 0x01, 0x7c, 0x06][..], &VPXORD_ZMM0_RET[..6], &[0xc3]].concat();
+        assert_eq!(avx512(p, &elf_with_code(&added, "_ZN10dub_server4mixE"), None).unwrap().len(), 1, "an add between ends the guard");
         let unguarded: Vec<u8> = [&[0x83, 0x3d, 0x00, 0x01, 0x00, 0x00, 0x05, 0x7c, 0x06][..], &VPXORD_ZMM0_RET[..6], &[0xc3]].concat();
         assert_eq!(avx512(p, &elf_with_code(&unguarded, "_ZN10dub_server4mixE"), None).unwrap().len(), 1, "a guard for AVX2 is not one for AVX-512");
     }
@@ -595,6 +643,18 @@ mod tests {
             other => panic!("{other}"),
         }).collect();
         assert_eq!(places, vec!["add16", "local_add"], "{found:?}");
+    }
+
+    /// MSVC's switch tables in a PE's code: four or more aligned offsets into the code are skipped; fewer, an offset
+    /// outside the code or an unaligned start are decoded as instructions.
+    #[test]
+    fn switch_tables_in_pe_code_are_not_instructions() {
+        let (base, code) = (0x1_4000_0000u64, [(0x1_4000_1000u64, 0x1_4000_2000u64)]);
+        let table = |rvas: &[u32]| rvas.iter().flat_map(|r| r.to_le_bytes()).collect::<Vec<u8>>();
+        assert_eq!(switch_table_len(&table(&[0x1010, 0x1020, 0x1030, 0x1040, 0x9999_0000]), 0x1_4000_1800, base, &code), 16);
+        assert_eq!(switch_table_len(&table(&[0x1010, 0x1020, 0x1030]), 0x1_4000_1800, base, &code), 0, "three are not a table");
+        assert_eq!(switch_table_len(&table(&[0x1010, 0x3000, 0x1030, 0x1040]), 0x1_4000_1800, base, &code), 0, "an offset out of the code");
+        assert_eq!(switch_table_len(&table(&[0x1010, 0x1020, 0x1030, 0x1040]), 0x1_4000_1802, base, &code), 0, "unaligned");
     }
 
     /// DUB_COMPAT_AVX512: a binary; prints the places of its AVX-512 outside the dispatchers.
