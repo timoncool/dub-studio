@@ -3877,10 +3877,13 @@ const RETIRED_WHISPER_FILES: &[&str] = &[
     "cudnn_cnn_train64_8.dll",
     "cudnn_ops_infer64_8.dll",
     "cudnn_ops_train64_8.dll",
+    "license.txt",
+    "_models",
 ];
 
 /// The former Whisper program and its CUDA 11 libraries on disk: what their install records list, and an older
-/// install without records (the program and the cuBLAS and cuDNN libraries lying directly in tools/whisper).
+/// install without records (the program, the cuBLAS and cuDNN libraries, its licence and the models it downloaded
+/// for itself lying directly in tools/whisper).
 fn whisper_leftovers(repo_root: &Path) -> Vec<PathBuf> {
     let dir = repo_root.join("tools").join("whisper");
     let mut doomed: Vec<PathBuf> = Vec::new();
@@ -3896,7 +3899,7 @@ fn whisper_leftovers(repo_root: &Path) -> Vec<PathBuf> {
     doomed.extend(RETIRED_WHISPER_FILES.iter().map(|name| dir.join(name)));
     doomed.sort();
     doomed.dedup();
-    doomed.retain(|p| p.is_file());
+    doomed.retain(|p| p.is_file() || p.is_dir());
     doomed
 }
 
@@ -3905,6 +3908,13 @@ fn retire_whisper(repo_root: &Path, discard: &dyn Fn(&Path) -> Result<(), String
         match discard(&path) {
             Ok(()) => tracing::info!("removed the retired Whisper file {}", path.display()),
             Err(e) => tracing::error!("[ERROR] could not remove the retired Whisper file {}: {e}", path.display()),
+        }
+    }
+    // the folder was the former program's alone: it goes once nothing is left in it
+    let dir = repo_root.join("tools").join("whisper");
+    if std::fs::read_dir(&dir).is_ok_and(|mut entries| entries.next().is_none()) {
+        if let Err(e) = std::fs::remove_dir(&dir) {
+            tracing::error!("[ERROR] could not remove the empty {}: {e}", dir.display());
         }
     }
 }
@@ -4747,14 +4757,21 @@ mod tests {
         .unwrap();
         std::fs::create_dir_all(root.path().join("models")).unwrap();
         std::fs::write(root.path().join("models/elsewhere.bin"), b"x").unwrap();
-        retire_whisper(root.path(), &|p: &Path| std::fs::remove_file(p).map_err(|e| e.to_string()));
-        for gone in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "old-extra.dll", "_whisper.zip.json"] {
+        std::fs::write(w.join("license.txt"), b"x").unwrap();
+        std::fs::create_dir_all(w.join("_models/faster-whisper-small")).unwrap();
+        std::fs::write(w.join("_models/faster-whisper-small/model.bin"), b"x").unwrap();
+        retire_whisper(root.path(), &delete);
+        for gone in ["whisper-faster.exe", "cublas64_11.dll", "cudnn_ops_infer64_8.dll", "old-extra.dll", "_whisper.zip.json", "license.txt", "_models"] {
             assert!(!w.join(gone).exists(), "{gone}");
         }
         for kept in ["notes.txt"] {
             assert!(w.join(kept).is_file(), "{kept}");
         }
         assert!(root.path().join("models/elsewhere.bin").is_file());
+        std::fs::remove_file(w.join("notes.txt")).unwrap();
+        std::fs::write(w.join("license.txt"), b"x").unwrap();
+        retire_whisper(root.path(), &delete);
+        assert!(!w.exists(), "the emptied folder goes");
     }
 
     /// A neighbour's file that cannot be linked (another drive) leaves the program's own file in place.
