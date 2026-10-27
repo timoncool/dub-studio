@@ -1192,7 +1192,10 @@ mod asr_variant_tests {
         let root = std::env::temp_dir().join(format!("dub_qwen_components_{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("active.json"), r#"{"tts_backend":"vulkan"}"#).unwrap();
-        assert_eq!(qwen_components(&root), ["qwen3-tts-engine", "qwen3-tts-vulkan"]);
+        // the build the code takes for the choice: Vulkan, a Mac's one build (Metal) there
+        let chosen = crate::acpp::build_for("vulkan").unwrap();
+        let expected: Vec<&str> = std::iter::once("qwen3-tts-engine").chain(qwen_module_component(chosen)).collect();
+        assert_eq!(qwen_components(&root), expected);
         assert!(!qwen_library_installed(&root, Build::Vulkan));
         let dir = qwentts::dir(&root);
         std::fs::create_dir_all(&dir).unwrap();
