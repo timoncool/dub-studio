@@ -1032,6 +1032,10 @@ fn ensure_job_components(
     if higgs_voice || supertonic_voice {
         server_needs.extend(models::server_components(models_root, "tts_backend"));
     }
+    // Qwen3-TTS: its engine, the backend module of the voicing device and that device's CUDA runtime
+    if voicing && !models::cloud_tts_on(models_root) && models::qwen_quant(&tts).is_some() {
+        server_needs.extend(models::qwen_components(models_root));
+    }
     for id in server_needs {
         if missing(id) && !need.iter().any(|n| n == id) {
             need.push(id.to_string());
@@ -1236,7 +1240,11 @@ async fn qwen_voice_sample(mroot: &Path, speaker: &str, req: axum::http::Request
             if out.is_file() {
                 return Ok(());
             }
-            let engine = qwentts::QwenEngine::load(&root, quant, false, false).map_err(|e| e.to_string())?;
+            let build = models::qwen_build(&root)?;
+            if !models::qwen_library_installed(&root, build) || !qwentts::installed(&root, quant, false) {
+                return Err(t!("render-qwen-missing"));
+            }
+            let engine = qwentts::QwenEngine::load(&root, models::qwen_device(build), quant, false, false).map_err(|e| e.to_string())?;
             let say = qwentts::Say { text: "Hello! This is how my voice sounds in your dub.", lang: "en", speaker: Some(&speaker), reference: None, seed: 7, temperature: 0.7, max_new_tokens: 0 };
             let audio = engine.speak(&say).map_err(|e| e.to_string())?;
             if let Some(dir) = out.parent() {

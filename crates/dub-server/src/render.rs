@@ -886,6 +886,8 @@ pub const QWEN_VOICE: &str = "qwen:";
 /// которой он нужен, и остаётся до конца рендера.
 pub struct QwenVoices {
     models_root: PathBuf,
+    /// The build of the voicing device the talkers run on.
+    build: crate::acpp::Build,
     quant: &'static str,
     lang: String,
     /// Клон читает русские ударения адаптером: «+» перед гласной уходит в модель знаком U+0301.
@@ -900,9 +902,12 @@ impl QwenVoices {
         if let Some(engine) = slot.as_ref() {
             return Ok(engine.clone());
         }
+        let device = crate::models::qwen_device(self.build);
         let engine = Arc::new(
-            qwentts::QwenEngine::load(&self.models_root, self.quant, clone, clone && self.stress).map_err(|e| t!("render-qwen-load-failed", error = e.to_string()))?,
+            qwentts::QwenEngine::load(&self.models_root, device, self.quant, clone, clone && self.stress)
+                .map_err(|e| t!("render-qwen-load-failed", error = e.to_string()))?,
         );
+        tracing::info!("voicing: Qwen3-TTS {} {} on {device} ({})", if clone { "Base" } else { "CustomVoice" }, self.quant, engine.version());
         *slot = Some(engine.clone());
         Ok(engine)
     }
@@ -994,7 +999,7 @@ fn tts_key(paths: &RenderPaths, lang: &str) -> String {
     let mr = &paths.models_root;
     let build = crate::acpp::build_for(crate::models::server_choice(mr, "tts_backend")).map_or_else(|e| e, |b| format!("{b:?}"));
     if let Some(quant) = crate::models::qwen_quant(&paths.higgs_quant) {
-        format!("qwen:{quant}:{lang}:{}", qwen_stress(mr, lang))
+        format!("qwen:{quant}:{build}:{lang}:{}", qwen_stress(mr, lang))
     } else if paths.higgs_quant == crate::models::SUPERTONIC_TTS {
         format!("supertonic:{build}:{lang}")
     } else if paths.higgs_quant == crate::models::DRAMA_TTS {
@@ -1007,15 +1012,17 @@ fn tts_key(paths: &RenderPaths, lang: &str) -> String {
 /// Загрузить локальный TTS, выбранный в настройках, с сообщением в журнал.
 fn load_tts_engine(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<TtsEngine, String> {
     if let Some(quant) = crate::models::qwen_quant(&paths.higgs_quant) {
-        if let Some(why) = crate::models::qwen_unavailable() {
-            return Err(why);
-        }
-        if !qwentts::installed(&paths.models_root, quant, true) || !qwentts::installed(&paths.models_root, quant, false) {
+        let build = crate::models::qwen_build(&paths.models_root)?;
+        if !crate::models::qwen_library_installed(&paths.models_root, build)
+            || !qwentts::installed(&paths.models_root, quant, true)
+            || !qwentts::installed(&paths.models_root, quant, false)
+        {
             return Err(t!("render-qwen-missing"));
         }
         emit(progress, "tts", &t!("render-loading-qwen"));
         return Ok(TtsEngine::Qwen(QwenVoices {
             models_root: paths.models_root.clone(),
+            build,
             quant,
             lang: lang.to_string(),
             stress: qwen_stress(&paths.models_root, lang),

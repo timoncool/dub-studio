@@ -1006,7 +1006,6 @@ stage-gpu-why-no-device = драйвер NVIDIA установлен, а вид�
 stage-gpu-why-cuda-init = драйвер NVIDIA не отвечает ({ $card })
 stage-gpu-why-driver-old = нужен драйвер NVIDIA { $min } или новее, а стоит старее ({ $card })
 stage-gpu-why-gpu-old = карта старше Turing, а нужна compute capability { $min } или выше ({ $card })
-qwen-no-linux = Для голоса Qwen3-TTS ещё нет сборки под Linux. Выберите Higgs или Supertonic 3.
 render-qwen-missing = Qwen3-TTS выбран, но установлен не целиком: скачайте его в «Модели» (озвучка) или выберите Higgs.
 render-qwen-load-failed = загрузка Qwen3-TTS: { $error }
 render-loading-qwen = загрузка Qwen3-TTS

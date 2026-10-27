@@ -440,8 +440,8 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           </div>
         ) : (
           <>
-            {/* Higgs and Supertonic run in the audio.cpp server on the build of this device */}
-            {ttsPick !== "drama3" && !isQwenTts(ttsPick) && backendTabs("tts_backend")}
+            {/* Higgs and Supertonic run in the audio.cpp server on the build of this device, Qwen3-TTS on its backend module */}
+            {ttsPick !== "drama3" && backendTabs("tts_backend")}
             {variantPicker(ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3", TTS_IDS, TTS_VARIANT_I18N)}
             {ttsPick === "drama3" && (
               <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
@@ -462,6 +462,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
             )}
             {ttsPick !== "drama3" && !isQwenTts(ttsPick) && ttsPick !== "supertonic3" && rowOf("higgs-engine")}
             {isQwenTts(ttsPick) && rowOf("qwen3-tts-engine")}
+            {isQwenTts(ttsPick) && selv("tts_backend") !== "cpu" && rowOf(selv("tts_backend") === "vulkan" ? "qwen3-tts-vulkan" : "qwen3-tts-cuda")}
             {isQwenTts(ttsPick) && rowOf("qwen3-tts-ru-stress")}
             {(isQwenTts(ttsPick) || ttsPick === "supertonic3") && rowOf("ruaccent")}
             {(isQwenTts(ttsPick) || ttsPick === "supertonic3") && rowOf("ruaccent-omograph-big")}
@@ -4181,7 +4182,7 @@ const QUANT_GROUP: Record<string, string> = {
 // Engines, runtimes and libraries: the studio takes them for the models chosen and for this computer's card, so they
 // are not a choice on the first-run screen.
 const SERVICE = new Set([
-  "higgs-engine", "qwen3-tts-engine", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-vulkan", "transcribe-engine-cpu", "langid", "silero-vad",
+  "higgs-engine", "qwen3-tts-engine", "qwen3-tts-cuda", "qwen3-tts-vulkan", "transcribe-engine", "transcribe-engine-cuda12", "transcribe-engine-vulkan", "transcribe-engine-cpu", "langid", "silero-vad",
   "bsroformer-engine", "bsroformer-engine-cuda12", "bsroformer-engine-vulkan", "bsroformer-engine-cpu", "llama", "onnxruntime", "onnxruntime-gpu", "ffmpeg", "cuda-runtime", "cuda12-runtime", "cudnn",
   "vcruntime",
 ]);

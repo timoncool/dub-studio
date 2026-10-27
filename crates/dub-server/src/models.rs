@@ -156,7 +156,7 @@ pub fn is_selection_key(key: &str) -> bool {
             // gpu = CUDA, cpu = без NVIDIA. sep=сепарация(BSRoformer CUDA/CPU-сборка), diar=диаризация
             // (Sortformer onnx CUDA-EP/CPU), asr=локальный ASR (Parakeet onnx / Whisper CTranslate2).
             | "local_backend" | "sep_backend" | "diar_backend" | "asr_backend"
-            | "tts_backend"     // voicing engines in audiocpp_server (Higgs, Supertonic): auto|gpu|vulkan|cpu
+            | "tts_backend"     // voicing engines (Higgs and Supertonic in audiocpp_server, Qwen3-TTS): auto|gpu|vulkan|cpu
             // Лимиты RAM (видимые контролы в настройках, НЕ авто-магия): против OOM на слабой памяти.
             | "llama_ubatch"    // размер prefill-батча Gemma (меньше = меньше пиковый буфер графа prefill)
             | "higgs_ref_secs"  // длина реф-клипа клона голоса (меньше = меньше prefill Higgs; <12с спасает 32ГБ)
@@ -914,19 +914,65 @@ pub fn qwen_quant(tts: &str) -> Option<&'static str> {
     }
 }
 
-/// Почему Qwen3-TTS на этой машине не пойдёт: его ggml считает на CUDA 13 (cuBLAS из models/higgs-engine).
-pub fn qwen_unavailable() -> Option<String> {
-    if cfg!(not(windows)) {
-        return Some(t!("qwen-no-linux"));
-    }
+/// The build Qwen3-TTS runs on here, or why it does not: the voicing device of the settings, the processor's floor and,
+/// for CUDA 13, the card and its driver.
+pub fn qwen_build(mroot: &Path) -> Result<crate::acpp::Build, String> {
+    let build = crate::acpp::build_for(server_choice(mroot, "tts_backend"))?;
     if let Some(why) = crate::hw::cpu_floor("Qwen3-TTS") {
-        return Some(why);
+        return Err(why);
     }
-    let gpu = crate::hw::gpu_report();
-    if gpu.cuda13_ok {
-        return None;
+    if build == crate::acpp::Build::Cuda13 {
+        let gpu = crate::hw::gpu_report();
+        if !gpu.cuda13_ok {
+            return Err(t!("qwen-needs-cuda", card = gpu.summary().unwrap_or_else(|| "-".to_string())));
+        }
     }
-    Some(t!("qwen-needs-cuda", card = gpu.summary().unwrap_or_else(|| "-".to_string())))
+    Ok(build)
+}
+
+/// The ggml device the library runs a build on; the studio exposes one card, so the CUDA device is the first.
+pub fn qwen_device(build: crate::acpp::Build) -> &'static str {
+    use crate::acpp::Build;
+    match build {
+        Build::Cuda13 | Build::Cuda12 => "CUDA0",
+        Build::Vulkan => "Vulkan0",
+        Build::Cpu => "CPU",
+        Build::Metal => "MTL0",
+    }
+}
+
+/// The ggml backend module of a device the library loads beside itself; the CPU one ships with the library, and on a
+/// Mac Metal is linked into it.
+fn qwen_module(build: crate::acpp::Build) -> Option<&'static str> {
+    use crate::acpp::Build;
+    let (cuda, vulkan) = if cfg!(windows) { ("ggml-cuda.dll", "ggml-vulkan.dll") } else { ("libggml-cuda.so", "libggml-vulkan.so") };
+    match build {
+        Build::Cuda13 | Build::Cuda12 => Some(cuda),
+        Build::Vulkan => Some(vulkan),
+        Build::Cpu | Build::Metal => None,
+    }
+}
+
+/// The component of a device's backend module: the CUDA one is the build of this computer's card.
+fn qwen_module_component(build: crate::acpp::Build) -> Option<&'static str> {
+    use crate::acpp::Build;
+    match build {
+        Build::Cuda13 | Build::Cuda12 => Some("qwen3-tts-cuda"),
+        Build::Vulkan => Some("qwen3-tts-vulkan"),
+        Build::Cpu | Build::Metal => None,
+    }
+}
+
+/// The components Qwen3-TTS needs on the voicing device: the engine, the device's backend module and its CUDA runtime.
+pub fn qwen_components(mroot: &Path) -> Vec<&'static str> {
+    let Ok(build) = crate::acpp::build_for(server_choice(mroot, "tts_backend")) else { return vec!["qwen3-tts-engine"] };
+    std::iter::once("qwen3-tts-engine").chain(qwen_module_component(build)).chain(crate::acpp::runtime_component(build)).collect()
+}
+
+/// The library and the backend module of the voicing device are on disk.
+pub fn qwen_library_installed(mroot: &Path, build: crate::acpp::Build) -> bool {
+    let d = qwentts::dir(mroot);
+    d.join(qwentts::LIBRARY).is_file() && qwen_module(build).is_none_or(|m| d.join(m).is_file())
 }
 
 /// Значение слота `tts` и папка весов Drama 3 (apiplant/drama-q4) в каталоге моделей.
@@ -1110,6 +1156,38 @@ mod asr_variant_tests {
         }
         assert_eq!(tcpp_build_of(Err("no CUDA build".into())), dub_asr::tcpp::Build::Cuda);
         assert_eq!(sep_build_of(Err("no CUDA build".into())), dub_sep::asset::Build::Cuda13);
+    }
+
+    /// Qwen3-TTS runs each build on its ggml device with the backend module of that device beside the library: the
+    /// CUDA one for both CUDA builds (the component carries the card's), Vulkan's, none for the processor and Metal.
+    #[test]
+    fn qwen_takes_the_backend_module_of_the_voicing_device() {
+        use crate::acpp::Build;
+        let (cuda, vulkan) = if cfg!(windows) { ("ggml-cuda.dll", "ggml-vulkan.dll") } else { ("libggml-cuda.so", "libggml-vulkan.so") };
+        for (build, device, module, component) in [
+            (Build::Cuda13, "CUDA0", Some(cuda), Some("qwen3-tts-cuda")),
+            (Build::Cuda12, "CUDA0", Some(cuda), Some("qwen3-tts-cuda")),
+            (Build::Vulkan, "Vulkan0", Some(vulkan), Some("qwen3-tts-vulkan")),
+            (Build::Cpu, "CPU", None, None),
+            (Build::Metal, "MTL0", None, None),
+        ] {
+            assert_eq!((qwen_device(build), qwen_module(build), qwen_module_component(build)), (device, module, component), "{build:?}");
+        }
+        let root = std::env::temp_dir().join(format!("dub_qwen_components_{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("active.json"), r#"{"tts_backend":"vulkan"}"#).unwrap();
+        assert_eq!(qwen_components(&root), ["qwen3-tts-engine", "qwen3-tts-vulkan"]);
+        assert!(!qwen_library_installed(&root, Build::Vulkan));
+        let dir = qwentts::dir(&root);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join(qwentts::LIBRARY), b"").unwrap();
+        assert!(!qwen_library_installed(&root, Build::Vulkan), "the module of the device is missing");
+        assert!(qwen_library_installed(&root, Build::Cpu));
+        std::fs::write(dir.join(vulkan), b"").unwrap();
+        assert!(qwen_library_installed(&root, Build::Vulkan));
+        std::fs::write(root.join("active.json"), r#"{"tts_backend":"cpu"}"#).unwrap();
+        assert_eq!(qwen_components(&root), ["qwen3-tts-engine"]);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -354,19 +354,29 @@ mod platform {
     // импортирует cublas64_13.dll (ставит cuda-runtime), cudart слинкован статически.
     pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "https://github.com/timoncool/drama-rs/releases/download/engine-0.1.3/drama_engine.dll", dest_rel: "models/drama-engine/drama_engine.dll", size: 32_075_264, sha256: "677133f63605d72e3eceb148eb1fd3eee72f0aae02b65750da59bf60d041793f", extract: Extract::None };
 
-    // Движок Qwen3-TTS (форк timoncool/qwentts.cpp, ветка studio, ABI 7), CUDA 13, sm 75/80/86/89/90/100/120 без PTX;
-    // библиотеки ggml лежат рядом с qwen.dll, cudart и cuBLAS ставит cuda-runtime.
+    // Qwen3-TTS (timoncool/qwentts.cpp, branch studio, ABI 7, scripts/build-engine-windows.cmd): qwen.dll with ggml and
+    // its CPU backend, and the backend module of each other device beside it (GGML_BACKEND_DL), which the library loads
+    // when a model first runs on that device. CUDA 13: sm 75/80/86/89/90/100/120; CUDA 12.9: sm 52-90 and 120; no PTX;
+    // cuBLAS comes from cuda-runtime or cuda12-runtime.
     pub const QWEN_ENGINE: Parts = Parts {
-        size: 434_153_248,
-        files: &[
-            super::QWEN_CODEC,
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/qwen.dll", dest_rel: "models/qwen3-tts/qwen.dll", size: 425_984, sha256: "273bf728327071096d762d07ce798f6e26d933a9fba0d997ab8d3f02aee8224a", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml.dll", dest_rel: "models/qwen3-tts/ggml.dll", size: 62_976, sha256: "7606ca3960bb9797cdc1e28666eba96092619ad49db6df210f54ce0841fe238c", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-base.dll", dest_rel: "models/qwen3-tts/ggml-base.dll", size: 693_760, sha256: "9c81caefcca1646f67958d8f3c8d84fc59c5009dc922faae6bd7170a50547c41", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-cpu.dll", dest_rel: "models/qwen3-tts/ggml-cpu.dll", size: 1_010_176, sha256: "ecff58f5d620c827d02361562512e4611a01ad7b1251bde13ff3dea97e52c80c", extract: Extract::None },
-            FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.1.0/ggml-cuda.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 140_809_728, sha256: "30fe1b38ca87499506313841fda1bf064b09422c3d9bc1506b94ec0063d9d1ce", extract: Extract::None },
-        ],
-        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/qwen.dll", expect: 425_984 }, Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 140_809_728 }],
+        size: super::QWEN_CODEC.size + 848_126,
+        files: &[super::QWEN_CODEC, FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/qwen-windows-x64.zip", dest_rel: "models/qwen3-tts/_engine.zip", size: 848_126, sha256: "adbc02c0a1e3e4bcb800287ecdf0f706515b9a1bcbdf28c8d14b1e23b56a749d", extract: Extract::Flat }],
+        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/qwen.dll", expect: 433_152 }, Marker { rel: "models/qwen3-tts/ggml-cpu.dll", expect: 983_040 }],
+    };
+    pub const QWEN_VULKAN: Parts = Parts {
+        size: 41_529_856,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/ggml-vulkan-windows-x64.dll", dest_rel: "models/qwen3-tts/ggml-vulkan.dll", size: 41_529_856, sha256: "a0d2ee540061584bdf57448de57a87257719307a29501e95c30d33fd0327535d", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/ggml-vulkan.dll", expect: 41_529_856 }],
+    };
+    pub const QWEN_CUDA13: Parts = Parts {
+        size: 142_189_568,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/ggml-cuda13-windows-x64.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 142_189_568, sha256: "bedda4c6bf25d2375d44ec63fe83d0088bd62f28be166784d657038457474d70", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 142_189_568 }],
+    };
+    pub const QWEN_CUDA12: Parts = Parts {
+        size: 170_425_344,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/ggml-cuda12-windows-x64.dll", dest_rel: "models/qwen3-tts/ggml-cuda.dll", size: 170_425_344, sha256: "c59460d1c50f7295fb56fb70d5847ea9de8697b58b6934afa7aeb69087967ed8", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/ggml-cuda.dll", expect: 170_425_344 }],
     };
 
     // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: CUDA 13 and 12.9 the studios' builds (cuBLAS from cuda-runtime /
@@ -562,8 +572,29 @@ mod platform {
     // 100/120): RUNPATH $ORIGIN и ../higgs-engine, где libcudart и libcublas ставит cuda-runtime.
     pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "https://github.com/timoncool/drama-rs/releases/download/engine-0.1.3/libdrama_engine.so", dest_rel: "models/drama-engine/libdrama_engine.so", size: 32_642_032, sha256: "b9beb23321fd63025facb2fa1d90087d3dd03069475aa60ad60c3fb3c97892b4", extract: Extract::None };
 
-    // Сборки Qwen3-TTS для Linux пока нет: компонент ставит только кодек, движок остаётся недоступным с причиной.
-    pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
+    // Qwen3-TTS (timoncool/qwentts.cpp, branch studio, ABI 7, scripts/build-engine-linux-docker.sh, Ubuntu 22.04):
+    // libqwen.so with ggml, its CPU backend and libgomp, and the backend module of each other device beside it
+    // (GGML_BACKEND_DL); RUNPATH $ORIGIN, ../higgs-engine (CUDA 13 runtime) and ../cuda12-runtime.
+    pub const QWEN_ENGINE: Parts = Parts {
+        size: super::QWEN_CODEC.size + 1_235_196,
+        files: &[super::QWEN_CODEC, FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/qwen-linux-x64.tar.gz", dest_rel: "models/qwen3-tts/_engine.tar.gz", size: 1_235_196, sha256: "a2a5a4d355f8e4e58e87130f075c035aa0c62d0e43cec31da7c0c87c22880e8a", extract: Extract::Flat }],
+        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/libqwen.so", expect: 675_808 }, Marker { rel: "models/qwen3-tts/libggml-cpu.so", expect: 1_272_208 }],
+    };
+    pub const QWEN_VULKAN: Parts = Parts {
+        size: 42_242_640,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/libggml-vulkan-linux-x64.so", dest_rel: "models/qwen3-tts/libggml-vulkan.so", size: 42_242_640, sha256: "efce535b0ba4a3d7803ab2ec75f0a1a06693fb44699baebbdd61dbc032c2177d", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/libggml-vulkan.so", expect: 42_242_640 }],
+    };
+    pub const QWEN_CUDA13: Parts = Parts {
+        size: 157_457_144,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/libggml-cuda13-linux-x64.so", dest_rel: "models/qwen3-tts/libggml-cuda.so", size: 157_457_144, sha256: "ded156c13202ed4a27647eccde8ec7e30b139e5e948f8d98a9f67f0d8494d6eb", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/libggml-cuda.so", expect: 157_457_144 }],
+    };
+    pub const QWEN_CUDA12: Parts = Parts {
+        size: 181_025_560,
+        files: &[FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.0/libggml-cuda12-linux-x64.so", dest_rel: "models/qwen3-tts/libggml-cuda.so", size: 181_025_560, sha256: "bb4123ff8521c38ecf7704e71d2ee2814ae21704d44240b9489033ce56474837", extract: Extract::None }],
+        markers: &[Marker { rel: "models/qwen3-tts/libggml-cuda.so", expect: 181_025_560 }],
+    };
 
     // BSRoformer.cpp v0.1.0, the pins of dub_sep::asset: the studios' CUDA 13 and 12.9 builds (Ubuntu 22.04, libgomp
     // beside the program, RUNPATH $ORIGIN, ../../models/higgs-engine and ../../models/cuda12-runtime), Vulkan and the
@@ -727,9 +758,17 @@ mod platform {
     // Drama 3 is a CUDA engine: macOS does not offer it (`models::drama_unavailable`).
     pub const DRAMA_ENGINE: FileSpec = FileSpec { url: "", dest_rel: "models/drama-engine/libdrama_engine.dylib", size: 0, sha256: "", extract: Extract::None };
 
-    // Qwen3-TTS has no engine for the Mac in Dub Studio: the component sets only the codec, the engine says why it
-    // does not run (`models::qwen_unavailable`).
-    pub const QWEN_ENGINE: Parts = Parts { size: super::QWEN_CODEC.size, files: &[super::QWEN_CODEC], markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }] };
+    // Qwen3-TTS (timoncool/qwentts.cpp engine-0.2.1, scripts/build-engine-macos.sh, ABI 7): libqwen.dylib with ggml,
+    // the CPU backend and Metal linked in, no backend modules.
+    pub const QWEN_ENGINE: Parts = Parts {
+        size: super::QWEN_CODEC.size + QWEN_MACOS_SIZE,
+        files: &[super::QWEN_CODEC, FileSpec { url: "https://github.com/timoncool/qwentts.cpp/releases/download/engine-0.2.1/qwen-macos-arm64.tar.gz", dest_rel: "models/qwen3-tts/_engine.tar.gz", size: QWEN_MACOS_SIZE, sha256: "116a8ff3686375974fe9a0f8d39970b36aa86e12e65e02dd4b7b3ee502afa9e7", extract: Extract::Flat }],
+        markers: &[Marker { rel: super::QWEN_CODEC.dest_rel, expect: super::QWEN_CODEC.size }, Marker { rel: "models/qwen3-tts/libqwen.dylib", expect: 594_416 }],
+    };
+    const QWEN_MACOS_SIZE: u64 = 1_953_301;
+    pub const QWEN_VULKAN: Parts = NONE;
+    pub const QWEN_CUDA13: Parts = NONE;
+    pub const QWEN_CUDA12: Parts = NONE;
 
     // BSRoformer.cpp v0.1.0, dub_sep::asset's one Mac build (the author's: Metal and the processor).
     pub const BSROFORMER: Parts = NONE;
@@ -1547,6 +1586,37 @@ pub fn manifest() -> Vec<Component> {
         all.push(Component {
             id: crate::acpp::component(build),
             name: t!("setup-comp-audiocpp-build-name", build = label),
+            purpose: t!("setup-comp-audiocpp-build-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: parts.size,
+            files: parts.files,
+            markers: parts.markers,
+            external_url: None,
+        });
+    }
+    // Qwen3-TTS's backend modules, fetched when voicing is set to their device: Vulkan, and the CUDA one of this
+    // computer's card (macOS: Metal is in the engine itself, and these have no files there)
+    all.push(Component {
+        id: "qwen3-tts-vulkan",
+        name: format!("{} · Vulkan", t!("setup-comp-qwen3-tts-engine-name")),
+        purpose: t!("setup-comp-audiocpp-build-purpose"),
+        requirement: Requirement::Optional,
+        delivery: Delivery::Download,
+        size: platform::QWEN_VULKAN.size,
+        files: platform::QWEN_VULKAN.files,
+        markers: platform::QWEN_VULKAN.markers,
+        external_url: None,
+    });
+    let qwen_cuda = match card {
+        Some(crate::acpp::Build::Cuda13) => Some(("CUDA 13", &platform::QWEN_CUDA13)),
+        Some(crate::acpp::Build::Cuda12) => Some(("CUDA 12.9", &platform::QWEN_CUDA12)),
+        _ => None,
+    };
+    if let Some((label, parts)) = qwen_cuda {
+        all.push(Component {
+            id: "qwen3-tts-cuda",
+            name: format!("{} · {label}", t!("setup-comp-qwen3-tts-engine-name")),
             purpose: t!("setup-comp-audiocpp-build-purpose"),
             requirement: Requirement::Optional,
             delivery: Delivery::Download,
