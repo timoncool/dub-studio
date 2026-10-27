@@ -2061,24 +2061,38 @@ pub struct ImportReport {
 /// Положить src на место dest: жёсткая ссылка (тот же том — мгновенно и без второй копии гигабайт), иначе
 /// копия через .part + rename (частичной копии под финальным именем не бывает). Без `copy` — только ссылка:
 /// автоподхват у соседних программ не тратит гигабайты места молча. The file already at dest is replaced only by
-/// a finished link or copy: a link that fails (another drive) leaves it as it was.
+/// a finished link or copy: a link that fails (another drive) leaves it as it was, and a folder made for it goes.
 pub(crate) fn adopt_file(src: &Path, dest: &Path, copy: bool) -> std::io::Result<()> {
-    if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    let tmp = with_suffix(dest, ".import");
-    if tmp.exists() {
-        std::fs::remove_file(&tmp)?;
-    }
-    if let Err(e) = std::fs::hard_link(src, &tmp) {
-        if !copy {
-            return Err(e);
+    let made = match dest.parent() {
+        Some(parent) if !parent.exists() => {
+            std::fs::create_dir_all(parent)?;
+            Some(parent)
         }
-        std::fs::copy(src, &tmp)?;
+        _ => None,
+    };
+    let adopted = (|| {
+        let tmp = with_suffix(dest, ".import");
+        if tmp.exists() {
+            std::fs::remove_file(&tmp)?;
+        }
+        if let Err(e) = std::fs::hard_link(src, &tmp) {
+            if !copy {
+                return Err(e);
+            }
+            std::fs::copy(src, &tmp)?;
+        }
+        std::fs::rename(&tmp, dest).inspect_err(|_| {
+            let _ = std::fs::remove_file(&tmp);
+        })
+    })();
+    if adopted.is_err() {
+        if let Some(parent) = made {
+            if let Err(e) = std::fs::remove_dir(parent) {
+                tracing::warn!("{} stays after a failed import: {e}", parent.display());
+            }
+        }
     }
-    std::fs::rename(&tmp, dest).inspect_err(|_| {
-        let _ = std::fs::remove_file(&tmp);
-    })
+    adopted
 }
 
 /// Импорт готовых весов из папки без закачки: для каждого недостающего ПРЯМОГО файла компонента ищем в src_dir
@@ -4757,6 +4771,19 @@ mod tests {
         adopt_file(&src, &dest, false).unwrap();
         assert_eq!(std::fs::read(&dest).unwrap(), b"pinned build");
         assert!(!with_suffix(&dest, ".import").exists());
+    }
+
+    /// A link that fails leaves no folder made for it (a neighbour's engine on another drive), and a folder that was
+    /// there stays.
+    #[test]
+    fn a_link_that_fails_leaves_no_empty_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let dest = root.path().join("models/transcribe-engine-vulkan/transcribe_engine.dll");
+        assert!(adopt_file(&root.path().join("nowhere/transcribe_engine.dll"), &dest, false).is_err());
+        assert!(!dest.parent().unwrap().exists());
+        std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+        assert!(adopt_file(&root.path().join("nowhere/transcribe_engine.dll"), &dest, false).is_err());
+        assert!(dest.parent().unwrap().is_dir());
     }
 
     /// A program taken from another folder replaces one of another build: the record of that build goes with it, so
