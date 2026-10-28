@@ -1,6 +1,7 @@
 //! The pinned downloads of the separation engine BSRoformer.cpp v0.1.0, one per build, the same for every program.
-//! The CUDA builds are the studios' (timoncool/BSRoformer.cpp studio-0.1.0: `-real` SASS without PTX, Ubuntu 22.04 on
-//! Linux, RUNPATH `$ORIGIN` and the programs' CUDA runtime folders); Vulkan, the processor and the Mac are the author's
+//! Windows and Linux are the studios' builds (timoncool/BSRoformer.cpp studio-0.1.1): the program with ggml, a ggml-cpu
+//! per instruction level and the device's backend module, so any x86-64 runs it; CUDA as `-real` SASS without PTX,
+//! Ubuntu 22.04 on Linux, RUNPATH `$ORIGIN` and the programs' CUDA runtime folders. The Mac is the author's
 //! (chenmozhijin/BSRoformer.cpp v0.1.0).
 
 /// A build of the engine, named as `acpp_server::asset::Build` names the server's.
@@ -59,28 +60,28 @@ impl Build {
     pub const fn engine(self) -> Option<Asset> {
         Some(match self {
             Build::Cuda13 => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.0/BSRoformer-windows-cuda13-x64.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-cuda13-x64.zip",
                 archive: "tools/bsroformer/_engine.zip",
-                size: 117_036_131,
-                sha256: "a6cb96ec5435fc44855f45c8e4fb2223f7aa1390e4d21c2f0fe9f7d55eafbb41",
+                size: 119_367_905,
+                sha256: "c89128404d29c52ac0efed1a1072a76b277ccf13a33247611032746932e8d032",
             },
             Build::Cuda12 => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.0/BSRoformer-windows-cuda12-x64.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-cuda12-x64.zip",
                 archive: "tools/bsroformer-cuda12/_engine.zip",
-                size: 170_818_717,
-                sha256: "774dc9be48fd75a919ba1569991d3b6bb13e9fa18a98d7efe75cc53501f80837",
+                size: 173_177_321,
+                sha256: "72211af3451d9d4266406da8039a3ecdd9eabde1373cd235ff408711af8f7400",
             },
             Build::Vulkan => Asset {
-                url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-vulkan.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-vulkan-x64.zip",
                 archive: "tools/bsroformer-vulkan/_engine.zip",
-                size: 22_779_026,
-                sha256: "a47653911eb17f68e65bce15aed6c4f1bd277a5fbd48293c4e54f0b005b869a7",
+                size: 25_661_617,
+                sha256: "fc82682b4071d065e2e3e84998817877a4d936da7fbb3e580799904c54a6a4ab",
             },
             Build::Cpu => Asset {
-                url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-windows-x64-msvc.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-cpu-x64.zip",
                 archive: "tools/bsroformer-cpu/_engine.zip",
-                size: 671_031,
-                sha256: "e002811d56605bce6a51c275cf8f9ba447a3707771289ea6fbcca7f4d3e9ba1f",
+                size: 3_006_666,
+                sha256: "0b212654ea598503992119328daec051bbce5f14b73808c5cc588f278817f908",
             },
         })
     }
@@ -102,28 +103,28 @@ impl Build {
     pub const fn engine(self) -> Option<Asset> {
         Some(match self {
             Build::Cuda13 => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.0/BSRoformer-linux-cuda13-x64.tar.gz",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-linux-cuda13-x64.tar.gz",
                 archive: "tools/bsroformer/_engine.tar.gz",
-                size: 118_589_684,
-                sha256: "d363cd9c2249417f4d93851e4958c1c6808fa18e5f8b564312ed124c5881bf63",
+                size: 123_464_218,
+                sha256: "807f59113f17eb706bc7289155bdf507d05ae01650a5c2ccd9685f5574e9cd04",
             },
             Build::Cuda12 => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.0/BSRoformer-linux-cuda12-x64.tar.gz",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-linux-cuda12-x64.tar.gz",
                 archive: "tools/bsroformer-cuda12/_engine.tar.gz",
-                size: 172_267_870,
-                sha256: "d6bc6ee2e0af9f7a430ab6f0b3ded880e764ea77ee68e97a1c689cee92083520",
+                size: 177_134_761,
+                sha256: "82540c02b5a9730137b0059ffda8c0c79b589a649af554dff1f88867a6c7444d",
             },
             Build::Vulkan => Asset {
-                url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-vulkan.tar.xz",
-                archive: "tools/bsroformer-vulkan/_engine.tar.xz",
-                size: 5_900_692,
-                sha256: "bee2e9b5dd322b8d4fe1081583ce41709c2c1341550bbb557073c1216fef3e85",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-linux-vulkan-x64.tar.gz",
+                archive: "tools/bsroformer-vulkan/_engine.tar.gz",
+                size: 28_805_838,
+                sha256: "d0b6acc7b4b05c453bbfe99ea8154251fde4d96b2edd957fdab6e596f7a64927",
             },
             Build::Cpu => Asset {
-                url: "https://github.com/chenmozhijin/BSRoformer.cpp/releases/download/v0.1.0/BSRoformer-linux-x64-cpu.tar.xz",
-                archive: "tools/bsroformer-cpu/_engine.tar.xz",
-                size: 640_204,
-                sha256: "bc0f20237b9ed263582ebd0844dfc7dbb61309a67c31f4a8d7ba156e21292c77",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-linux-cpu-x64.tar.gz",
+                archive: "tools/bsroformer-cpu/_engine.tar.gz",
+                size: 5_849_988,
+                sha256: "65eb3cf26dfed0a23f01906a9f179ae7ab503f2bdac4f411e49ec902a5addafd",
             },
         })
     }
