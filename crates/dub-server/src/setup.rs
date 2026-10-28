@@ -266,33 +266,34 @@ mod platform {
     // GitHub: deno 2.9.8 (denoland/deno) — JS-рантайм, без которого yt-dlp не решает задачи YouTube (yt-dlp-ejs уже внутри
     // yt-dlp.exe; вики yt-dlp EJS: deno не ниже 2.3.0).
     const GH_DENO: &str = "https://github.com/denoland/deno/releases/download/v2.9.8/deno-x86_64-pc-windows-msvc.zip";
-    // transcribe.cpp (fork timoncool/transcribe.cpp, branch studio, scripts/build-engine-windows.cmd): libtranscribe and
-    // ggml whole in one library. CUDA 13, sm 75/80/86/89/90/100/120 without PTX, cudart and cuBLAS from cuda-runtime;
-    // the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's.
+    // transcribe.cpp (fork timoncool/transcribe.cpp, branch studio, scripts/build-engine-windows.cmd): an archive of
+    // transcribe.dll, ggml, a ggml-cpu per instruction level and the device's backend module, unpacked flat. CUDA 13, sm
+    // 75/80/86/89/90/100/120 without PTX, cudart and cuBLAS from cuda-runtime; the CPU build for a computer without a card
+    // CUDA 13 runs on. The pins are dub_tcpp's.
     const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
         let d = build.download();
-        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
+        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::Flat }
     }
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
         size: dub_asr::tcpp::Build::Cuda.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, "models/transcribe-engine/transcribe_engine.dll")],
-        markers: &[Marker { rel: "models/transcribe-engine/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, "models/transcribe-engine/_engine.zip")],
+        markers: &[Marker { rel: "models/transcribe-engine/transcribe.dll", expect: dub_asr::tcpp::Build::Cuda.library_size() }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
         size: dub_asr::tcpp::Build::Cpu.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, "models/transcribe-engine-cpu/transcribe_engine.dll")],
-        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cpu.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, "models/transcribe-engine-cpu/_engine.zip")],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/transcribe.dll", expect: dub_asr::tcpp::Build::Cpu.library_size() }],
     };
     // CUDA 12.9, sm 52-120a without PTX; cudart and cuBLAS from cuda12-runtime, whose folder is on PATH on such a card.
     pub const TRANSCRIBE_ENGINE_CUDA12: Parts = Parts {
         size: dub_asr::tcpp::Build::Cuda12.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, "models/transcribe-engine-cuda12/transcribe_engine.dll")],
-        markers: &[Marker { rel: "models/transcribe-engine-cuda12/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Cuda12.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, "models/transcribe-engine-cuda12/_engine.zip")],
+        markers: &[Marker { rel: "models/transcribe-engine-cuda12/transcribe.dll", expect: dub_asr::tcpp::Build::Cuda12.library_size() }],
     };
     pub const TRANSCRIBE_ENGINE_VULKAN: Parts = Parts {
         size: dub_asr::tcpp::Build::Vulkan.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/transcribe_engine.dll")],
-        markers: &[Marker { rel: "models/transcribe-engine-vulkan/transcribe_engine.dll", expect: dub_asr::tcpp::Build::Vulkan.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/_engine.zip")],
+        markers: &[Marker { rel: "models/transcribe-engine-vulkan/transcribe.dll", expect: dub_asr::tcpp::Build::Vulkan.library_size() }],
     };
     // audiocpp_server (acpp_server::asset: fork timoncool/audio.cpp, branch studio; model specs inside, AVX2 floor, no
     // AVX-512) with the VC++ 14.51 libraries beside it. CUDA 13: SASS 7.5-12.0a without PTX, cudart inside, cuBLAS and
@@ -483,36 +484,34 @@ mod platform {
 mod platform {
     use super::{Extract, FileSpec, Marker, Parts};
 
-    // transcribe.cpp (fork timoncool/transcribe.cpp, scripts/build-engine-linux-docker.sh: Ubuntu 22.04). CUDA 13.3,
+    // transcribe.cpp (fork timoncool/transcribe.cpp, scripts/build-engine-linux-docker.sh: Ubuntu 22.04): an archive of
+    // libtranscribe.so, ggml, a ggml-cpu per instruction level and the device's backend module, unpacked flat. CUDA 13.3,
     // sm 75/80/86/89/90/100/120, RUNPATH $ORIGIN and ../higgs-engine, where libcudart and libcublas come from
     // cuda-runtime; the CPU build for a computer without a card CUDA 13 runs on. The pins are dub_tcpp's.
     const fn tcpp_file(build: dub_asr::tcpp::Build, dest_rel: &'static str) -> FileSpec {
         let d = build.download();
-        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::None }
+        FileSpec { url: d.url, dest_rel, size: d.size, sha256: d.sha256, extract: Extract::Flat }
     }
-    const TCPP_CUDA: &str = "models/transcribe-engine/libtranscribe_engine.so";
-    const TCPP_CPU: &str = "models/transcribe-engine-cpu/libtranscribe_engine.so";
-    const TCPP_CUDA12: &str = "models/transcribe-engine-cuda12/libtranscribe_engine.so";
     pub const TRANSCRIBE_ENGINE: Parts = Parts {
         size: dub_asr::tcpp::Build::Cuda.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, TCPP_CUDA)],
-        markers: &[Marker { rel: TCPP_CUDA, expect: dub_asr::tcpp::Build::Cuda.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda, "models/transcribe-engine/_engine.tar.gz")],
+        markers: &[Marker { rel: "models/transcribe-engine/libtranscribe.so", expect: dub_asr::tcpp::Build::Cuda.library_size() }],
     };
     pub const TRANSCRIBE_ENGINE_CPU: Parts = Parts {
         size: dub_asr::tcpp::Build::Cpu.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, TCPP_CPU)],
-        markers: &[Marker { rel: TCPP_CPU, expect: dub_asr::tcpp::Build::Cpu.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cpu, "models/transcribe-engine-cpu/_engine.tar.gz")],
+        markers: &[Marker { rel: "models/transcribe-engine-cpu/libtranscribe.so", expect: dub_asr::tcpp::Build::Cpu.library_size() }],
     };
     // CUDA 12.9 with RUNPATH $ORIGIN and ../cuda12-runtime, where cuda12-runtime puts libcudart and libcublas.
     pub const TRANSCRIBE_ENGINE_CUDA12: Parts = Parts {
         size: dub_asr::tcpp::Build::Cuda12.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, TCPP_CUDA12)],
-        markers: &[Marker { rel: TCPP_CUDA12, expect: dub_asr::tcpp::Build::Cuda12.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Cuda12, "models/transcribe-engine-cuda12/_engine.tar.gz")],
+        markers: &[Marker { rel: "models/transcribe-engine-cuda12/libtranscribe.so", expect: dub_asr::tcpp::Build::Cuda12.library_size() }],
     };
     pub const TRANSCRIBE_ENGINE_VULKAN: Parts = Parts {
         size: dub_asr::tcpp::Build::Vulkan.download().size,
-        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/libtranscribe_engine.so")],
-        markers: &[Marker { rel: "models/transcribe-engine-vulkan/libtranscribe_engine.so", expect: dub_asr::tcpp::Build::Vulkan.download().size }],
+        files: &[tcpp_file(dub_asr::tcpp::Build::Vulkan, "models/transcribe-engine-vulkan/_engine.tar.gz")],
+        markers: &[Marker { rel: "models/transcribe-engine-vulkan/libtranscribe.so", expect: dub_asr::tcpp::Build::Vulkan.library_size() }],
     };
     // audiocpp_server (acpp_server::asset): one archive a build with libgomp beside the program; RUNPATH $ORIGIN,
     // ../../models/higgs-engine (CUDA 13 runtime of cuda-runtime) and ../../models/cuda12-runtime (CUDA 12.9).
@@ -4297,13 +4296,17 @@ mod tests {
         let builds: &[dub_asr::tcpp::Build] = if cfg!(target_os = "macos") {
             &[dub_asr::tcpp::Build::Cpu]
         } else {
-            &[dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Cpu]
+            &[dub_asr::tcpp::Build::Cuda, dub_asr::tcpp::Build::Cuda12, dub_asr::tcpp::Build::Vulkan, dub_asr::tcpp::Build::Cpu]
         };
         for &b in builds {
             let d = b.download();
             let [f] = comp(b.dir()).files else { panic!("{b:?}: one file") };
             assert_eq!((f.url, f.size, f.sha256), (d.url, d.size, d.sha256), "{b:?}");
-            assert_eq!(std::path::Path::new(f.dest_rel), std::path::Path::new("models").join(b.dir()).join(dub_asr::tcpp::LIBRARY), "{b:?}");
+            // on Windows and Linux the download is an archive unpacked flat; the marker is the library at its own size
+            let file = dub_asr::tcpp::ARCHIVE.unwrap_or(dub_asr::tcpp::LIBRARY);
+            assert_eq!(std::path::Path::new(f.dest_rel), std::path::Path::new("models").join(b.dir()).join(file), "{b:?}");
+            let library = std::path::Path::new("models").join(b.dir()).join(dub_asr::tcpp::LIBRARY);
+            assert!(comp(b.dir()).markers.iter().any(|m| std::path::Path::new(m.rel) == library && m.expect == b.library_size()), "{b:?}");
         }
     }
 
@@ -4807,8 +4810,10 @@ mod tests {
     /// the new file is hashed and recorded as what it is instead of counting as the old build for good.
     #[test]
     fn a_program_taken_from_a_neighbour_drops_the_record_of_the_build_it_replaced() {
-        let c = manifest().into_iter().find(|c| c.id == "transcribe-engine-cpu").unwrap();
+        // a single-file program (its deno companion is an archive import skips), so only the program is taken
+        let c = manifest().into_iter().find(|c| c.id == "ytdlp").unwrap();
         let f = &c.files[0];
+        assert!(is_program(f), "the first file is the program");
         let root = tempfile::tempdir().unwrap();
         let dest = root.path().join(f.dest_rel);
         std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
