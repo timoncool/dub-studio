@@ -997,7 +997,6 @@ render-drama-load-failed = загрузка Drama 3: { $error }
 render-drama-oom = Drama 3 не хватило видеопамяти ({ $error }): закройте другие программы, занимающие видеокарту, или задайте меньший объём в «Видеопамять для Drama 3» в настройках
 render-loading-drama = загрузка Drama 3
 qwen-needs-cuda = Голосу Qwen3-TTS нужна видеокарта NVIDIA с CUDA, а её не нашлось ({ $card }). Выберите Higgs.
-cpu-floor-missing = { $engine } нужен процессор с AVX2, FMA, F16C и BMI2 (Intel с 2013 года, AMD с 2017), а у этого нет { $missing }
 stage-name-sep = Отделение голоса от фона
 stage-name-asr = Распознавание речи (Parakeet)
 stage-needs-cuda = { $stage }: в настройках выбрано «GPU (CUDA)», но { $why }. Выберите для этой стадии «CPU» или «Авто» в настройках.

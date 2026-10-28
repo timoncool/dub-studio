@@ -211,13 +211,6 @@ pub fn cuda13_verdict(compute: (u32, u32), cuda_driver: u32) -> Result<(), &'sta
     }
 }
 
-/// Why this processor cannot run `engine`, built on the studios' x86-64 floor (AVX2, FMA, F16C, BMI2), in the window's
-/// language; None — it can.
-pub fn cpu_floor(engine: &str) -> Option<String> {
-    let missing = dub_asr::tcpp::cpu_floor_missing();
-    (!missing.is_empty()).then(|| t!("cpu-floor-missing", engine = engine.to_string(), missing = missing.join(", ")))
-}
-
 /// The display adapter that is not Microsoft's software one (Windows: the adapter with the most memory in the display
 /// class of the registry; Linux: the first DRM card on PCI), named for the log, as Speech and YuE2 Studio find it. None
 /// without one, and on a Mac, whose one build is its own. Probed once a process.

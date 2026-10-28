@@ -270,11 +270,9 @@ fn tcpp_build_of(build: Result<crate::acpp::Build, String>) -> dub_asr::tcpp::Bu
     }
 }
 
-/// Why voice separation cannot run here as set: its GPU build without a usable card, or a processor without the
-/// floor the GPU build's ggml-cpu library is built on (the processor build has none).
+/// Why voice separation cannot run here as set: its GPU build without a usable card.
 pub fn sep_unavailable(mroot: &Path) -> Option<String> {
     gpu_stage_unavailable(mroot, "sep_backend", &t!("stage-name-sep"))
-        .or_else(|| (stage_backend(mroot, "sep_backend") == "gpu").then(|| crate::hw::cpu_floor("BSRoformer")).flatten())
 }
 
 /// The build of the separation engine for its device (`sep_backend`, else `local_backend`), as Speech Studio picks it
@@ -914,13 +912,10 @@ pub fn qwen_quant(tts: &str) -> Option<&'static str> {
     }
 }
 
-/// The build Qwen3-TTS runs on here, or why it does not: the voicing device of the settings, the processor's floor and,
-/// for CUDA 13, the card and its driver.
+/// The build Qwen3-TTS runs on here, or why it does not: the voicing device of the settings and, for CUDA 13, the card
+/// and its driver.
 pub fn qwen_build(mroot: &Path) -> Result<crate::acpp::Build, String> {
     let build = crate::acpp::build_for(server_choice(mroot, "tts_backend"))?;
-    if let Some(why) = crate::hw::cpu_floor("Qwen3-TTS") {
-        return Err(why);
-    }
     if build == crate::acpp::Build::Cuda13 {
         let gpu = crate::hw::gpu_report();
         if !gpu.cuda13_ok {
@@ -1029,9 +1024,6 @@ pub fn drama_dll(mroot: &Path) -> PathBuf {
 /// не входит в видеопамять целиком (карта меньше [`DRAMA_FULL_VRAM`] или такой лимит в настройках), оперативной
 /// памяти не меньше [`DRAMA_MIN_RAM`].
 pub fn drama_unavailable(mroot: &Path) -> Option<String> {
-    if let Some(why) = crate::hw::cpu_floor("Drama 3") {
-        return Some(why);
-    }
     let gpu = crate::hw::gpu_report();
     let card = gpu.summary().unwrap_or_else(|| "-".to_string());
     if !gpu.cuda13_ok {
