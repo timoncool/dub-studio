@@ -44,6 +44,7 @@ const WINDOWS_LIBRARIES: &[&str] = &[
     "rpcrt4.dll", "secur32.dll", "setupapi.dll", "shell32.dll", "shlwapi.dll", "uiautomationcore.dll", "user32.dll",
     "userenv.dll", "uxtheme.dll", "version.dll", "windowscodecs.dll", "winhttp.dll", "wininet.dll", "winmm.dll",
     "ws2_32.dll", "opengl32.dll", "rstrtmgr.dll", "mmdevapi.dll", "avrt.dll", "ksuser.dll", "nvcuda.dll", "vulkan-1.dll",
+    "dnsapi.dll", "msimg32.dll",
 ];
 
 /// What a check found wrong in one binary.

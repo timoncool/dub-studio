@@ -87,7 +87,7 @@ pub fn is_provided_by_the_system(name: &str) -> bool {
             "imm32.dll", "iphlpapi.dll", "winhttp.dll", "wininet.dll", "dxgi.dll", "d3d11.dll", "d3d12.dll",
             "dxcore.dll", "mfplat.dll", "mf.dll", "mfreadwrite.dll", "avrt.dll", "ksuser.dll", "vfw32.dll",
             "avicap32.dll", "strmiids.dll", "dwmapi.dll", "uxtheme.dll", "winspool.drv", "normaliz.dll", "wldap32.dll",
-            "d2d1.dll", "dwrite.dll", "usp10.dll",
+            "d2d1.dll", "dwrite.dll", "usp10.dll", "dnsapi.dll", "msimg32.dll",
         ]
         .contains(&name.as_str())
 }
