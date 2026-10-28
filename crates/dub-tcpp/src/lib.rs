@@ -8,11 +8,20 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 #[cfg(windows)]
-pub const LIBRARY: &str = "transcribe_engine.dll";
+pub const LIBRARY: &str = "transcribe.dll";
 #[cfg(target_os = "macos")]
 pub const LIBRARY: &str = "libtranscribe_engine.dylib";
 #[cfg(not(any(windows, target_os = "macos")))]
-pub const LIBRARY: &str = "libtranscribe_engine.so";
+pub const LIBRARY: &str = "libtranscribe.so";
+
+/// Where a build's download lies in its folder: on Windows and Linux an archive of the engine, ggml and its backend modules
+/// (one ggml-cpu per instruction level, the device's own), unpacked flat beside it; on a Mac the engine library itself.
+#[cfg(windows)]
+pub const ARCHIVE: Option<&str> = Some("_engine.zip");
+#[cfg(target_os = "macos")]
+pub const ARCHIVE: Option<&str> = None;
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const ARCHIVE: Option<&str> = Some("_engine.tar.gz");
 
 /// Файл закачки: адрес по закреплённой ревизии, размер и SHA-256. Одни и те же у всех программ, поэтому соседи берут
 /// файлы друг у друга.
@@ -35,40 +44,6 @@ pub enum Build {
     Cpu,
 }
 
-/// Whether this computer's processor runs an engine built with the x86-64 floor of the studios: AVX2, FMA, F16C and BMI2
-/// (every Intel since Haswell, every AMD since Zen). A processor without them gets this answer, naming `engine`, instead of
-/// a crash on the engine's first call. Other architectures pass.
-pub fn cpu_floor(engine: &str) -> Result<(), String> {
-    let missing = cpu_floor_missing();
-    if missing.is_empty() {
-        return Ok(());
-    }
-    Err(format!(
-        "{engine} needs a processor with AVX2, FMA, F16C and BMI2 (Intel since 2013, AMD since 2017), and this one has not got {}",
-        missing.join(", ")
-    ))
-}
-
-/// What this computer's processor lacks of the x86-64 floor of [`cpu_floor`]: nothing on one that has it and on other
-/// architectures.
-pub fn cpu_floor_missing() -> Vec<&'static str> {
-    #[cfg(target_arch = "x86_64")]
-    {
-        [
-            ("AVX2", std::arch::is_x86_feature_detected!("avx2")),
-            ("FMA", std::arch::is_x86_feature_detected!("fma")),
-            ("F16C", std::arch::is_x86_feature_detected!("f16c")),
-            ("BMI2", std::arch::is_x86_feature_detected!("bmi2")),
-        ]
-        .into_iter()
-        .filter(|(_, has)| !has)
-        .map(|(name, _)| name)
-        .collect()
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    Vec::new()
-}
-
 impl Build {
     pub const ALL: [Build; 4] = [Build::Cuda, Build::Cuda12, Build::Vulkan, Build::Cpu];
 
@@ -82,37 +57,44 @@ impl Build {
         }
     }
 
-
-    /// Whether this computer's processor runs the engine (see [`cpu_floor`]).
-    pub fn runs_here(self) -> Result<(), String> {
-        let _ = self;
-        cpu_floor("transcribe.cpp")
-    }
-
     #[cfg(windows)]
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine.dll",
-                size: 144_430_592,
-                sha256: "b4d4cfef4a3a5802cd2426b539de86758a7f92c0acbeb4ea5ade917bff7ac380",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-cuda13-x64.zip",
+                size: 131_057_663,
+                sha256: "42ab82c4af62b2740e6e0d338871c267fccb19b3a0576f3c9ba052c98cdc012e",
             },
             Build::Cuda12 => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-cuda12.dll",
-                size: 172_778_496,
-                sha256: "16657d6a49b88cf2ced1585dee1359f3713bc12b0af62d108d69474480fb8ad4",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-cuda12-x64.zip",
+                size: 158_968_355,
+                sha256: "909dcc8d4ef4735446bd5217be0d3fc416eba58ccda22a32dfe99c66dc9accbc",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-vulkan.dll",
-                size: 48_807_936,
-                sha256: "5b0d2d194ebb838d18f4145f418a141321748c89a41f6ba8692e200597ca5bf8",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-vulkan-x64.zip",
+                size: 18_821_332,
+                sha256: "d19d8d91c902ce143337172d48c754b3db7787ef86f9fa23e9c917538aa4e479",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/transcribe_engine-cpu.dll",
-                size: 3_560_960,
-                sha256: "c39fa05fd6762fa8a29199a8d90765cab5c7afdfec1bd5dcdfd7bcf1cfc6af9a",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-cpu-x64.zip",
+                size: 4_632_814,
+                sha256: "17eb7abedc0907085c4b84643e600c317fcf50f3b59df37c5a0185c087ce45ff",
             },
         }
+    }
+
+    /// The size of [`LIBRARY`] once the build is in place: the mark that the pinned release is installed.
+    #[cfg(windows)]
+    pub const fn library_size(self) -> u64 {
+        match self {
+            Build::Cuda12 => 2_052_096,
+            Build::Cuda | Build::Vulkan | Build::Cpu => 2_054_144,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub const fn library_size(self) -> u64 {
+        self.download().size
     }
 
     /// На Mac одна сборка на архитектуру, в папке процессорной: Metal и процессор на Apple silicon, процессор на
@@ -138,26 +120,33 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine.so",
-                size: 160_764_040,
-                sha256: "55f703005d320afe9ac4eee52b50599ef6eeb002975b2de6ea8d711fcae41283",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-cuda13-x64.tar.gz",
+                size: 136_297_216,
+                sha256: "e524222983fc31c65f844ca2fab0e3a835b8aaf5a59c9d98317f04cefc4e9286",
             },
             Build::Cuda12 => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-cuda12.so",
-                size: 184_375_104,
-                sha256: "6b17f67201f4cc9d40ed219c62783efe0c2c08a9dc17c27896e909300b82a4be",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-cuda12-x64.tar.gz",
+                size: 164_162_133,
+                sha256: "a9e6bd635940b332f7433f4bafd5353d6288c8f52daca888af02bd35a9f0455d",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-vulkan.so",
-                size: 50_807_768,
-                sha256: "a4d1951f881edea2b477abe44977587db0884f7a295647196b3743d20e752560",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-vulkan-x64.tar.gz",
+                size: 22_791_539,
+                sha256: "d6b6c1e7ae488640f647a9757dc0f1c35ac37cda5fee76e43016a019834a4e2d",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-cpu.so",
-                size: 4_838_616,
-                sha256: "566328f75598ca35b8aebbbb45e730cbccabe81abd185833186deb3d836db675",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-cpu-x64.tar.gz",
+                size: 8_355_355,
+                sha256: "09e5d50db0e2d181b76f6bf2b520dc723d8c26dafe668e02c1a3ecc3b74e6663",
             },
         }
+    }
+
+    /// The size of [`LIBRARY`] once the build is in place: the mark that the pinned release is installed.
+    #[cfg(not(any(windows, target_os = "macos")))]
+    pub const fn library_size(self) -> u64 {
+        let _ = self;
+        2_655_880
     }
 }
 
@@ -247,7 +236,7 @@ pub fn model_path(models_root: &Path, m: &Model) -> PathBuf {
 /// behind) and counts as not installed.
 pub fn installed(models_root: &Path, build: Build, m: &Model) -> bool {
     let pinned = |path: PathBuf, size: u64| std::fs::metadata(path).is_ok_and(|f| f.is_file() && f.len() == size);
-    pinned(engine_dir(models_root, build).join(LIBRARY), build.download().size) && pinned(model_path(models_root, m), m.download.size)
+    pinned(engine_dir(models_root, build).join(LIBRARY), build.library_size()) && pinned(model_path(models_root, m), m.download.size)
 }
 
 /// Вспомогательная модель transcribe.cpp: разметка речи (Silero VAD v6.2, только F32, считается на CPU) и определение
@@ -510,7 +499,6 @@ fn library(dir: &Path) -> Result<Api, String> {
     if !path.is_file() {
         return Err(format!("transcribe.cpp: the engine is not installed: {}", path.display()));
     }
-    Build::Cpu.runs_here()?;
     let lib = open(&path)?;
     let api = unsafe {
         macro_rules! sym {
@@ -592,6 +580,15 @@ fn library(dir: &Path) -> Result<Api, String> {
     let caps = unsafe { (api.abi_size)(ABI_CAPABILITIES) };
     if caps < std::mem::size_of::<Capabilities>() || caps > std::mem::size_of::<CapsBuffer>() {
         return Err(format!("transcribe.cpp {}: its capabilities struct is {caps} bytes, we read {}..{}", path.display(), std::mem::size_of::<Capabilities>(), std::mem::size_of::<CapsBuffer>()));
+    }
+    // a module build (GGML_BACKEND_DL) registers, from beside the library, the CPU variant this processor scores highest and
+    // the device's backend; the Mac's build has its backends compiled in and no such step
+    let init = unsafe { lib.get::<unsafe extern "C" fn() -> c_int>(b"transcribe_init_backends_default\0") }.ok().map(|f| *f);
+    if let Some(init) = init {
+        let status = unsafe { init() };
+        if status != 0 {
+            return Err(format!("transcribe.cpp {}: no compute backend: {}", path.display(), text(unsafe { (api.status_string)(status) })));
+        }
     }
     loaded.push((dir.to_path_buf(), lib, api));
     Ok(api)
@@ -1168,9 +1165,9 @@ mod tests {
         std::fs::create_dir_all(root.join(TINY.dir)).unwrap();
         std::fs::write(model_path(&root, &TINY), b"abc").unwrap();
         let engine = std::fs::File::create(&lib).unwrap();
-        engine.set_len(Build::Cpu.download().size + 4096).unwrap();
+        engine.set_len(Build::Cpu.library_size() + 4096).unwrap();
         assert!(!installed(&root, Build::Cpu, &TINY), "an older engine of another size");
-        engine.set_len(Build::Cpu.download().size).unwrap();
+        engine.set_len(Build::Cpu.library_size()).unwrap();
         drop(engine);
         assert!(installed(&root, Build::Cpu, &TINY));
         std::fs::write(model_path(&root, &TINY), b"abcd").unwrap();
