@@ -4,6 +4,12 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## 2026-10-28 — 4.5.1
+
+### Fixed
+
+- **Every engine runs on any x86-64 processor, with or without AVX2**: the audio.cpp server (Higgs, Supertonic, CrisperWhisper, Parakeet, diarization), recognition (transcribe.cpp), Qwen3-TTS and the voice separator (BSRoformer) now come with a processor build for every instruction level and load the one this processor runs best, instead of the AVX2 build alone; 4.5.0 refused these engines on a processor without AVX2. The new builds are downloaded once after the update.
+
 ## 2026-10-27 — 4.5.0
 
 ### Changed
