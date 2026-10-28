@@ -139,7 +139,7 @@ pub fn entry_points() -> Vec<(&'static str, String)> {
             out.push((server, format!("tools/{}/audiocpp_server.exe", build.folder())));
         }
     }
-    for (component, file) in [("qwen3-tts-engine", "qwen.dll"), ("qwen3-tts-engine", "ggml-cpu.dll"), ("qwen3-tts-vulkan", "ggml-vulkan.dll"), ("qwen3-tts-cuda", "ggml-cuda.dll")] {
+    for (component, file) in [("qwen3-tts-engine", "qwen.dll"), ("qwen3-tts-engine", "ggml-cpu-x64.dll"), ("qwen3-tts-vulkan", "ggml-vulkan.dll"), ("qwen3-tts-cuda", "ggml-cuda.dll")] {
         if listed(component) {
             out.push((component, format!("models/qwen3-tts/{file}")));
         }
