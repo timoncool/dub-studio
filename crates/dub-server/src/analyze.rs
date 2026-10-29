@@ -449,7 +449,7 @@ fn has_speech_text(text: &str) -> bool {
 }
 
 const DIAR_VER: &str = "nemotron3-diar-v3 · offline · merge_gap=0.8 · min_spk=10%[1.5..2.5] · out-v2";
-const ASR_VER: &str = "asr-v4-abbrev-speaker-split";
+const ASR_VER: &str = "asr-v5-pieces-at-speaker-turns";
 
 /// Speech of this length is enough to tell a language Parakeet does not know: speech runs at 2-3 words
 /// a second, and Parakeet given another language returns a stray word or two for minutes of it.
@@ -673,12 +673,14 @@ mod continuous_diarization_cache_tests {
 }
 
 /// Recognition of a recording in pieces cut at its pauses (Silero VAD), as Speech Studio cuts it: silence does not go to
-/// the recognizer, and a long recording is not cut mid-word. A recording without speech gives no lines.
+/// the recognizer, and a long recording is not cut mid-word. A piece ends where the diarization `turns` change the
+/// speaker if it can. A recording without speech gives no lines.
 fn recognise_by_pauses(
     paths: &AnalyzePaths,
     asr: &mut dyn dub_asr::AsrEngine,
     wav: &std::path::Path,
     lang: &str,
+    turns: &[dub_asr::Turn],
     progress: &Progress,
 ) -> Result<Vec<dub_asr::Segment>, String> {
     let lacking = crate::vad::missing(&paths.models_root);
@@ -689,28 +691,97 @@ fn recognise_by_pauses(
     }
     let probs = crate::vad::probabilities(&paths.models_root, &samples)?;
     let spans = crate::vad::speech(&probs, samples.len(), &crate::vad::VadConfig::default());
-    let windows = crate::vad::windows(&spans, &probs, crate::vad::MAX_WINDOW_SECS);
     let piece = paths.work_dir.join("asr_piece.wav");
-    let mut all = Vec::new();
-    for (k, &(a, b)) in windows.iter().enumerate() {
-        crate::jobs::check_cancelled()?;
-        emit(progress, "asr", &t!("analyze-asr-piece", n = (k + 1) as i64, total = windows.len() as i64));
-        let (from, to) = ((a * sr as f64) as usize, ((b * sr as f64) as usize).min(samples.len()));
-        crate::wavio::write_mono_f32(&piece, &samples[from..to], sr)?;
-        for mut s in asr.transcribe(&piece, lang).map_err(|e| e.localize())? {
-            s.start += a;
-            s.end += a;
-            for w in &mut s.words {
-                w.start += a;
-                w.end += a;
-            }
-            all.push(s);
+    let speech = Speech { samples: &samples, sr, spans: &spans, probs: &probs, turns };
+    let lines = lines_by_pieces(asr, &speech, &piece, lang, &mut |event| match event {
+        PieceEvent::Started { n, total } => {
+            crate::jobs::check_cancelled()?;
+            emit(progress, "asr", &t!("analyze-asr-piece", n = n as i64, total = total as i64));
+            Ok(())
         }
-    }
+        PieceEvent::Overflowed { n } => {
+            crate::jobs::check_cancelled()?;
+            emit(progress, "asr", &t!("analyze-asr-piece-overflow", n = n as i64));
+            Ok(())
+        }
+        PieceEvent::Part => crate::jobs::check_cancelled(),
+    });
     if let Err(e) = std::fs::remove_file(&piece) {
         tracing::warn!("{}: {e}", piece.display());
     }
-    Ok(all)
+    lines
+}
+
+/// A 16 kHz mono recording with what the speech finder and the diarization found in it.
+struct Speech<'a> {
+    samples: &'a [f32],
+    sr: u32,
+    spans: &'a [(f64, f64)],
+    probs: &'a [f32],
+    turns: &'a [dub_asr::Turn],
+}
+
+/// What [`lines_by_pieces`] tells the job as it goes; an error from the job (a cancel) stops recognition.
+enum PieceEvent {
+    Started { n: usize, total: usize },
+    Overflowed { n: usize },
+    /// A part of an overflowed piece is next.
+    Part,
+}
+
+/// A piece CrisperWhisper decodes in one window, with no words carried into it: under its 30 s window, with room for
+/// the rounding of the cut to samples.
+const ONE_WINDOW_SECS: f64 = 29.5;
+
+/// The lines of the recording, recognised piece by piece and made from the words of all pieces at once, so a piece's
+/// end does not end a line the whole recording would not end there. A piece on which CrisperWhisper's carried words
+/// outgrew its decoder is recognised again in parts of one window; any other failure stops recognition.
+fn lines_by_pieces(
+    asr: &mut dyn dub_asr::AsrEngine,
+    speech: &Speech,
+    piece: &std::path::Path,
+    lang: &str,
+    on: &mut dyn FnMut(PieceEvent) -> Result<(), String>,
+) -> Result<Vec<dub_asr::Segment>, String> {
+    let windows = crate::vad::windows(speech.spans, speech.probs, speech.turns, crate::vad::MAX_WINDOW_SECS);
+    let mut words = Vec::new();
+    for (k, &(a, b)) in windows.iter().enumerate() {
+        on(PieceEvent::Started { n: k + 1, total: windows.len() })?;
+        match piece_words(asr, speech, (a, b), piece, lang) {
+            Ok(ws) => words.extend(ws),
+            Err(e) if b - a > ONE_WINDOW_SECS && dub_asr::acpp::context_overflowed(&e) => {
+                tracing::warn!("asr piece {}: {e}", k + 1);
+                on(PieceEvent::Overflowed { n: k + 1 })?;
+                let inside: Vec<(f64, f64)> =
+                    speech.spans.iter().filter(|s| s.1 > a && s.0 < b).map(|s| (s.0.max(a), s.1.min(b))).collect();
+                for part in crate::vad::windows(&inside, speech.probs, speech.turns, ONE_WINDOW_SECS) {
+                    on(PieceEvent::Part)?;
+                    words.extend(piece_words(asr, speech, part, piece, lang).map_err(|e| e.localize())?);
+                }
+            }
+            Err(e) => return Err(e.localize()),
+        }
+    }
+    Ok(dub_asr::segment_words(&words, dub_asr::SEG_MAX_GAP, dub_asr::SEG_MAX_DUR))
+}
+
+/// The words of the recording between `a` and `b` seconds, in the recording's time.
+fn piece_words(
+    asr: &mut dyn dub_asr::AsrEngine,
+    speech: &Speech,
+    (a, b): (f64, f64),
+    piece: &std::path::Path,
+    lang: &str,
+) -> Result<Vec<dub_asr::Word>, dub_asr::AsrError> {
+    let sr = speech.sr as f64;
+    let (from, to) = ((a * sr) as usize, ((b * sr) as usize).min(speech.samples.len()));
+    crate::wavio::write_mono_f32(piece, &speech.samples[from..to], speech.sr).map_err(dub_asr::AsrError::Io)?;
+    let segments = asr.transcribe(piece, lang)?;
+    Ok(segments
+        .into_iter()
+        .flat_map(|s| s.words)
+        .map(|w| dub_asr::Word { start: w.start + a, end: w.end + a, ..w })
+        .collect())
 }
 
 /// The speakers' turns from Nemotron 3 Diarization in audiocpp_server, on the build of the diarization device: by
@@ -1211,6 +1282,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         // Parakeet knows 25 European languages: a source language outside them, chosen or heard by the language id
         // under «auto», goes to CrisperWhisper before recognition starts, with a line in the journal.
         let mut asr_choice = paths.asr.clone();
+        let mut src_lang = args.src_lang.clone();
         if let crate::models::AsrChoice::Ggml { models_root, build, .. } | crate::models::AsrChoice::Server { models_root, build, .. } = &paths.asr {
             let lang = if args.src_lang == "auto" {
                 // the language id runs on the transcribe.cpp build of the recognition device
@@ -1225,6 +1297,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 crate::fetch_missing(&paths.repo_root, &crate::models::crisperwhisper_components(&paths.models_root), progress)?;
                 asr_choice = crate::models::crisperwhisper_choice(&paths.repo_root, &paths.models_root);
                 by_crisperwhisper = true;
+                src_lang = lang;
             }
         }
         let parakeet = matches!(asr_choice, crate::models::AsrChoice::Ggml { .. } | crate::models::AsrChoice::Server { .. });
@@ -1243,11 +1316,24 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             "asr",
             &t!("asr-windowed", speakers = nsp),
         );
-        // the server's models window a long recording themselves; transcribe.cpp's get it in pieces cut at pauses
-        let ts = if matches!(asr_choice, crate::models::AsrChoice::Ggml { .. }) {
-            recognise_by_pauses(paths, &mut *asr, &asr_wav, &args.src_lang, progress)?
-        } else {
-            asr.transcribe(&asr_wav, &args.src_lang).map_err(|e| e.localize())?
+        // Parakeet and Nemotron in the server window a long recording themselves; Parakeet Ultra and CrisperWhisper get
+        // it in pieces cut at pauses
+        let ts = match &asr_choice {
+            crate::models::AsrChoice::Ggml { .. } => {
+                recognise_by_pauses(paths, &mut *asr, &asr_wav, &src_lang, turns, progress)?
+            }
+            crate::models::AsrChoice::CrisperWhisper { models_root, build, .. } => {
+                // «auto» is heard once at the start of the recording, not anew at the start of every piece
+                let lang = if src_lang == "auto" {
+                    let langid = dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID);
+                    dub_asr::acpp::heard_language(&dub_asr::tcpp::engine_dir(models_root, *build), &langid, &asr_wav)
+                        .map_err(|e| e.localize())?
+                } else {
+                    src_lang.clone()
+                };
+                recognise_by_pauses(paths, &mut *asr, &asr_wav, &lang, turns, progress)?
+            }
+            crate::models::AsrChoice::Server { .. } => asr.transcribe(&asr_wav, &src_lang).map_err(|e| e.localize())?,
         };
         // Спикер — по словам: реплика, на которой сменился спикер диаризации, режется на слове смены.
         let segs: Vec<Segment> = dub_asr::split_at_speaker_turns(ts, turns)
@@ -1971,5 +2057,132 @@ mod language_check_tests {
         assert!(!unrecognised_language(92.0, 210));
         assert!(!unrecognised_language(10.0, 0));
         assert!(!unrecognised_language(30.0, 9));
+    }
+}
+
+#[cfg(test)]
+mod pieces_tests {
+    use super::*;
+    use dub_asr::{AsrError, Segment, SpeakerSegment, Turn, Word};
+
+    const OVERFLOW: &str = "audiocpp_server answered 500 (server_error): CrisperWhisper invalid decoder prompt or token limit";
+
+    /// A recognizer that answers each piece by its length in seconds, and keeps the lengths it was given.
+    struct Scripted<F: FnMut(f64) -> Result<Vec<Word>, AsrError>> {
+        answer: F,
+        heard: Vec<f64>,
+    }
+
+    impl<F: FnMut(f64) -> Result<Vec<Word>, AsrError>> dub_asr::AsrEngine for Scripted<F> {
+        fn transcribe(&mut self, wav: &std::path::Path, _: &str) -> Result<Vec<Segment>, AsrError> {
+            let (pcm, sr) = crate::wavio::read_mono_f32(wav).unwrap();
+            let secs = pcm.len() as f64 / sr as f64;
+            self.heard.push(secs);
+            Ok(dub_asr::segment_words(&(self.answer)(secs)?, dub_asr::SEG_MAX_GAP, dub_asr::SEG_MAX_DUR))
+        }
+        fn transcribe_turns(&mut self, _: &std::path::Path, _: &[Turn], _: &str) -> Result<Vec<SpeakerSegment>, AsrError> {
+            unreachable!()
+        }
+    }
+
+    fn word(text: &str, start: f64, end: f64) -> Word {
+        Word { word: text.to_string(), start, end }
+    }
+
+    fn recognise<F: FnMut(f64) -> Result<Vec<Word>, AsrError>>(
+        engine: &mut Scripted<F>,
+        spans: &[(f64, f64)],
+        events: &mut Vec<String>,
+    ) -> Result<Vec<Segment>, String> {
+        let samples = vec![0.0f32; 130 * 16_000];
+        let dir = tempfile::tempdir().unwrap();
+        let speech = Speech { samples: &samples, sr: 16_000, spans, probs: &[], turns: &[] };
+        lines_by_pieces(engine, &speech, &dir.path().join("piece.wav"), "pt", &mut |e| {
+            events.push(match e {
+                PieceEvent::Started { n, total } => format!("piece {n}/{total}"),
+                PieceEvent::Overflowed { n } => format!("overflow {n}"),
+                PieceEvent::Part => "part".to_string(),
+            });
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn a_phrase_cut_by_the_piece_boundary_in_a_short_pause_stays_one_line() {
+        // pieces 0–50 s and 50.3–120 s; «Hello» ends piece one, «world.» opens piece two 0.4 s later
+        let mut calls = 0;
+        let mut engine = Scripted {
+            answer: |_| {
+                calls += 1;
+                Ok(if calls == 1 { vec![word("Hello", 49.0, 49.9)] } else { vec![word("world.", 0.0, 0.4)] })
+            },
+            heard: Vec::new(),
+        };
+        let mut events = Vec::new();
+        let lines = recognise(&mut engine, &[(0.0, 50.0), (50.3, 120.0)], &mut events).unwrap();
+        assert_eq!(events, ["piece 1/2", "piece 2/2"]);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(lines[0].text, "Hello world.");
+        assert!((lines[0].start - 49.0).abs() < 1e-9 && (lines[0].end - 50.7).abs() < 1e-9, "{lines:?}");
+    }
+
+    #[test]
+    fn a_piece_whose_carried_words_overflowed_is_recognised_again_in_parts_of_one_window() {
+        let mut engine = Scripted {
+            answer: |secs| {
+                if secs > ONE_WINDOW_SECS {
+                    Err(AsrError::Parakeet(OVERFLOW.into()))
+                } else {
+                    Ok(vec![word("ok", 1.0, 1.5)])
+                }
+            },
+            heard: Vec::new(),
+        };
+        let mut events = Vec::new();
+        let lines = recognise(&mut engine, &[(0.0, 80.0)], &mut events).unwrap();
+        assert_eq!(events, ["piece 1/1", "overflow 1", "part", "part", "part"]);
+        assert!((engine.heard[0] - 80.0).abs() < 1e-3, "{:?}", engine.heard);
+        assert!(engine.heard.len() > 1 && engine.heard[1..].iter().all(|s| *s <= ONE_WINDOW_SECS), "{:?}", engine.heard);
+        assert!((engine.heard[1..].iter().sum::<f64>() - 80.0).abs() < 1e-2, "the parts cover the piece: {:?}", engine.heard);
+        let starts: Vec<f64> = lines.iter().flat_map(|l| &l.words).map(|w| w.start).collect();
+        assert_eq!(starts.len(), engine.heard.len() - 1);
+        assert!((starts[1] - (ONE_WINDOW_SECS + 1.0)).abs() < 1e-3, "{starts:?}");
+    }
+
+    #[test]
+    fn other_failures_and_an_overflow_within_one_window_stop_recognition() {
+        let mut engine = Scripted {
+            answer: |_| Err(AsrError::Parakeet("audiocpp_server answered 500 (server_error): CrisperWhisper graph execution failed".into())),
+            heard: Vec::new(),
+        };
+        let e = recognise(&mut engine, &[(0.0, 80.0)], &mut Vec::new()).unwrap_err();
+        assert!(e.contains("graph execution failed"), "{e}");
+        assert_eq!(engine.heard.len(), 1);
+        let mut engine = Scripted { answer: |_| Err(AsrError::Parakeet(OVERFLOW.into())), heard: Vec::new() };
+        let e = recognise(&mut engine, &[(0.0, 20.0)], &mut Vec::new()).unwrap_err();
+        assert!(e.contains("invalid decoder prompt"), "{e}");
+        assert_eq!(engine.heard.len(), 1);
+    }
+
+    #[test]
+    fn a_cancel_between_the_parts_of_an_overflowed_piece_stops_recognition() {
+        let mut engine = Scripted {
+            answer: |secs| if secs > ONE_WINDOW_SECS { Err(AsrError::Parakeet(OVERFLOW.into())) } else { Ok(Vec::new()) },
+            heard: Vec::new(),
+        };
+        let samples = vec![0.0f32; 90 * 16_000];
+        let dir = tempfile::tempdir().unwrap();
+        let speech = Speech { samples: &samples, sr: 16_000, spans: &[(0.0, 80.0)], probs: &[], turns: &[] };
+        let mut parts = 0;
+        let e = lines_by_pieces(&mut engine, &speech, &dir.path().join("piece.wav"), "pt", &mut |event| match event {
+            PieceEvent::Part => {
+                parts += 1;
+                if parts == 2 { Err("cancelled".to_string()) } else { Ok(()) }
+            }
+            _ => Ok(()),
+        })
+        .unwrap_err();
+        assert_eq!(e, "cancelled");
+        assert_eq!(engine.heard.len(), 2, "the whole piece and its first part only: {:?}", engine.heard);
     }
 }

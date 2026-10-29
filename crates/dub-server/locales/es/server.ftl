@@ -369,6 +369,7 @@ analyze-cloud-done = nube: { $lines } { $lines ->
 }
 analyze-hallucination-filter = filtro de alucinaciones del ASR: { $error }
 analyze-asr-piece = Reconociendo la voz: fragmento { $n } de { $total }
+analyze-asr-piece-overflow = Fragmento { $n }: CrisperWhisper se ha atascado en él (silencio, música o ruido); lo reconozco de nuevo en partes de 30 segundos
 analyze-asr-to-crisperwhisper =idioma «{ $lang }»: Parakeet no lo conoce, reconozco con CrisperWhisper
 analyze-asr-no-words = El vídeo tiene { $speech } s de voz y Parakeet oyó { $words } palabras: solo conoce 25 idiomas europeos. Elige el idioma de origen en la ventana en lugar de Auto: para un idioma fuera de Europa el estudio cambia el reconocimiento a Whisper.
 analyze-hidden-hallucinations = frases alucinadas del ASR ocultas (sin voz): { $count }: { $lines }
