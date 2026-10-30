@@ -279,6 +279,7 @@ analyze-cloud-stt-failed = 云端语音识别：{ $error }
 analyze-cloud-done = 云端：{ $lines } 句，{ $speakers } 位说话人
 analyze-hallucination-filter = ASR 幻觉过滤：{ $error }
 analyze-asr-piece = 正在识别语音：第 { $n } 段，共 { $total } 段
+analyze-asr-piece-overflow = 第 { $n } 段：CrisperWhisper 在这里出错（静音、音乐或噪声），正在按 30 秒的小段重新识别
 analyze-asr-to-crisperwhisper =语言“{ $lang }”：Parakeet 不支持，改用 CrisperWhisper 识别
 analyze-asr-no-words = 视频中有 { $speech } 秒语音，Parakeet 只识别出 { $words } 个词：它只支持 25 种欧洲语言。请在窗口中选择源语言而不是“自动”——对于欧洲以外的语言，工作室会切换到 Whisper 识别。
 analyze-hidden-hallucinations = 已隐藏 ASR 幻觉句（无人声）：{ $count } 句：{ $lines }

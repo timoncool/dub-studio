@@ -50,7 +50,7 @@ impl AcppAsr {
         if !chosen.is_empty() && !chosen.eq_ignore_ascii_case("auto") {
             return acpp_server::language::whisper_code(chosen).map(|c| Some(c.to_string())).map_err(err);
         }
-        let (pcm, _) = crate::load_wav_16k_mono(wav)?;
+        let (pcm, _) = crate::load_wav_16k_mono_head(wav, Some(acpp_server::language::LANGUAGE_ID_SECS))?;
         let heard = acpp_server::language::heard_language(engine_dir, langid, &pcm).map_err(err)?;
         eprintln!("[asr] language heard: {heard}");
         Ok(Some(heard.to_string()))
@@ -76,10 +76,19 @@ impl AcppAsr {
 /// The language VoxLingua107 (`langid` on the transcribe.cpp build in `engine_dir`) hears in a 16 kHz mono recording,
 /// as Whisper names it; an error names a language Whisper does not know or a recording too short to tell.
 pub fn heard_language(engine_dir: &Path, langid: &Path, wav: &Path) -> Result<String, AsrError> {
-    let (pcm, _) = crate::load_wav_16k_mono(wav)?;
+    let (pcm, _) = crate::load_wav_16k_mono_head(wav, Some(acpp_server::language::LANGUAGE_ID_SECS))?;
     acpp_server::language::heard_language(engine_dir, langid, &pcm)
         .map(str::to_string)
         .map_err(|e| AsrError::Parakeet(e.to_string()))
+}
+
+/// What audio.cpp answers when CrisperWhisper's decoder prompt, the words carried from the window before, reaches the
+/// decoder's 448 positions (`whisper_runtime.cpp`). A recording of one window, at most 30 s, carries no words.
+const CONTEXT_OVERFLOW: &str = "CrisperWhisper invalid decoder prompt or token limit";
+
+/// Whether recognition failed on CrisperWhisper's carried words outgrowing its decoder.
+pub fn context_overflowed(e: &AsrError) -> bool {
+    e.to_string().contains(CONTEXT_OVERFLOW)
 }
 
 /// A chosen language as the model is told it; none for «auto» or no choice.
@@ -144,6 +153,14 @@ mod tests {
         assert_eq!(told("auto"), None);
         assert_eq!(told("AUTO"), None);
         assert_eq!(told(""), None);
+    }
+
+    #[test]
+    fn the_servers_answer_on_outgrown_carried_words_is_told_from_other_failures() {
+        let answer = "audiocpp_server answered 500 (server_error): CrisperWhisper invalid decoder prompt or token limit";
+        assert!(context_overflowed(&AsrError::Parakeet(answer.to_string())));
+        assert!(!context_overflowed(&AsrError::Parakeet("audiocpp_server answered 500 (server_error): CrisperWhisper graph execution failed".into())));
+        assert!(!context_overflowed(&AsrError::Io("disk full".into())));
     }
 
     #[test]

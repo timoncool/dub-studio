@@ -106,8 +106,9 @@ pub fn speech(probs: &[f32], total_samples: usize, cfg: &VadConfig) -> Vec<(f64,
 }
 
 /// Куски для распознавателя: подряд идущие отрезки речи, кусок не длиннее `max`. Переполненный кусок кончается на
-/// самой длинной паузе своей второй половины; отрезок речи длиннее `max` режется в самом тихом кадре второй половины.
-pub fn windows(spans: &[(f64, f64)], probs: &[f32], max: f64) -> Vec<(f64, f64)> {
+/// паузе своей второй половины: на той, где по репликам диаризации `turns` сменяется говорящий, иначе на самой длинной;
+/// отрезок речи длиннее `max` режется в самом тихом кадре второй половины.
+pub fn windows(spans: &[(f64, f64)], probs: &[f32], turns: &[dub_asr::Turn], max: f64) -> Vec<(f64, f64)> {
     let frame = FRAME as f64 / SR as f64;
     let mut pieces: Vec<(f64, f64)> = Vec::new();
     for &(a, b) in spans {
@@ -132,16 +133,31 @@ pub fn windows(spans: &[(f64, f64)], probs: &[f32], max: f64) -> Vec<(f64, f64)>
         if j + 1 < pieces.len() && j > i {
             let half = start + max / 2.0;
             let gap = |k: usize| pieces[k + 1].0 - pieces[k].1;
-            if let Some(k) = (i..j).filter(|&k| pieces[k].1 >= half).max_by(|&x, &y| gap(x).total_cmp(&gap(y))) {
-                if gap(k) > gap(j) {
-                    j = k;
-                }
-            }
+            let changes = |k: usize| speaker_at(turns, pieces[k].1, true) != speaker_at(turns, pieces[k + 1].0, false);
+            // при равенстве max_by берёт последний, то есть естественный конец куска `j`
+            j = (i..=j)
+                .filter(|&k| k == j || pieces[k].1 >= half)
+                .max_by(|&x, &y| (changes(x), gap(x)).partial_cmp(&(changes(y), gap(y))).unwrap_or(std::cmp::Ordering::Equal))
+                .unwrap_or(j);
         }
         out.push((start, pieces[j].1));
         i = j + 1;
     }
     out
+}
+
+/// Говорящий у края паузы `t`: реплика, в которой лежит `t`, иначе ближайшая до `t` (`before`) или после него.
+fn speaker_at(turns: &[dub_asr::Turn], t: f64, before: bool) -> Option<i32> {
+    if let Some(turn) = turns.iter().find(|turn| turn.start <= t && t <= turn.end) {
+        return Some(turn.speaker);
+    }
+    let side = turns.iter().filter(|turn| if before { turn.end < t } else { turn.start > t });
+    let nearest = if before {
+        side.max_by(|a, b| a.end.total_cmp(&b.end))
+    } else {
+        side.min_by(|a, b| a.start.total_cmp(&b.start))
+    };
+    nearest.map(|turn| turn.speaker)
 }
 
 #[cfg(test)]
@@ -191,12 +207,33 @@ mod tests {
     #[test]
     fn windows_end_on_the_longest_pause_and_cut_a_long_span_where_it_is_quietest() {
         let spans = [(0.0, 20.0), (20.2, 50.0), (53.0, 70.0), (70.1, 100.0)];
-        let w = windows(&spans, &[], 90.0);
+        let w = windows(&spans, &[], &[], 90.0);
         assert_eq!(w, vec![(0.0, 50.0), (53.0, 100.0)], "the 3 s pause wins over the last short one");
         let mut probs = vec![0.9f32; (200.0 / 0.032) as usize];
         probs[(70.0 / 0.032) as usize] = 0.1;
-        let w = windows(&[(0.0, 120.0)], &probs, 90.0);
+        let w = windows(&[(0.0, 120.0)], &probs, &[], 90.0);
         assert_eq!(w.len(), 2);
         assert!((w[0].1 - 70.0).abs() < 0.04 && w[1] == (w[0].1, 120.0), "{w:?}");
+    }
+
+    #[test]
+    fn a_window_ends_where_the_speaker_changes_rather_than_on_a_longer_pause_of_one_speaker() {
+        let turn = |start: f64, end: f64, speaker: i32| dub_asr::Turn { start, end, speaker };
+        // the 3 s pause at 50 s is inside speaker 0's talk; speaker 1 takes over after the 0.4 s pause at 70 s
+        let spans = [(0.0, 20.0), (20.2, 50.0), (53.0, 70.0), (70.4, 100.0)];
+        let turns = [turn(0.0, 20.0, 0), turn(20.2, 50.0, 0), turn(53.0, 70.0, 0), turn(70.4, 100.0, 1)];
+        assert_eq!(windows(&spans, &[], &turns, 90.0), vec![(0.0, 70.0), (70.4, 100.0)]);
+        let one = turns.map(|t| turn(t.start, t.end, 0));
+        assert_eq!(windows(&spans, &[], &one, 90.0), vec![(0.0, 50.0), (53.0, 100.0)], "one speaker: the longest pause");
+    }
+
+    #[test]
+    fn the_speaker_at_a_pause_edge_is_the_turn_holding_it_or_the_nearest_on_its_side() {
+        let turns = [dub_asr::Turn { start: 0.0, end: 5.0, speaker: 2 }, dub_asr::Turn { start: 8.0, end: 9.0, speaker: 1 }];
+        assert_eq!(speaker_at(&turns, 4.0, true), Some(2));
+        assert_eq!(speaker_at(&turns, 6.0, true), Some(2));
+        assert_eq!(speaker_at(&turns, 6.0, false), Some(1));
+        assert_eq!(speaker_at(&turns, 10.0, false), None);
+        assert_eq!(speaker_at(&[], 1.0, true), None);
     }
 }

@@ -4,6 +4,12 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## Unreleased
+
+### Fixed
+
+- **CrisperWhisper recognises recordings of many hours**: it hears a long recording in pieces of up to 90 seconds cut at its pauses (Silero VAD), as Parakeet Ultra does, instead of the whole file at once, which failed with «invalid decoder prompt or token limit» once the model lost its thread on silence, music or noise. A piece ends where the diarization hears another speaker if it can, and the lines are made from the words of all pieces at once, so a phrase is not split where a piece ends. A piece on which the model still loses its thread is recognised again in parts of 30 seconds, and the progress says so. Under «Auto» the language is heard once, at the start of the recording. A project analysed before recognises its speech anew.
+
 ## 2026-10-28 — 4.5.1
 
 ### Fixed

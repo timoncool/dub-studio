@@ -395,6 +395,7 @@ analyze-cloud-done = облако: { $lines } { $lines ->
 }
 analyze-hallucination-filter = фильтр галлюцинаций ASR: { $error }
 analyze-asr-piece = Распознаю речь: кусок { $n } из { $total }
+analyze-asr-piece-overflow = Кусок { $n }: CrisperWhisper на нём сбился (тишина, музыка или шум); распознаю его заново частями по 30 секунд
 analyze-asr-to-crisperwhisper =язык «{ $lang }» — Parakeet его не знает, распознаю CrisperWhisper
 analyze-asr-no-words = В ролике { $speech } с речи, а Parakeet услышал в ней { $words } слов: он знает только 25 европейских языков. Укажите язык источника в окне вместо «Авто» — для языка вне Европы студия переключит распознавание на Whisper.
 analyze-hidden-hallucinations = скрыто фраз-галлюцинаций ASR (голоса нет): { $count } — { $lines }
