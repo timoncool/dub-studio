@@ -252,13 +252,10 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 | Проект | Описание |
 |--------|----------|
-| [Higgs Ultimate](https://github.com/timoncool/Higgs-Ultimate) | Нативный синтез и клонирование речи (Higgs Audio v3) |
+| [Speech Studio](https://github.com/timoncool/speech-studio) | Офлайн-студия: озвучка, клонирование голоса, распознавание речи |
 | [ACE-Step Studio](https://github.com/timoncool/ACE-Step-Studio) | AI-студия музыки — песни, вокал, каверы, клипы |
 | [YuE2 Studio](https://github.com/timoncool/YuE2-Studio) | Генератор песен с редактируемой партитурой — нативное приложение для Windows, без Python |
 | [MiniMax Music3 Studio](https://github.com/timoncool/MiniMax-Music3-Studio) | Нативная локальная/облачная музыкальная студия на MiniMax Music 3 |
-| [Foundation Music Lab](https://github.com/timoncool/Foundation-Music-Lab) | Генерация музыки + редактор таймлайна |
-| [Qwen3-TTS](https://github.com/timoncool/Qwen3-TTS_portable_rus) | Портативный TTS с клонированием голоса |
-| [VibeVoice ASR](https://github.com/timoncool/VibeVoice_ASR_portable_ru) | Портативное распознавание речи |
 | [SuperCaption Qwen3-VL](https://github.com/timoncool/SuperCaption_Qwen3-VL) | Портативное описание изображений |
 
 ## Контрибьюторы и форки
