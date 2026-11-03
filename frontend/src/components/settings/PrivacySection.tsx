@@ -34,7 +34,8 @@ export default function PrivacySection() {
           )}
         <div className="flex flex-wrap gap-2">
           <button type="button" className={btn} onClick={() => setPreview(true)}>{t("hub.what")}</button>
-          {tel?.install && <button type="button" className={btn} disabled={busy} onClick={() => run(resetInstall)}>{t("hub.reset")}</button>}
+          <button type="button" className={btn} onClick={() => window.open("https://timoncool.github.io/dub-studio/stats.html", "_blank", "noreferrer")}>{t("hub.stats")}</button>
+          {tel?.install && <button type="button" className={btn} disabled={busy} onClick={() => run(resetInstall)}>{t("hub.reset")}</button>}}
         </div>
       </section>
       <section className="space-y-2">

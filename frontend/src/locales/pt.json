@@ -1505,6 +1505,7 @@
     "why": "Saber quantas pessoas usam o Dub Studio e para quê ajuda a decidir no que trabalhar. Nada pessoal: nem vídeos, nem textos, nem vozes, nem nomes de arquivo — só contagens de tarefas, quais funções do estúdio foram usadas (pelo nome, nunca com o quê), os modelos de cada etapa, a versão, um número do computador comum aos nossos programas (um hash irreversível, não o número do sistema), a classe da placa de vídeo e por que uma tarefa falhou, com caminhos, nomes e texto entre aspas removidos neste computador antes do envio.",
     "checkbox": "Enviar estatísticas de uso anônimas",
     "what": "O que é enviado",
+    "stats": "Ver as estatísticas online",
     "byEnv": "Desligadas por DO_NOT_TRACK ou STUDIO_TELEMETRY no ambiente.",
     "reset": "Novo id de instalação",
     "nothing": "Nada para enviar hoje ainda.",

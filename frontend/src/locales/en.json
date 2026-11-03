@@ -1487,6 +1487,7 @@
     "why": "How many people use Dub Studio and what for helps decide what to work on next. Nothing personal: no videos, texts, voices or file names — only counts of jobs, which of the studio's functions were used (by name, never with what), the models each stage used, the version, a computer number shared by our programs (a one-way hash, not the system number itself), the graphics card class and why a job failed, with paths, names and quoted text cut out on this computer before it is sent.",
     "checkbox": "Send anonymous usage statistics",
     "what": "What is sent",
+    "stats": "See the online statistics",
     "byEnv": "Turned off by DO_NOT_TRACK or STUDIO_TELEMETRY in the environment.",
     "reset": "New install id",
     "nothing": "Nothing is waiting to be sent today.",
