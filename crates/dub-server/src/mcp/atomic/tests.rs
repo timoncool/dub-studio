@@ -82,6 +82,40 @@ async fn expected_speaker_count_reaches_analysis_and_changes_the_saved_result_ke
     assert!(error.contains("несовместим"));
 }
 
+#[tokio::test]
+async fn transcribe_file_compact_silence_reaches_analyze_and_changes_key() {
+    studio::plan("cmp1", Plan::default());
+    let plain = answer("transcribe_file", json!({ "path": media("cmp1"), "src_lang": "ru" })).await.unwrap();
+    assert_eq!(plain["transcript"], "[Speaker 0] Hello there\n[Speaker 1] Bye now");
+    let plain_key = studio::log("cmp1").into_iter().find(|line| line.starts_with("POST /projects/from-path key=")).unwrap();
+    assert!(!plain_key.contains("compact_silence"), "{plain_key}");
+    studio::forget_log("cmp1");
+    let found = answer("transcribe_file", json!({ "path": media("cmp1"), "src_lang": "ru", "compact_silence": true })).await.unwrap();
+    let log = studio::log("cmp1");
+    assert!(log.iter().any(|line| line.contains("/analyze?") && line.contains("compact_silence=1")), "{log:?}");
+    let key = log.iter().find(|line| line.starts_with("POST /projects/from-path key=")).unwrap();
+    assert!(key.contains("compact_silence=1"), "{key}");
+    assert_ne!(key, &plain_key);
+    assert_eq!(found["transcript"], "[Speaker 0] Hello there\n— пауза 3 мин —\n[Speaker 1] Bye now");
+    let srt = answer("transcribe_file", json!({ "path": media("cmp1"), "src_lang": "ru", "compact_silence": true, "format": "srt" })).await.unwrap();
+    assert!(!srt["transcript"].as_str().unwrap().contains("пауза"));
+    let refused = answer("transcribe_file", json!({ "path": media("cmp1"), "compact_silence": "yes" })).await.unwrap_err();
+    assert!(refused.contains("compact_silence"), "{refused}");
+}
+
+#[test]
+fn completed_transcription_with_another_compact_silence_is_not_reused() {
+    let mut analysis = super::Analysis { pairs: vec![("mode", "transcribe".into()), ("subs", "transcribe".into()), ("tgt_lang", "ru".into()), ("src_lang", "ru".into())] };
+    let mut project = json!({ "stage_ckpts": { "asr": "ready" }, "mode": "transcribe", "subs": { "mode": "transcribe" }, "tgt_lang": "ru", "meta": { "src_lang": "ru" } });
+    assert!(analysis.done(&project));
+    analysis.pairs.push(("compact_silence", "1".into()));
+    assert!(!analysis.done(&project));
+    project["meta"]["compact_silence"] = json!({ "ver": "compact-v1", "applied": false });
+    assert!(analysis.done(&project));
+    analysis.pairs.pop();
+    assert!(!analysis.done(&project));
+}
+
 #[test]
 fn completed_transcription_with_another_speaker_count_is_not_reused() {
     let mut analysis = super::Analysis { pairs: vec![("mode", "transcribe".into()), ("subs", "transcribe".into()), ("tgt_lang", "ru".into()), ("src_lang", "ru".into()), ("speaker_count", "8".into())] };

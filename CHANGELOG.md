@@ -4,6 +4,12 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## Unreleased
+
+### Added
+
+- **Silence compaction before analysis**: `compact_silence` of `/projects/{pid}/analyze`, MCP `project_analyze` and `transcribe_file` (off by default) squeezes every pause quieter than −60 dBFS and longer than 20 s down to 20 s, so separation, diarization and recognition of a 5-hour Discord track with 70 minutes of speech run over less than three hours and about twice as fast. Lines, word timings and the clean voice stay on the video's own time; pauses over a minute are kept in the project, and the text transcript of `transcribe_file` marks them with a «— пауза N мин —» line. When it would cut less than a minute, or with imported subtitles, the analysis runs on the original recording and says why.
+
 ## 2026-10-28 — 4.5.1
 
 ### Fixed
