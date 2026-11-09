@@ -109,6 +109,13 @@ impl ModelEntry {
         ModelEntry { output_rate: Some(44_100), ..ModelEntry::new(id, "supertonic", model, "tts", Mode::Streaming) }
     }
 
+    /// Audio8 TTS (arktts DualAR, docs/models/audio8_tts.md): compact multilingual zero-shot voice cloning, streamed at
+    /// 44.1 kHz mono. `gguf` is the standalone package (audio8-tts-realistic-0.6b). Task `clon`, like Higgs: a reference
+    /// clones that voice, none speaks the model's own.
+    pub fn audio8_tts(id: &str, gguf: &Path) -> ModelEntry {
+        ModelEntry { output_rate: Some(44_100), ..ModelEntry::new(id, "audio8_tts", gguf, "clon", Mode::Streaming) }
+    }
+
     /// HTDemucs 6-stem separation (family `htdemucs_6stems`, task `sep`): drums, bass, vocals, other, guitar and piano
     /// as the result's named audio outputs. `gguf` is the package's `htdemucs-6stems-f16.gguf`.
     pub fn htdemucs(id: &str, gguf: &Path) -> ModelEntry {
