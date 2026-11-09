@@ -484,10 +484,19 @@ fn open(path: &Path) -> Result<Library, String> {
         let full = std::path::absolute(path).map_err(|e| format!("{}: {e}", path.display()))?;
         unsafe { WindowsLibrary::load_with_flags(&full, LOAD_WITH_ALTERED_SEARCH_PATH) }
             .map(Library::from)
-            .map_err(|e| format!("{}: {e}", full.display()))
+            .map_err(|e| format!("{}: {}", full.display(), with_cause(&e)))
     }
     #[cfg(not(windows))]
-    unsafe { Library::new(path) }.map_err(|e| format!("{}: {e}", path.display()))
+    unsafe { Library::new(path) }.map_err(|e| format!("{}: {}", path.display(), with_cause(&e)))
+}
+
+/// The loader's error with the system's own reason: `LoadLibraryExW failed` alone does not tell a library that is not
+/// there (126) from one that lacks a function asked of it (127).
+fn with_cause(e: &libloading::Error) -> String {
+    match std::error::Error::source(e) {
+        Some(cause) => format!("{e}: {cause}"),
+        None => e.to_string(),
+    }
 }
 
 fn library(dir: &Path) -> Result<Api, String> {

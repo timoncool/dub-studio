@@ -63,6 +63,9 @@ pub enum Problem {
     NotExecutable,
     /// A library the binary imports that is neither beside it nor part of Windows.
     Unresolved(String),
+    /// ggml asked for by the name every ggml-based engine gives it, in an engine the program loads into its own
+    /// process: the system loader answers such a request with the ggml already loaded, another engine's.
+    CommonGgml(String),
 }
 
 impl std::fmt::Display for Problem {
@@ -74,6 +77,7 @@ impl std::fmt::Display for Problem {
             Problem::Nccl(n) => write!(f, "needs {n} (NCCL)"),
             Problem::NotExecutable => write!(f, "is a program without its execute bit"),
             Problem::Unresolved(n) => write!(f, "imports {n}, which is neither beside it nor part of Windows"),
+            Problem::CommonGgml(n) => write!(f, "asks for {n} by ggml's common name: in one process with another ggml-based engine it gets that engine's"),
         }
     }
 }
@@ -380,6 +384,27 @@ pub fn elf(path: &Path, data: &[u8]) -> Result<Vec<Problem>, String> {
     Ok(problems)
 }
 
+/// The libraries a Linux binary needs (DT_NEEDED).
+pub fn elf_needed(path: &Path, data: &[u8]) -> Result<Vec<String>, String> {
+    let fail = |e: object::Error| format!("{}: {e}", path.display());
+    let file = ElfFile64::<LittleEndian>::parse(data).map_err(fail)?;
+    let (endian, sections) = (file.endian(), file.elf_section_table());
+    let table = sections.dynamic_table(endian, data).map_err(fail)?;
+    let mut needed = Vec::new();
+    for entry in &table {
+        if entry.tag == object::elf::DT_NEEDED {
+            needed.push(String::from_utf8_lossy(table.string(entry).map_err(fail)?).into_owned());
+        }
+    }
+    Ok(needed)
+}
+
+/// Whether `name` is ggml or ggml-base as ggml's own build names them (`ggml.dll`, `libggml.so.0`, `libggml-base.so`).
+pub fn is_common_ggml(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    ["ggml", "ggml-base"].iter().any(|lib| name == format!("{lib}.dll") || name == format!("lib{lib}.so") || name.starts_with(&format!("lib{lib}.so.")))
+}
+
 /// The libraries a Windows binary imports, delay-loaded ones too.
 pub fn pe_imports(path: &Path, data: &[u8]) -> Result<Vec<String>, String> {
     match object::FileKind::parse(data).map_err(|e| format!("{}: {e}", path.display()))? {
@@ -481,6 +506,9 @@ pub struct Tree<'a> {
     /// File names (lower case) of libraries a package brings that the program never loads (ONNX Runtime's TensorRT
     /// provider beside its CUDA one); they are not checked.
     pub unused: &'a [&'a str],
+    /// Folders (relative to the root) of engines the program loads into its own process beside other ggml-based
+    /// engines: their binaries must ask for ggml by a name of the engine's own ([`Problem::CommonGgml`]).
+    pub own_ggml: &'a [&'a str],
 }
 
 /// The problems of every binary under `root` (ELF and PE, by their first bytes): AVX-512 everywhere, the Linux limits on
@@ -531,6 +559,13 @@ pub fn check_file(root: &Path, path: &Path, how: &Tree) -> Result<Option<Vec<Pro
     } else {
         avx512(path, &data, how.maps.get(&name))?
     };
+    if how.own_ggml.iter().any(|folder| path.starts_with(root.join(folder))) {
+        let asked = match kind {
+            Kind::Elf => elf_needed(path, &data)?,
+            Kind::Pe => pe_imports(path, &data)?,
+        };
+        problems.extend(asked.into_iter().filter(|n| is_common_ggml(n)).map(Problem::CommonGgml));
+    }
     match kind {
         Kind::Elf => problems.extend(elf(path, &data)?),
         Kind::Pe => {
@@ -671,15 +706,30 @@ mod tests {
     }
 
     /// DUB_COMPAT_TREE: a program folder (an extracted AppDir); prints every binary's problems under the default checks.
+    /// DUB_COMPAT_OWN_GGML set: the folder is an engine loaded into the program's process, and the test fails when a
+    /// binary of it asks for ggml by the common name.
     #[test]
     #[ignore]
     fn a_folder_names_its_problems() {
         let Ok(root) = std::env::var("DUB_COMPAT_TREE") else { return };
         let root = PathBuf::from(root);
-        for (path, problems) in check_tree(&root, &Tree::default()).unwrap() {
+        let engine: &[&str] = if std::env::var_os("DUB_COMPAT_OWN_GGML").is_some() { &[""] } else { &[] };
+        let found = check_tree(&root, &Tree { own_ggml: engine, ..Tree::default() }).unwrap();
+        for (path, problems) in &found {
             for problem in problems {
-                println!("[..] {}: {problem}", path.strip_prefix(&root).unwrap_or(&path).display());
+                println!("[..] {}: {problem}", path.strip_prefix(&root).unwrap_or(path).display());
             }
+        }
+        assert!(!found.values().flatten().any(|p| matches!(p, Problem::CommonGgml(_))), "the engine asks for ggml by its common name");
+    }
+
+    #[test]
+    fn ggml_under_its_common_name_is_told_from_an_engine_s_own() {
+        for name in ["ggml.dll", "GGML-BASE.DLL", "libggml.so", "libggml.so.0", "libggml-base.so.0.15.1"] {
+            assert!(is_common_ggml(name), "{name}");
+        }
+        for name in ["transcribe-ggml.dll", "transcribe-ggml-base.dll", "libtranscribe-ggml.so.0", "ggml-cuda.dll", "ggml-cpu-haswell.dll", "libggml-cuda.so", "libggml-cpu-x64.so"] {
+            assert!(!is_common_ggml(name), "{name}");
         }
     }
 

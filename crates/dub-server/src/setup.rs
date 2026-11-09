@@ -4874,6 +4874,7 @@ mod tests {
             maps,
             vendor_dispatched: VENDOR_DISPATCHED,
             unused: NEVER_LOADED,
+            own_ggml: &["models/transcribe-engine", "models/transcribe-engine-cuda12", "models/transcribe-engine-vulkan", "models/transcribe-engine-cpu"],
         };
         let found = dub_core::compat::check_tree(&root, &how).unwrap();
         let mut lines: Vec<String> = Vec::new();
