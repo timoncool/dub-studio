@@ -61,24 +61,24 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-cuda13-x64.zip",
-                size: 131_057_663,
-                sha256: "42ab82c4af62b2740e6e0d338871c267fccb19b3a0576f3c9ba052c98cdc012e",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-cuda13-x64.zip",
+                size: 131_057_853,
+                sha256: "82d5a570f3413ab6621aa4fa71662095ec0d0724630a67bf7a7ed01b7e291121",
             },
             Build::Cuda12 => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-cuda12-x64.zip",
-                size: 158_968_355,
-                sha256: "909dcc8d4ef4735446bd5217be0d3fc416eba58ccda22a32dfe99c66dc9accbc",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-cuda12-x64.zip",
+                size: 158_968_464,
+                sha256: "ccf926571e2a33e79e8f80aec640ee12b8b33ad7373c0f74a868d166e7360497",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-vulkan-x64.zip",
-                size: 18_821_332,
-                sha256: "d19d8d91c902ce143337172d48c754b3db7787ef86f9fa23e9c917538aa4e479",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-vulkan-x64.zip",
+                size: 18_821_488,
+                sha256: "80dbf642c1912959e3bde8f22d2d9f4ef5ef866727627f6fc84d4344376fdf2c",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-windows-cpu-x64.zip",
-                size: 4_632_814,
-                sha256: "17eb7abedc0907085c4b84643e600c317fcf50f3b59df37c5a0185c087ce45ff",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-cpu-x64.zip",
+                size: 4_632_963,
+                sha256: "ca1588e239fde0d7159d9f24e08187591c42d570ed72f753fc64640631145e5f",
             },
         }
     }
@@ -88,7 +88,7 @@ impl Build {
     pub const fn library_size(self) -> u64 {
         match self {
             Build::Cuda12 => 2_052_096,
-            Build::Cuda | Build::Vulkan | Build::Cpu => 2_054_144,
+            Build::Cuda | Build::Vulkan | Build::Cpu => 2_054_656,
         }
     }
 
@@ -120,24 +120,24 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-cuda13-x64.tar.gz",
-                size: 136_297_216,
-                sha256: "e524222983fc31c65f844ca2fab0e3a835b8aaf5a59c9d98317f04cefc4e9286",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-cuda13-x64.tar.gz",
+                size: 136_297_820,
+                sha256: "1b94dc22bdfd22b627a4028941b393e8ef5cfc3b81307c72c7f9d225864ed247",
             },
             Build::Cuda12 => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-cuda12-x64.tar.gz",
-                size: 164_162_133,
-                sha256: "a9e6bd635940b332f7433f4bafd5353d6288c8f52daca888af02bd35a9f0455d",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-cuda12-x64.tar.gz",
+                size: 164_156_947,
+                sha256: "2979dce3ab806aba70f11ca7d0092423b2b6c99ce2c1f237507e8a65edea02a1",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-vulkan-x64.tar.gz",
-                size: 22_791_539,
-                sha256: "d6b6c1e7ae488640f647a9757dc0f1c35ac37cda5fee76e43016a019834a4e2d",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-vulkan-x64.tar.gz",
+                size: 22_792_817,
+                sha256: "5728d6f294626cdd53b71f29677fd2e67d38bf394b75f84412c0e2891c3002dc",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.0/transcribe-linux-cpu-x64.tar.gz",
-                size: 8_355_355,
-                sha256: "09e5d50db0e2d181b76f6bf2b520dc723d8c26dafe668e02c1a3ecc3b74e6663",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-cpu-x64.tar.gz",
+                size: 8_356_756,
+                sha256: "2104d0cb380e965e6be3965917c3375d1b731113af5c2b0ec0870edfcd588a16",
             },
         }
     }
@@ -232,11 +232,23 @@ pub fn model_path(models_root: &Path, m: &Model) -> PathBuf {
     models_root.join(m.dir).join(m.file)
 }
 
+/// The engine's own ggml, beside the engine on Windows and Linux (a Mac's engine is one library with ggml inside). An
+/// engine of an earlier release carries ggml under the name every ggml-based engine uses and fails to load, or runs on
+/// a foreign ggml, once another such engine is in the process.
+#[cfg(windows)]
+pub const OWN_GGML: Option<&str> = Some("transcribe-ggml.dll");
+#[cfg(target_os = "macos")]
+pub const OWN_GGML: Option<&str> = None;
+#[cfg(not(any(windows, target_os = "macos")))]
+pub const OWN_GGML: Option<&str> = Some("libtranscribe-ggml.so.0");
+
 /// The engine and the model are the pinned files: one of another size is another release (an engine an update left
-/// behind) and counts as not installed.
+/// behind) and counts as not installed, and so does an engine without its own ggml beside it (the size of the CUDA 12
+/// engine did not change with the release that gave ggml its own name).
 pub fn installed(models_root: &Path, build: Build, m: &Model) -> bool {
     let pinned = |path: PathBuf, size: u64| std::fs::metadata(path).is_ok_and(|f| f.is_file() && f.len() == size);
-    pinned(engine_dir(models_root, build).join(LIBRARY), build.library_size()) && pinned(model_path(models_root, m), m.download.size)
+    let dir = engine_dir(models_root, build);
+    pinned(dir.join(LIBRARY), build.library_size()) && OWN_GGML.is_none_or(|name| dir.join(name).is_file()) && pinned(model_path(models_root, m), m.download.size)
 }
 
 /// Вспомогательная модель transcribe.cpp: разметка речи (Silero VAD v6.2, только F32, считается на CPU) и определение
@@ -491,9 +503,14 @@ fn open(path: &Path) -> Result<Library, String> {
 }
 
 /// The loader's error with the system's own reason: `LoadLibraryExW failed` alone does not tell a library that is not
-/// there (126) from one that lacks a function asked of it (127).
+/// there (126) from one that lacks a function asked of it (127). On Windows the reason is its code (the Debug form of
+/// libloading's error), not its text, which comes in the language of the system: one cause stays one reason whatever
+/// that language is.
 fn with_cause(e: &libloading::Error) -> String {
     match std::error::Error::source(e) {
+        #[cfg(windows)]
+        Some(cause) => format!("{e} (os error {cause:?})"),
+        #[cfg(not(windows))]
         Some(cause) => format!("{e}: {cause}"),
         None => e.to_string(),
     }
@@ -1178,10 +1195,23 @@ mod tests {
         assert!(!installed(&root, Build::Cpu, &TINY), "an older engine of another size");
         engine.set_len(Build::Cpu.library_size()).unwrap();
         drop(engine);
+        if let Some(ggml) = OWN_GGML {
+            assert!(!installed(&root, Build::Cpu, &TINY), "an engine of the release before ggml had its own name");
+            std::fs::write(lib.with_file_name(ggml), b"x").unwrap();
+        }
         assert!(installed(&root, Build::Cpu, &TINY));
         std::fs::write(model_path(&root, &TINY), b"abcd").unwrap();
         assert!(!installed(&root, Build::Cpu, &TINY), "a model of another size");
         std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// A library that is not there fails to load with the system's code in the error, the same in every language of
+    /// the system.
+    #[cfg(windows)]
+    #[test]
+    fn a_failed_load_names_the_system_s_code() {
+        let e = open(&std::env::temp_dir().join(format!("dub-tcpp-absent-{}.dll", std::process::id()))).err().unwrap();
+        assert!(e.ends_with("LoadLibraryExW failed (os error 126)"), "{e}");
     }
 
     #[test]
