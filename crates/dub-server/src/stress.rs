@@ -161,7 +161,7 @@ fn build_accents(path: &Path) -> Result<fst::Map<Vec<u8>>, String> {
 
 fn session(path: &Path, threads: usize) -> Result<Session, String> {
     let err = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
-    Session::builder()
+    Session::builder(&dub_core::runtime::ort_env()?)
         .map_err(|e| err(&e))?
         .with_intra_threads(threads)
         .map_err(|e| err(&e))?

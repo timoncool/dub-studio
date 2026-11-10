@@ -30,7 +30,7 @@ pub use window::{
 
 use parakeet_rs::sortformer::{DiarizationConfig, Sortformer, StreamingProfile};
 use parakeet_rs::ExecutionConfig;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use thiserror::Error;
 
 /// Максимум одновременно различаемых спикеров модели диаризации (Nemotron 3 Diarization).
@@ -81,66 +81,6 @@ pub use segment::{join_text, segment_words, split_at_speaker_turns, Segment, Wor
 
 /// Целевая частота parakeet-rs.
 pub const TARGET_SR: u32 = 16_000;
-
-/// Гарантировать, что ort (load-dynamic) грузит ПРАВИЛЬНУЮ onnxruntime.dll (1.28.2, под которую собран
-/// ort rc.13 с api-28). Без явного ORT_DYLIB_PATH ort ищет DLL по системному PATH и цепляет
-/// C:\Windows\System32\onnxruntime.dll (1.17, поставляется с Windows) — рассинхрон OrtApi даёт ДЕДЛОК
-/// при создании сессии (процесс висит с 0% CPU, ни модель, ни диск не грузятся). Поэтому если
-/// ORT_DYLIB_PATH не задан пользователем, выставляем его на встроенную 1.28.2-DLL до первого касания ort.
-///
-/// Поиск (первый существующий): env DUB_ASR_ORT_DYLIB -> <models_root>/runtime/onnxruntime-win-x64-1.28.2/
-/// lib/onnxruntime.dll -> та же DLL рядом с бинарём (портативная раскладка). models_root: env
-/// DUBENGINE_MODELS_ROOT, иначе <exe_dir>/models или <exe_dir>/../../models (dev-раскладка target/…).
-fn ensure_ort_dylib() {
-    use std::sync::Once;
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        // Пользователь задал явно -> уважаем, ничего не трогаем.
-        if std::env::var_os("ORT_DYLIB_PATH").is_some() {
-            return;
-        }
-        let mut cands: Vec<PathBuf> = Vec::new();
-        if let Some(p) = std::env::var_os("DUB_ASR_ORT_DYLIB") {
-            cands.push(PathBuf::from(p));
-        }
-        // корни для поиска models/
-        let mut roots: Vec<PathBuf> = Vec::new();
-        if let Some(m) = std::env::var_os("DUBENGINE_MODELS_ROOT") {
-            roots.push(PathBuf::from(m));
-        }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                roots.push(dir.join("models"));
-                // dev-раскладка: target/release/examples/asr.exe -> ../../../models
-                if let Some(p2) = dir.parent().and_then(|d| d.parent()).and_then(|d| d.parent()) {
-                    roots.push(p2.join("models"));
-                }
-                if let Some(p1) = dir.parent().and_then(|d| d.parent()) {
-                    roots.push(p1.join("models"));
-                }
-                // DLL рядом с бинарём (портативная упаковка)
-                cands.push(dir.join(dub_core::runtime::ORT_LIBRARY));
-            }
-        }
-        if let Ok(cwd) = std::env::current_dir() {
-            roots.push(cwd.join("models"));
-        }
-        for r in &roots {
-            // GPU-сборка (cuda13) ПРИОРИТЕТНЕЕ: она суперсет — умеет и CPU-провайдер, и CUDA-EP. Если
-            // скачана, грузим её, чтобы переключение backend gpu<->cpu работало БЕЗ рестарта (dll
-            // фиксируется в процессе при первом касании ort; выбор провайдера — уже в exec_config).
-            cands.extend(dub_core::runtime::ort_candidates(r));
-        }
-        for c in cands {
-            if c.is_file() {
-                std::env::set_var("ORT_DYLIB_PATH", &c);
-                return;
-            }
-        }
-        // Ничего не нашли — оставляем как есть; ort даст явную ошибку загрузки (лучше дедлока не станет,
-        // но хотя бы не молча). Диагностику берёт на себя вызывающий по AsrError.
-    });
-}
 
 #[derive(Error, Debug)]
 pub enum AsrError {
@@ -232,8 +172,8 @@ impl<'a> WindowDiarizer<'a> {
     fn open(diarizer: &Diarizer<'a>) -> Result<Self, AsrError> {
         match diarizer {
             Diarizer::Onnx(onnx) => {
-                ensure_ort_dylib(); // до первого касания ort — иначе дедлок на чужой system32 DLL
-                let mut sf = Sortformer::with_config(onnx, Some(exec_config()), DiarizationConfig::default())
+                let env = dub_core::runtime::ort_env().map_err(AsrError::Parakeet)?;
+                let mut sf = Sortformer::with_config(onnx, Some(exec_config().with_environment(env)), DiarizationConfig::default())
                     .map_err(|e| AsrError::Parakeet(e.to_string()))?;
                 sf.set_profile(StreamingProfile::offline()).map_err(|e| AsrError::Parakeet(e.to_string()))?;
                 Ok(WindowDiarizer::Onnx(sf))

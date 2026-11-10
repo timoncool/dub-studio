@@ -284,7 +284,7 @@ pub fn augment_path_for_tools(repo_root: &Path) {
     }
 }
 
-/// Прописать ORT_DYLIB_PATH (onnxruntime 1.28) в окружение процесса до старта сервера: ort грузит dylib лениво,
+/// Прописать ORT_DYLIB_PATH (onnxruntime 1.31) в окружение процесса до старта сервера: ort грузит dylib лениво,
 /// а по голому имени Windows нашла бы раньше PATH onnxruntime.dll другой версии из System32 (Windows AI).
 /// GPU-сборка (cuda13) приоритетнее — суперсет CPU+CUDA; `beside_exe` — копия рядом с exe (портатив).
 pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
@@ -297,7 +297,6 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
         .into_iter()
         .chain([
             beside_exe.join(dub_core::runtime::ORT_LIBRARY),
-            rt.join("onnxruntime-1.28.dll"),
             rt.join("onnxruntime.dll"),
         ])
     .find(|cand| cand.is_file());
@@ -308,19 +307,9 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
             // а закачка onnxruntime ставит его на скачанную (point_ort)
             let mut candidates = dub_core::runtime::ort_candidates(&repo_root.join("models"));
             let expected = if crate::hw::gpu_report().cuda13_ok { candidates.remove(0) } else { candidates.remove(candidates.len() - 1) };
-            eprintln!("[ERROR] onnxruntime 1.28 not found in {}: casting, text detection and speaker voices will not start until the ONNX Runtime component is downloaded", rt.display());
+            eprintln!("[ERROR] onnxruntime 1.31 not found in {}: casting, text detection and speaker voices will not start until the ONNX Runtime component is downloaded", rt.display());
             std::env::set_var("ORT_DYLIB_PATH", expected);
         }
-    }
-}
-
-/// ONNX Runtime with its telemetry off: Microsoft's builds send usage telemetry unless the environment turns it off.
-/// Called at start, before any session is made; the library itself is still bound at its first use.
-pub fn ort_without_telemetry() -> Result<(), String> {
-    if ort::init().with_telemetry(false).commit() {
-        Ok(())
-    } else {
-        Err("ONNX Runtime was set up before the studio could turn its telemetry off".into())
     }
 }
 

@@ -1035,7 +1035,7 @@ update-why-ytdlp = Un yt-dlp más reciente con deno: los sitios cambian y los en
 update-why-faster-whisper-gone = Faster-Whisper se sustituye por CrisperWhisper
 update-why-parakeet-onnx-gone = Parakeet funciona con el motor transcribe.cpp; estos modelos ONNX ya no se leen
 update-why-higgs-library-gone = El servidor audio.cpp sustituye a la biblioteca de Higgs
-update-why-ort-gone = Sustituido por ONNX Runtime 1.28.2
+update-why-ort-gone = Sustituido por ONNX Runtime 1.31.1
 update-why-newer = Esta versión usa otra compilación
 update-why-unused = Ya no se usa
 

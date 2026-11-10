@@ -17,7 +17,7 @@ use serde_json::{json, Value};
 /// Компонент менеджера моделей.
 pub const COMPONENT: &str = "ytdlp";
 /// Версия yt-dlp.exe из манифеста (setup.rs, GH_YTDLP).
-pub const PINNED_VERSION: &str = "2026.10.21";
+pub const PINNED_VERSION: &str = "2026.10.26";
 const DIR: &str = "tools/yt-dlp";
 /// Файл yt-dlp на диске и ассет релиза, который его даёт (в SHA2-256SUMS он под тем же именем).
 #[cfg(windows)]

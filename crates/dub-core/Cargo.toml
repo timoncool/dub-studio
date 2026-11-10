@@ -11,6 +11,11 @@ serde_json = { workspace = true }
 # compat: the release checks of built and downloaded binaries (PE and ELF headers, AVX-512 instructions).
 object = { version = "0.41", default-features = false, features = ["read_core", "elf", "pe", "std"] }
 iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "instr_info"] }
+# runtime::ort_env: the one ONNX Runtime environment of the process, for every crate that makes sessions.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "tracing", "api-31"], optional = true }
+
+[features]
+ort = ["dep:ort"]
 
 [dev-dependencies]
 # compat's tests write the stand-in binaries they check.

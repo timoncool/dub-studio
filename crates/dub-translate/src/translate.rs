@@ -579,7 +579,7 @@ mod tests {
         let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let llm = ChatClient::new(format!("http://127.0.0.1:{port}")).unwrap().with_retries(0);
         let err = run_with(&llm, &mut s, &FlatOpts { src: "en", tgt: "ru", spoken: false, style: "", glossary: &[], contract: &Contract::for_client(&llm), checks: TextChecks::default() }, &mut |_: &Note| {}).unwrap_err();
-        assert!(err.to_string().contains("chat failed"), "{err}");
+        assert!(err.to_string().contains(&format!("no connection to 127.0.0.1:{port}")), "{err}");
     }
 
     #[test]

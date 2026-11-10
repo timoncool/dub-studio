@@ -8,7 +8,7 @@ description = "axum-сервер Dub Studio: тот же REST/SSE контрак
 [dependencies]
 tempfile = "3"
 fluent-templates = "0.15.1"
-dub-core = { path = "../dub-core" }
+dub-core = { path = "../dub-core", features = ["ort"] }
 dub-asr = { path = "../dub-asr", features = ["cuda"] }
 dub-llm = { path = "../dub-llm" }
 dub-translate = { path = "../dub-translate" }
@@ -70,7 +70,7 @@ studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", re
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
 # RUAccent (ударения русской озвучки) — ONNX на той же onnxruntime 1.28.2, что кастинг.
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "tracing", "api-28", "cuda"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "tracing", "api-31", "cuda"] }
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 fst = "0.4"
 rust-genai = { version = "=0.3.1", default-features = false }

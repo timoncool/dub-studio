@@ -46,6 +46,11 @@ const CHANGES: &[Change] = &[
     Change { what: "models/higgs-engine/libaudiocpp_engine.so", reason: || t!("update-why-higgs-library-gone"), replaces: &[] },
     Change { what: "models/runtime/onnxruntime-win-x64-1.24.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
     Change { what: "models/runtime/onnxruntime-win-x64-gpu-1.24.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
+    Change { what: "models/runtime/onnxruntime-win-x64-1.28.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
+    Change { what: "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
+    Change { what: "models/runtime/onnxruntime-linux-x64-1.28.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
+    Change { what: "models/runtime/onnxruntime-linux-x64-gpu_cuda13-1.28.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
+    Change { what: "models/runtime/onnxruntime-osx-arm64-1.28.2", reason: || t!("update-why-ort-gone"), replaces: &[] },
 ];
 
 fn change(what: &str) -> Option<&'static Change> {

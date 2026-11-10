@@ -1446,6 +1446,7 @@ dependencies = [
  "iced-x86",
  "libc",
  "object",
+ "ort",
  "serde",
  "serde_json",
 ]
@@ -4017,9 +4018,9 @@ dependencies = [
 
 [[package]]
 name = "ort"
-version = "2.0.0-rc.13"
+version = "2.0.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4336a1e2b38848325241c72889086886004e589b7c74f335e60a8e8db5138a0b"
+checksum = "37c87aa7a90b7ff3e0fe36cccd475df8d67f15f07f4d6c370c4b38464232813c"
 dependencies = [
  "libloading 0.9.0",
  "ndarray",
@@ -4030,9 +4031,9 @@ dependencies = [
 
 [[package]]
 name = "ort-sys"
-version = "2.0.0-rc.13"
+version = "2.0.0-rc.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf211e3776eea6aec988552fa118dd746d70e1b1e5e244058d1c98015f3e5872"
+checksum = "8d22b0417f1838db5a3ac0b3f98dfe39f6fb73624aa0a27c6bbb5040b9c7db2b"
 
 [[package]]
 name = "osakit"
@@ -4084,9 +4085,9 @@ dependencies = [
 
 [[package]]
 name = "parakeet-rs"
-version = "0.4.0"
+version = "0.4.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26b258292538b7b2f6b8e02da356f1ff5f73419757c92b1f025e7d7a2999cb7d"
+checksum = "70583860165ab384ca96be333714623f062fba83029957be843208f934262ba1"
 dependencies = [
  "eyre",
  "hound",

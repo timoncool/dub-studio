@@ -6,54 +6,7 @@ use crate::FacesError;
 use ndarray::Array4;
 use ort::session::Session;
 use ort::value::TensorRef;
-use std::path::{Path, PathBuf};
-use std::sync::Once;
-
-/// Гарантировать правильную onnxruntime.dll (1.28.2). Порт dub_ocr::ensure_ort_dylib (тот же поиск).
-pub fn ensure_ort_dylib() {
-    static ONCE: Once = Once::new();
-    ONCE.call_once(|| {
-        if std::env::var_os("ORT_DYLIB_PATH").is_some() {
-            return;
-        }
-        let mut cands: Vec<PathBuf> = Vec::new();
-        if let Some(p) = std::env::var_os("DUB_ASR_ORT_DYLIB") {
-            cands.push(PathBuf::from(p));
-        }
-        if let Some(p) = std::env::var_os("DUB_FACES_ORT_DYLIB") {
-            cands.push(PathBuf::from(p));
-        }
-        let mut roots: Vec<PathBuf> = Vec::new();
-        if let Some(m) = std::env::var_os("DUBENGINE_MODELS_ROOT") {
-            roots.push(PathBuf::from(m));
-        }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                roots.push(dir.join("models"));
-                if let Some(p2) = dir.parent().and_then(|d| d.parent()).and_then(|d| d.parent()) {
-                    roots.push(p2.join("models"));
-                }
-                if let Some(p1) = dir.parent().and_then(|d| d.parent()) {
-                    roots.push(p1.join("models"));
-                }
-                cands.push(dir.join(dub_core::runtime::ORT_LIBRARY));
-            }
-        }
-        if let Ok(cwd) = std::env::current_dir() {
-            roots.push(cwd.join("models"));
-        }
-        for r in &roots {
-            cands.push(r.join("runtime").join("onnxruntime-1.28.dll"));
-            cands.extend(dub_core::runtime::ort_candidates(r));
-        }
-        for c in cands {
-            if c.is_file() {
-                std::env::set_var("ORT_DYLIB_PATH", &c);
-                return;
-            }
-        }
-    });
-}
+use std::path::Path;
 
 /// Обёртка над ort::Session с одним входом [N,3,H,W] f32. Отдаёт ВСЕ выходы (SCRFD = 9 тензоров).
 pub struct OnnxModel {
@@ -70,8 +23,8 @@ impl OnnxModel {
     /// [`OnnxModel::load`] on the device the caller names: a stage with its own device setting (the speaker voices
     /// of diarization) does not take the casting's.
     pub fn load_on(path: &Path, gpu: bool) -> Result<Self, FacesError> {
-        ensure_ort_dylib();
-        let mut builder = Session::builder().map_err(|e| FacesError::Ort(format!("ort builder: {e}")))?;
+        let env = dub_core::runtime::ort_env().map_err(FacesError::Ort)?;
+        let mut builder = Session::builder(&env).map_err(|e| FacesError::Ort(format!("ort builder: {e}")))?;
         if gpu {
             builder = builder
                 .with_execution_providers([ort::ep::CUDA::default().build().error_on_failure()])

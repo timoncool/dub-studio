@@ -6,7 +6,7 @@ license.workspace = true
 description = "Распознавание (audio.cpp: Parakeet-TDT и CrisperWhisper; transcribe.cpp) и диаризация над parakeet-rs (Nemotron 3 Diarization)"
 
 [dependencies]
-dub-core = { path = "../dub-core" }
+dub-core = { path = "../dub-core", features = ["ort"] }
 tracing = { workspace = true }
 # load-dynamic: onnxruntime подгружается из onnxruntime.dll в рантайме, а не линкуется статически.
 # Это обходит рассинхрон MSVC STL (статическая libort_sys собрана новее локального тулчейна) и заодно
@@ -14,7 +14,7 @@ tracing = { workspace = true }
 # Строго 0.3.8: диаризация — только Nemotron 3 Diarization (nemotron3_diar_v3.onnx, до 8 спикеров);
 # Sortformer v2 (diar_streaming_sortformer_4spk-v2.onnx) эта версия не грузит.
 # default-features = false: дефолт parakeet-rs включает ort/default (download-binaries + TLS).
-parakeet-rs = { version = "=0.4.0", default-features = false, features = ["sortformer", "load-dynamic", "api-28"] }
+parakeet-rs = { version = "=0.4.4", default-features = false, features = ["sortformer", "load-dynamic", "api-31"] }
 # ort через load-dynamic (disable-linking): onnxruntime.dll 1.28.2 грузится в рантайме через
 # ORT_DYLIB_PATH (ensure_ort_dylib), а не линкуется (статическая libort_sys собрана новее локального
 # MSVC STL и не слинкуется). Версия строго rc.13 — под onnxruntime 1.28.2; DLL с другим OrtApi
@@ -22,7 +22,7 @@ parakeet-rs = { version = "=0.4.0", default-features = false, features = ["sortf
 # сборку EP. DLL лежит в models/runtime/. api-28 фиксирует OrtApi под 1.28.x. tracing: логи
 # onnxruntime идут в tracing-подписчик сервера. ort нужен напрямую для
 # ExecutionConfig::with_custom_configure (уровень оптимизации графа).
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic", "tracing", "api-28"] }
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "tracing", "api-31"] }
 hound = "3.5"
 dub-tcpp = { path = "../dub-tcpp" }
 acpp-server = { path = "../acpp-server", features = ["langid"] }

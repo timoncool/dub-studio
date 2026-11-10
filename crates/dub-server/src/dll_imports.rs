@@ -102,8 +102,8 @@ fn search_dirs(root: &Path) -> Vec<PathBuf> {
 /// LoadLibrary'ем, поэтому проверяются отдельными точками входа; llama.cpp и сервер audio.cpp — в [`entry_points`].
 const FIXED_ENTRY_POINTS: &[(&str, &str)] = &[
     ("drama3", "models/drama-engine/drama_engine.dll"),
-    ("onnxruntime", "models/runtime/onnxruntime-win-x64-1.28.2/lib/onnxruntime.dll"),
-    ("onnxruntime-gpu", "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.28.2/lib/onnxruntime_providers_cuda.dll"),
+    ("onnxruntime", "models/runtime/onnxruntime-win-x64-1.31.1/lib/onnxruntime.dll"),
+    ("onnxruntime-gpu", "models/runtime/onnxruntime-win-x64-gpu_cuda13-1.31.1/lib/onnxruntime_providers_cuda.dll"),
     ("cudnn", "models/higgs-engine/cudnn64_9.dll"),
     ("cudnn", "models/higgs-engine/cudnn_graph64_9.dll"),
     ("cudnn", "models/higgs-engine/cudnn_ops64_9.dll"),
