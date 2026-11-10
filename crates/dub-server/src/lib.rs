@@ -1834,8 +1834,15 @@ async fn casting_save(
 /// displayName, пол, возраст (adult/child), язык, описание, длительность, год рождения, URL-превью, размер, SHA-256,
 /// размер txt. Необязательные query-фильтры (их же шлёт MCP): gender, age, language, q (имя/описание), min_duration,
 /// max_duration — сервер отдаёт отобранное и сколько всего. Hugging Face не ответил — 502 {error, detail}.
-async fn voices_catalog(Query(q): Query<HashMap<String, String>>) -> Response {
-    match tokio::task::spawn_blocking(record::catalog).await {
+async fn voices_catalog(State(st): State<AppState>, Query(q): Query<HashMap<String, String>>) -> Response {
+    let dir = st.voices_dir.clone();
+    let got = tokio::task::spawn_blocking(move || {
+        let v = record::catalog()?;
+        record::backfill_cards(&dir, v["voices"].as_array().map(Vec::as_slice).unwrap_or_default());
+        Ok::<_, String>(v)
+    })
+    .await;
+    match got {
         Ok(Ok(v)) => {
             let voices = v["voices"].as_array().cloned().unwrap_or_default();
             let filter = record::CatalogFilter {
@@ -1855,13 +1862,16 @@ async fn voices_catalog(Query(q): Query<HashMap<String, String>>) -> Response {
     }
 }
 
-/// POST /voices/get {name} — скачать один голос (mp3+txt) из датасета в каталог голосов.
+/// POST /voices/get {name} — скачать один голос (mp3+txt) из датасета в каталог голосов, с его карточкой из каталога.
 async fn voices_get(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
     let dir = st.voices_dir.clone();
     let ok = tokio::task::spawn_blocking(move || record::fetch_voice(&dir, &name)).await;
     match ok {
-        Ok(Ok(())) => Json(json!({ "ok": true, "voices": list_voice_names(&st.voices_dir) })),
+        Ok(Ok(())) => {
+            let listing = voices_listing(&st.voices_dir);
+            Json(json!({ "ok": true, "voices": listing["voices"], "cards": listing["cards"] }))
+        }
         Ok(Err(e)) => Json(json!({ "ok": false, "error": e })),
         Err(e) => Json(json!({ "ok": false, "error": e.to_string() })),
     }
@@ -1897,11 +1907,22 @@ async fn cloud_spend(State(st): State<AppState>, Query(q): Query<HashMap<String,
     Json(s)
 }
 
-/// The library voices and those of them whose sound was cleaned, with the original kept (`voices/.originals`).
+/// The library voices, those of them whose sound was cleaned, with the original kept (`voices/.originals`), and each
+/// voice's card (`<имя>.json`; without one, what its pack name tells).
 fn voices_listing(dir: &Path) -> Value {
     let voices = list_voice_names(dir);
     let cleaned: Vec<&String> = voices.iter().filter(|n| voice_library::original_path(dir, n).is_some()).collect();
-    json!({ "voices": voices, "cleaned": cleaned })
+    let cards: serde_json::Map<String, Value> = voices
+        .iter()
+        .filter_map(|n| match voice_library::read_card(dir, n) {
+            Ok(card) => Some((n.clone(), json!(card))),
+            Err(e) => {
+                tracing::warn!("voices: the card of {n} is not read: {e}");
+                None
+            }
+        })
+        .collect();
+    json!({ "voices": voices, "cleaned": cleaned, "cards": cards })
 }
 
 /// POST /voices/denoise {name, db?} — a library voice without noise (DPDFNet): a job; `db` limits how far the noise

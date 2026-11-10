@@ -1,6 +1,6 @@
 //! Голоса библиотеки: файл `voices/<имя>.<wav|mp3|…>` с транскриптом рефа `<имя>.txt` рядом. Исходник голоса до
 //! очистки хранится в `voices/.originals/`, чтобы очистку можно было отменить. Те же функции, что у Speech Studio
-//! (`voices/library.rs`), без карточек персон.
+//! (`voices/library.rs`); карточка голоса — `<имя>.json` в её форме.
 
 use std::path::{Path, PathBuf};
 
@@ -28,9 +28,124 @@ pub fn original_path(dir: &Path, name: &str) -> Option<PathBuf> {
     with_ext(&dir.join(ORIGINALS), name, &AUDIO_EXTS).map(|(p, _)| p)
 }
 
+/// What is known of a voice beyond its sound, kept beside it as `<имя>.json` in Speech Studio's form, so a library
+/// moved between the programs keeps it.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq)]
+#[serde(default)]
+pub struct VoiceCard {
+    pub gender: String,
+    pub age: String,
+    pub lang: String,
+    pub tags: Vec<String>,
+    pub source: String,
+    pub consent: String,
+    pub favorite: bool,
+    pub kind: String,
+    pub transcript_auto: bool,
+    pub cleaned: bool,
+    /// The voice this one is a variant of (a performance of the same character: angry, whispering); empty — its own.
+    pub variant_of: String,
+    /// The variant's name, shown where a block picks it.
+    pub variant: String,
+    /// What the voice may be used for: an SPDX id such as CC-BY-4.0, or the terms in words.
+    pub license: String,
+    /// A long reference gives each new take its next good piece instead of always the best one.
+    pub rotate: bool,
+    /// The name its source gives the voice (the cloud catalogue's «Алана Хасанова»), shown instead of the file's.
+    pub display: String,
+    /// Who the voice is, as its source describes it (the cloud catalogue's line).
+    pub description: String,
+    /// The speaker's year of birth and the recording's length in seconds, as its source gives them.
+    pub birth_year: Option<u32>,
+    pub duration_s: Option<f64>,
+    /// The reference's loudness, LUFS, measured when its sound last changed (None: not measured yet).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lufs: Option<f64>,
+}
+
+impl Default for VoiceCard {
+    fn default() -> Self {
+        VoiceCard {
+            gender: String::new(),
+            age: String::new(),
+            lang: String::new(),
+            tags: Vec::new(),
+            source: String::new(),
+            consent: String::new(),
+            favorite: false,
+            kind: "clone".into(),
+            transcript_auto: false,
+            cleaned: false,
+            variant_of: String::new(),
+            variant: String::new(),
+            license: String::new(),
+            rotate: false,
+            display: String::new(),
+            description: String::new(),
+            birth_year: None,
+            duration_s: None,
+            lufs: None,
+        }
+    }
+}
+
+const LANG_WORDS: [(&str, &str); 11] = [
+    ("arabic", "ar"), ("chinese", "zh"), ("english", "en"), ("french", "fr"), ("german", "de"), ("italian", "it"),
+    ("japanese", "ja"), ("korean", "ko"), ("portuguese", "pt"), ("russian", "ru"), ("spanish", "es"),
+];
+
+fn gender_word(w: &str) -> Option<&'static str> {
+    match w.to_ascii_lowercase().trim_end_matches(|c: char| c.is_ascii_digit()) {
+        "female" | "famale" => Some("female"),
+        "male" => Some("male"),
+        _ => None,
+    }
+}
+
+/// Карточка по имени из войспака: `RU_Female_…` (регистр любой, бывает и `Famale`) и `English_Female2` — язык и пол.
+pub fn guess_card(name: &str) -> VoiceCard {
+    let mut card = VoiceCard::default();
+    let parts: Vec<&str> = name.splitn(3, '_').collect();
+    if parts.len() == 3 && parts[0].len() == 2 && parts[0].chars().all(|c| c.is_ascii_alphabetic()) {
+        if let Some(g) = gender_word(parts[1]) {
+            card.lang = parts[0].to_ascii_lowercase();
+            card.gender = g.into();
+            card.source = "pack".into();
+        }
+    } else if parts.len() == 2 {
+        let lang = LANG_WORDS.iter().find(|(w, _)| parts[0].eq_ignore_ascii_case(w)).map(|(_, c)| *c);
+        if let (Some(lang), Some(g)) = (lang, gender_word(parts[1])) {
+            card.lang = lang.into();
+            card.gender = g.into();
+            card.source = "pack".into();
+        }
+    }
+    card
+}
+
+pub fn read_card(dir: &Path, name: &str) -> Result<VoiceCard, String> {
+    let p = dir.join(format!("{name}.json"));
+    match std::fs::read_to_string(&p) {
+        Ok(text) => serde_json::from_str(&text).map_err(|e| format!("{}: {e}", p.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(guess_card(name)),
+        Err(e) => Err(format!("{}: {e}", p.display())),
+    }
+}
+
+pub fn write_card(dir: &Path, name: &str, card: &VoiceCard) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(card).map_err(|e| e.to_string())?;
+    let path = dir.join(format!("{name}.json"));
+    let tmp = dir.join(format!(".{name}.json.{}", uuid::Uuid::new_v4().simple()));
+    std::fs::write(&tmp, text.as_bytes()).map_err(|e| format!("{}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &path).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("{}: {e}", path.display())
+    })
+}
+
 /// Файлы голоса и их суффиксы после имени (`.wav`, `.txt`, `.MP3.txt` …), в папке и в `.originals`.
 fn sidecars(dir: &Path, name: &str) -> Vec<(PathBuf, String)> {
-    let mut suffixes: Vec<String> = AUDIO_EXTS.iter().chain(["txt", "lab"].iter()).map(|e| format!(".{e}")).collect();
+    let mut suffixes: Vec<String> = AUDIO_EXTS.iter().chain(["txt", "lab", "json"].iter()).map(|e| format!(".{e}")).collect();
     suffixes.extend(AUDIO_EXTS.iter().flat_map(|e| [format!(".{e}.txt"), format!(".{}.txt", e.to_ascii_uppercase())]));
     let mut all = Vec::new();
     for folder in [dir.to_path_buf(), dir.join(ORIGINALS)] {
@@ -58,6 +173,14 @@ pub fn rename(dir: &Path, from: &str, to: &str) -> Result<(), String> {
     for (p, suffix) in sidecars(dir, from) {
         let target = p.with_file_name(format!("{to}{suffix}"));
         std::fs::rename(&p, &target).map_err(|e| format!("{} -> {}: {e}", p.display(), target.display()))?;
+    }
+    // the name given by hand is the one shown from now on, not the one its source gave
+    if dir.join(format!("{to}.json")).is_file() {
+        let mut card = read_card(dir, to)?;
+        if !card.display.is_empty() {
+            card.display.clear();
+            write_card(dir, to, &card)?;
+        }
     }
     Ok(())
 }

@@ -57,6 +57,7 @@ import { fitOver } from "./lib/fit";
 import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
 import VoiceCatalog from "./components/voices/VoiceCatalog";
+import { prettyVoice } from "./lib/voices";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
 import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
@@ -852,12 +853,8 @@ const TR_STYLE_IDS = ["", "technical", "literary", "casual", "custom"] as const;
 function resolveTrStyle(choice: string, custom: string): string {
   return choice === "custom" ? custom.trim() : (TR_STYLE_PRESETS[choice] ?? "");
 }
-// Красивое имя голоса для списка: срезаем префиксы RU_Male_/RU_Female_ и подчёркивания (значение — полное имя).
-// "qwen:uncle_fu" и "supertonic:F1" — голоса моделей Qwen3-TTS и Supertonic 3: имя голоса и движок, у которого он есть.
-const prettyVoice = (n: string) => n.startsWith("qwen:")
-  ? `${n.slice(5).split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")} · Qwen3-TTS`
-  : n.startsWith("supertonic:") ? `${n.slice(11)} · Supertonic 3`
-  : n.replace(/^[A-Z]{2}_(Female|Male)_/i, "").replace(/_/g, " ");
+// A speaker's slot in the comma list of pack voices that keeps this speaker cloned (voice_slots.rs CLONE_SLOT).
+const CLONE_SLOT = "-";
 
 // Динамический список слотов голосов одного пола (#114): строки [селект голоса][▶ сэмпл][× удалить] + «+ добавить».
 // Порядок строк = приоритет спикеров. Значение слота — полное имя файла без расширения (как в GET /voices).

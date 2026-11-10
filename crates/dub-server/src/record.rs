@@ -420,7 +420,50 @@ pub fn fetch_voice(dir: &std::path::Path, name: &str) -> Result<(), String> {
         }
         fetch_checked(&client, &voice_file_url(&format!("{name}.txt")), &dir.join(format!("{base}.txt")), txt, None, &|_| {})?;
     }
-    Ok(())
+    // the dataset's metadata is surer than the guess from the file name
+    let mut card = crate::voice_library::VoiceCard { source: "russia_voices".into(), ..crate::voice_library::guess_card(base) };
+    fill_card(&mut card, &entry, true);
+    crate::voice_library::write_card(dir, base, &card)
+}
+
+/// A voice's card from its catalogue entry: everything the dataset gives; `over` — over what the card says (a fresh
+/// download), else only what the card leaves empty (a voice taken before its card kept the catalogue's data).
+fn fill_card(card: &mut crate::voice_library::VoiceCard, e: &serde_json::Value, over: bool) {
+    let text = |k: &str| e[k].as_str().map(str::trim).filter(|s| !s.is_empty());
+    let set = |field: &mut String, value: Option<String>| {
+        if let Some(v) = value.filter(|_| over || field.is_empty()) {
+            *field = v;
+        }
+    };
+    set(&mut card.gender, text("gender").map(str::to_string));
+    set(&mut card.lang, text("language").map(str::to_ascii_lowercase));
+    set(&mut card.age, text("age_group").filter(|a| *a == "child" || *a == "adult").map(str::to_string));
+    set(&mut card.display, text("displayName").filter(|d| Some(*d) != e["name"].as_str()).map(str::to_string));
+    set(&mut card.description, text("description").map(str::to_string));
+    if over || card.birth_year.is_none() {
+        card.birth_year = e["birth_year"].as_u64().and_then(|y| u32::try_from(y).ok());
+    }
+    if over || card.duration_s.is_none() {
+        card.duration_s = e["duration_s"].as_f64().filter(|d| *d > 0.0);
+    }
+}
+
+/// The voices of the library that came from the catalogue before their cards kept its data get it now.
+pub fn backfill_cards(voices_dir: &std::path::Path, catalog: &[serde_json::Value]) {
+    for name in crate::list_voice_names(voices_dir) {
+        let Ok(old) = crate::voice_library::read_card(voices_dir, &name) else { continue };
+        if !old.display.is_empty() {
+            continue;
+        }
+        let Some(e) = catalog.iter().find(|e| e["name"] == name.as_str()) else { continue };
+        let mut card = old.clone();
+        fill_card(&mut card, e, false);
+        if card != old {
+            if let Err(err) = crate::voice_library::write_card(voices_dir, &name, &card) {
+                tracing::warn!("voices: the card of {name} keeps its old data: {err}");
+            }
+        }
+    }
 }
 
 /// The files of the pack's archive: name, size and SHA-256 of each.
@@ -614,6 +657,33 @@ mod tests {
         assert_eq!(names(&CatalogFilter { query: Some("narrator".into()), ..Default::default() }), ["EN_Male_adult"]);
         assert_eq!(names(&CatalogFilter { query: Some("катя".into()), ..Default::default() }), ["RU_Female_child"]);
         assert_eq!(names(&CatalogFilter::default()).len(), 3);
+    }
+
+
+    #[test]
+    fn a_download_takes_the_catalogue_and_a_backfill_keeps_what_the_card_says() {
+        let e = serde_json::json!({ "name": "RU_Female_volkova_anna", "displayName": "Анна Волкова", "gender": "female", "age_group": "child",
+            "language": "RU", "description": " Юная актриса ", "duration_s": 69.0, "birth_year": 2014 });
+        let mut fresh = crate::voice_library::VoiceCard::default();
+        fill_card(&mut fresh, &e, true);
+        assert_eq!((fresh.display.as_str(), fresh.gender.as_str(), fresh.age.as_str(), fresh.lang.as_str()), ("Анна Волкова", "female", "child", "ru"));
+        assert_eq!((fresh.description.as_str(), fresh.birth_year, fresh.duration_s), ("Юная актриса", Some(2014), Some(69.0)));
+        let mut own = crate::voice_library::VoiceCard { gender: "male".into(), description: "своё".into(), ..Default::default() };
+        fill_card(&mut own, &e, false);
+        assert_eq!((own.gender.as_str(), own.description.as_str(), own.display.as_str(), own.age.as_str()), ("male", "своё", "Анна Волкова", "child"));
+    }
+
+    #[test]
+    fn a_library_voice_from_the_catalogue_gets_its_card_and_a_rename_shows_the_new_name() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("RU_Female_volkova_anna.mp3"), b"x").unwrap();
+        let catalog = vec![serde_json::json!({ "name": "RU_Female_volkova_anna", "displayName": "Анна Волкова", "gender": "female" })];
+        backfill_cards(d.path(), &catalog);
+        assert_eq!(crate::voice_library::read_card(d.path(), "RU_Female_volkova_anna").unwrap().display, "Анна Волкова");
+        crate::voice_library::rename(d.path(), "RU_Female_volkova_anna", "Анна").unwrap();
+        let card = crate::voice_library::read_card(d.path(), "Анна").unwrap();
+        assert_eq!((card.display.as_str(), card.gender.as_str()), ("", "female"), "the card moves with the voice, its name is the one given");
+        assert!(!d.path().join("RU_Female_volkova_anna.json").exists());
     }
 
     #[test]

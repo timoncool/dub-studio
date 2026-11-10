@@ -1,6 +1,7 @@
 import i18n from "./i18n";
 import type en from "../locales/en.json";
 import { requireCloud } from "./cloudConsent";
+import { keepVoiceCards, type VoiceCardView } from "./voiceCards";
 // Dub Studio API client — talks to the single-worker FastAPI backend over the dub-engine.
 // dev: Vite (5173) -> dub-server (8793, DUB_STUDIO_PORT). desktop/portable: the server serves the SPA
 // itself, so calls are same-origin (""). VITE_API overrides both.
@@ -462,7 +463,8 @@ export const api = {
   // Пресеты железа: список + детект GPU/VRAM + рекомендация; применение пишет кванты/облако в active.json.
   hwPresets: () => getJson<{ presets: { id: string; title: string; subtitle: string }[]; hardware: { gpuName: string; totalVramGb: number; totalRamGb: number; hasGpu: boolean; recommended: string; reason: string }; current: string }>("/engine/presets"),
   applyPreset: (id: string) => postJson<{ ok: boolean; id: string; applied: { key: string; value: string }[] }>("/engine/preset", { id }).then(selectionChanged),
-  voices: () => getJson<{ voices: string[]; cleaned?: string[] }>("/voices"),
+  voices: () => getJson<{ voices: string[]; cleaned?: string[]; cards?: Record<string, VoiceCardView> }>("/voices")
+    .then((r) => { keepVoiceCards(r.cards, true); return r; }),
   // Дефолты запуска дубляжа (форма стартового экрана) хранит сервис: одни на все окна и агента.
   launchDefaults: () => getJson<LaunchDefaultsState>("/settings/launch"),
   saveLaunchDefaults: (patch: Partial<LaunchDefaults>) =>
@@ -479,7 +481,8 @@ export const api = {
   recordStop: () => fetch(`${BASE}/record/stop`, { method: "POST" }).then(j<{ name: string | null; voices: string[] }>),
   voicesDownloadPack: () => fetch(`${BASE}/voices/download-pack`, { method: "POST" }).then(j<{ job_id: string }>),
   voicesCatalog: () => getCoded<{ voices: CatalogVoice[]; total: number; shown: number }>("/voices/catalog"),
-  voicesGet: (name: string) => postJson<{ ok: boolean; voices?: string[]; error?: string }>("/voices/get", { name }),
+  voicesGet: (name: string) => postJson<{ ok: boolean; voices?: string[]; cards?: Record<string, VoiceCardView>; error?: string }>("/voices/get", { name })
+    .then((r) => { keepVoiceCards(r.cards, false); return r; }),
   voiceSampleUrl: (name: string) => `${BASE}/voices/sample?name=${encodeURIComponent(name)}`,   // прослушка выбранного голоса (<audio>)
   voicesRename: (from: string, to: string) => postJson<{ voices: string[] }>("/voices/rename", { from, to }),
   voicesDelete: (name: string) => postJson<{ voices: string[] }>("/voices/delete", { name }),
