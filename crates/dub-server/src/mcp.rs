@@ -2225,9 +2225,29 @@ fn tools() -> &'static [Tool] {
             },
             Tool {
                 name: "voices_catalog",
-                description: "The extra voices that can be downloaded into the library, with their gender.",
-                schema: nothing,
-                call: |_| get("/voices/catalog".into()),
+                description: "The extra voices that can be downloaded into the library (the dataset nerualdreming/russia_voices): each with its name, display name, gender, age (adult or child), language, description, duration in seconds, birth year and whether a sample transcript comes with it. Optional filters, the same the window offers, narrow the list: gender, age, language (ISO 639-1), q (search in the name and description), min_duration and max_duration in seconds. The answer also gives the total before filtering.",
+                schema: || object(json!({
+                    "gender": { "type": "string", "enum": ["female", "male"] },
+                    "age": { "type": "string", "enum": ["adult", "child"] },
+                    "language": { "type": "string", "description": "ISO 639-1, e.g. ru, en, zh" },
+                    "q": { "type": "string", "description": "search in the name and description" },
+                    "min_duration": { "type": "number", "description": "seconds" },
+                    "max_duration": { "type": "number", "description": "seconds" }
+                }), &[]),
+                call: |args| {
+                    let mut qs: Vec<String> = Vec::new();
+                    for key in ["gender", "age", "language", "q"] {
+                        if let Some(v) = args.get(key).and_then(Value::as_str).map(str::trim).filter(|s| !s.is_empty()) {
+                            qs.push(format!("{key}={}", segment(v)));
+                        }
+                    }
+                    for key in ["min_duration", "max_duration"] {
+                        if let Some(n) = args.get(key).and_then(Value::as_f64) {
+                            qs.push(format!("{key}={n}"));
+                        }
+                    }
+                    get(if qs.is_empty() { "/voices/catalog".to_string() } else { format!("/voices/catalog?{}", qs.join("&")) })
+                },
             },
             Tool {
                 name: "voice_download",

@@ -16,6 +16,7 @@ models/
 # хранилище секретов портативной раскладки (ключ OpenRouter, пароль прокси) — никогда в репозиторий
 secrets/
 voices/
+!frontend/src/components/voices/
 downloads/
 temp/
 cache/

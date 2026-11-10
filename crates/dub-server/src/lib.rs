@@ -1828,11 +1828,25 @@ async fn casting_save(
     Json(json!({ "ok": true, "characters": chars })).into_response()
 }
 
-/// GET /voices/catalog — каталог доп-голосов (HF датасет Slait/russia_voices): имя, пол, URL-превью. Hugging Face
-/// не ответил — 502 {error, detail}.
-async fn voices_catalog() -> Response {
+/// GET /voices/catalog — каталог доп-голосов (HF датасет nerualdreming/russia_voices): на каждый голос name, file,
+/// displayName, пол, возраст (adult/child), язык, описание, длительность, год рождения, URL-превью, размер, SHA-256,
+/// размер txt. Необязательные query-фильтры (их же шлёт MCP): gender, age, language, q (имя/описание), min_duration,
+/// max_duration — сервер отдаёт отобранное и сколько всего. Hugging Face не ответил — 502 {error, detail}.
+async fn voices_catalog(Query(q): Query<HashMap<String, String>>) -> Response {
     match tokio::task::spawn_blocking(record::catalog).await {
-        Ok(Ok(v)) => Json(v).into_response(),
+        Ok(Ok(v)) => {
+            let voices = v["voices"].as_array().cloned().unwrap_or_default();
+            let filter = record::CatalogFilter {
+                gender: q.get("gender").cloned(),
+                age_group: q.get("age").or_else(|| q.get("age_group")).cloned(),
+                language: q.get("language").or_else(|| q.get("lang")).cloned(),
+                query: q.get("q").or_else(|| q.get("query")).cloned(),
+                min_duration: q.get("min_duration").and_then(|s| s.parse().ok()),
+                max_duration: q.get("max_duration").and_then(|s| s.parse().ok()),
+            };
+            let filtered = record::filter_catalog(&voices, &filter);
+            Json(json!({ "voices": filtered, "total": voices.len(), "shown": filtered.len() })).into_response()
+        }
         Ok(Err(e)) => (StatusCode::BAD_GATEWAY, Json(json!({ "error": "catalog_unavailable", "detail": e })),
         ).into_response(),
         Err(e) => join_failure(e),

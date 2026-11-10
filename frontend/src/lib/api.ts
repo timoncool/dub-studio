@@ -304,6 +304,21 @@ export const journalApi = {
   },
 };
 
+/** A voice of the cloud catalogue (the dataset's metadata row with its file). */
+export type CatalogVoice = {
+  name: string;
+  file?: string;
+  displayName?: string;
+  gender?: string | null;
+  age_group?: string | null;
+  language?: string | null;
+  description?: string | null;
+  duration_s?: number | null;
+  birth_year?: number | null;
+  url: string;
+  txt_size?: number | null;
+};
+
 export class ApiError extends Error {
   code: string;
   detail: string;
@@ -463,7 +478,7 @@ export const api = {
   recordStart: (name: string, device?: string) => postJson<{ ok: boolean; name?: string; error?: string }>("/record/start", { name, device }),
   recordStop: () => fetch(`${BASE}/record/stop`, { method: "POST" }).then(j<{ name: string | null; voices: string[] }>),
   voicesDownloadPack: () => fetch(`${BASE}/voices/download-pack`, { method: "POST" }).then(j<{ job_id: string }>),
-  voicesCatalog: () => getCoded<{ voices: { name: string; gender: string; url: string }[] }>("/voices/catalog"),
+  voicesCatalog: () => getCoded<{ voices: CatalogVoice[]; total: number; shown: number }>("/voices/catalog"),
   voicesGet: (name: string) => postJson<{ ok: boolean; voices?: string[]; error?: string }>("/voices/get", { name }),
   voiceSampleUrl: (name: string) => `${BASE}/voices/sample?name=${encodeURIComponent(name)}`,   // прослушка выбранного голоса (<audio>)
   voicesRename: (from: string, to: string) => postJson<{ voices: string[] }>("/voices/rename", { from, to }),

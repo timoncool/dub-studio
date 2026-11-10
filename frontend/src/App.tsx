@@ -56,6 +56,7 @@ import TakesPanel from "./components/TakesPanel";
 import { fitOver } from "./lib/fit";
 import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
+import VoiceCatalog from "./components/voices/VoiceCatalog";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
 import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
@@ -3883,87 +3884,6 @@ function Editor() {
 }
 
 // Поп-ап доп-голосов (HF-датасет): поиск, фильтр по полу, прослушка (play mp3), скачка в каталог.
-function VoicePackModal({ have, onVoices, onClose }: { have: string[]; onVoices: (v: string[]) => void; onClose: () => void }) {
-  const { t } = useTranslation();
-  const [all, setAll] = useState<{ name: string; gender: string; url: string }[] | null>(null);
-  const [q, setQ] = useState("");
-  const [gender, setGender] = useState<"all" | "female" | "male">("all");
-  const [playing, setPlaying] = useState<string | null>(null);
-  const [getting, setGetting] = useState<string | null>(null);
-  const audio = useRef<HTMLAudioElement | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
-  const reason = (e: unknown) => (e instanceof ApiError ? e.detail || e.code : e instanceof Error ? e.message : String(e));
-  useEffect(() => {
-    api.voicesCatalog().then((r) => setAll(r.voices), (e: unknown) => { setAll([]); setProblem(t("voice.catalogFailed", { error: reason(e) })); });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { audio.current?.pause(); }, []);
-
-  const play = (url: string, name: string) => {
-    audio.current?.pause();
-    if (playing === name) { setPlaying(null); return; }
-    const a = new Audio(url); audio.current = a; setPlaying(name);
-    a.onended = () => setPlaying(null); a.play().catch(() => setPlaying(null));
-  };
-  const get = async (name: string) => {
-    setGetting(name);
-    setProblem(null);
-    try {
-      const r = await api.voicesGet(name);
-      if (r.ok && r.voices) onVoices(r.voices);
-      else setProblem(t("voice.getFailed", { name, error: r.error ?? "" }));
-    } catch (e) {
-      setProblem(t("voice.getFailed", { name, error: reason(e) }));
-    } finally { setGetting(null); }
-  };
-  const pretty = (n: string) => n.replace(/^RU_(Female|Male)_/, "").replace(/_/g, " ");
-  const filtered = (all || []).filter((v) =>
-    (gender === "all" || v.gender === gender) &&
-    (!q.trim() || pretty(v.name).toLowerCase().includes(q.trim().toLowerCase()))
-  );
-
-  return (
-    <div className="fixed inset-0 z-[60] grid place-items-center glass-scrim anim-fade" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-labelledby="voicepack-title" className="w-[min(94vw,560px)] h-[min(82vh,640px)] flex flex-col rounded-xl glass-panel anim-pop p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-3">
-          <span id="voicepack-title" className="font-semibold">{t("voice.packTitle")} {all && <span className="mono text-[11px] text-[var(--color-muted)]">{filtered.length}/{all.length}</span>}</span>
-          <button onClick={onClose} {...named(t("a11y.close"))} className="text-[var(--color-muted)] hover:text-[var(--color-text)]"><X size={16} /></button>
-        </div>
-        <div className="flex items-center gap-2 mb-3">
-          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("voice.search")} autoFocus
-            className="flex-1 bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded-lg px-2.5 py-1.5 text-[13px] focus:border-[var(--color-accent)] focus:outline-none" />
-          <div className="flex rounded-lg border border-[var(--color-border)] overflow-hidden text-[12px]">
-            {(["all", "female", "male"] as const).map((g) => (
-              <button key={g} onClick={() => setGender(g)}
-                className={`px-2.5 py-1.5 ${gender === g ? "bg-[var(--color-accent)] text-[var(--color-on-accent)]" : "text-[var(--color-muted)] hover:text-[var(--color-text)]"}`}>{t(`voice.g_${g}`)}</button>
-            ))}
-          </div>
-        </div>
-        {problem && <div role="alert" className="mb-2 text-[12px] text-[var(--color-warn)] break-words">{problem}</div>}
-        <div className="flex-1 overflow-y-auto -mr-2 pr-2 space-y-1">
-          {all === null ? <div className="mono text-[11px] text-[var(--color-muted)]">…</div> :
-           filtered.slice(0, 300).map((v) => {
-            const owned = have.includes(v.name) || have.includes(v.name.split("/").pop() || v.name);
-            return (
-              <div key={v.name} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${v.gender === "female" ? "bg-pink-400" : "bg-sky-400"}`} />
-                <span className="text-[12px] truncate flex-1">{pretty(v.name)}</span>
-                <button onClick={() => play(v.url, v.name)} title={t("voice.preview")}
-                  className="shrink-0 p-1 rounded-md text-[var(--color-muted)] hover:text-[var(--color-accent)]">{playing === v.name ? <Pause size={14} /> : <Play size={14} />}</button>
-                {owned ? <Check size={14} className="text-[var(--color-accent)] shrink-0 w-7 text-center" /> :
-                  <button onClick={() => get(v.name)} disabled={!!getting} title={t("setup.downloadOne")}
-                    className="shrink-0 p-1 rounded-md text-[var(--color-accent-2)] hover:text-[var(--color-accent)] disabled:opacity-40">
-                    {getting === v.name ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                  </button>}
-              </div>
-            );
-          })}
-          {all !== null && filtered.length > 300 && <div className="mono text-[10px] text-[var(--color-muted)] text-center py-2">{t("voice.narrowSearch")}</div>}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Языки с поиском по нативному имени + имени на языке интерфейса + английскому + коду (Intl.DisplayNames).
 // На русском UI «французский»/«фра» найдёт Français, на английском — «french».
 function langOptions(langs: { code: string; name: string }[], uiLang: string, extra: { value: string; label: string; search?: string }[] = []) {
@@ -4095,7 +4015,7 @@ function VoiceRecorder({ voiceList, onVoices, onDone }: { voiceList: string[]; o
           <button onClick={applyRename} className="shrink-0 px-2.5 py-1.5 rounded-lg bg-[var(--color-accent)] text-[var(--color-on-accent)] text-[12px] font-semibold"><Check size={13} /></button>
         </div>
       )}
-      {pack && <VoicePackModal have={voiceList} onVoices={onVoices} onClose={() => setPack(false)} />}
+      {pack && <VoiceCatalog have={voiceList} onVoices={onVoices} onClose={() => setPack(false)} />}
     </div>
   );
 }

@@ -168,8 +168,8 @@ const VOICE_PACK_SHA256: &str = "682e73c189dbe9bc66fc35bc8fb29438641155957a917a7
 
 // Датасет доп-голосов (mp3+txt пары) закреплён коммитом: список и файлы одной ревизии. У mp3 (LFS) есть SHA-256,
 // у txt (обычные файлы git, по SHA-256 Hugging Face их не описывает) — точный размер.
-const VOICES_DATASET: &str = "Slait/russia_voices";
-const VOICES_REVISION: &str = "215d799f529bfe8815063064246b5c09e4b380d6";
+const VOICES_DATASET: &str = "nerualdreming/russia_voices";
+const VOICES_REVISION: &str = "0269d8b31e7f522a3c4ff4cb2e096720ad764c44";
 /// Больше этого голос датасета не бывает (самый крупный ~10 МБ).
 const VOICE_FILE_LIMIT: u64 = 64 * 1024 * 1024;
 
@@ -193,33 +193,123 @@ fn next_page(headers: &reqwest::header::HeaderMap) -> Option<String> {
     })
 }
 
-/// Голоса из списка файлов датасета: mp3 с SHA-256 и размером, txt рядом — с размером.
-fn voices_of(items: &[serde_json::Value]) -> Vec<serde_json::Value> {
-    let txt: std::collections::HashMap<&str, u64> = items
+/// The dataset's files by path: size and, for a file in LFS, its SHA-256.
+fn files_of(items: &[serde_json::Value]) -> std::collections::HashMap<&str, (u64, Option<&str>)> {
+    let mut files = std::collections::HashMap::new();
+    for it in items {
+        let Some(path) = it.get("path").and_then(|p| p.as_str()) else { continue };
+        if let Some(lfs) = it.get("lfs") {
+            if let (Some(sha), Some(size)) = (lfs.get("oid").and_then(|o| o.as_str()), lfs.get("size").and_then(|s| s.as_u64())) {
+                files.insert(path, (size, Some(sha)));
+                continue;
+            }
+        }
+        if let Some(size) = it.get("size").and_then(|s| s.as_u64()) {
+            files.insert(path, (size, None));
+        }
+    }
+    files
+}
+
+/// Голоса каталога: строки metadata.jsonl, обогащённые списком файлов датасета — размер и SHA-256 аудио (mp3 или wav)
+/// и размер txt рядом. Строка без своего аудиофайла в датасете в каталог не попадает.
+
+fn voices_of(items: &[serde_json::Value], meta: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let files = files_of(items);
+    let mut voices: Vec<serde_json::Value> = meta
         .iter()
-        .filter_map(|it| Some((it.get("path")?.as_str()?.strip_suffix(".txt")?, it.get("size")?.as_u64()?)))
-        .collect();
-    let mut voices: Vec<serde_json::Value> = items
-        .iter()
-        .filter_map(|it| {
-            let path = it.get("path")?.as_str()?;
-            let name = path.strip_suffix(".mp3")?;
-            let lfs = it.get("lfs")?;
-            let sha256 = lfs.get("oid")?.as_str()?;
-            let size = lfs.get("size")?.as_u64()?;
-            let gender = if name.contains("Female") { "female" } else if name.contains("Male") { "male" } else { "?" };
+        .filter_map(|row| {
+            let file = row.get("file")?.as_str()?;
+            if file.contains('/') || file.contains('\\') || file.contains("..") {
+                return None;
+            }
+            let (size, sha256) = files.get(file).copied()?;
+            let name = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+            let txt_size = files.get(format!("{name}.txt").as_str()).map(|(s, _)| *s);
+            let field = |k: &str| row.get(k).cloned().unwrap_or(serde_json::Value::Null);
             Some(serde_json::json!({
                 "name": name,
-                "gender": gender,
-                "url": voice_file_url(path),
+                "file": file,
+                "displayName": row.get("name").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).unwrap_or(name),
+                "gender": field("gender"),
+                "age_group": field("age_group"),
+                "language": field("language"),
+                "description": field("description"),
+                "duration_s": field("duration_s"),
+                "birth_year": field("birth_year"),
+                "url": voice_file_url(file),
                 "size": size,
                 "sha256": sha256,
-                "txt_size": txt.get(name).copied(),
+                "txt_size": txt_size,
             }))
         })
         .collect();
-    voices.sort_by(|a, b| a["name"].as_str().cmp(&b["name"].as_str()));
+    voices.sort_by(|a, b| a["displayName"].as_str().cmp(&b["displayName"].as_str()));
     voices
+}
+
+/// The dataset's `metadata.jsonl` of the pinned revision: one row per voice.
+fn fetch_metadata(client: &reqwest::blocking::Client) -> Result<Vec<serde_json::Value>, String> {
+    let url = voice_file_url("metadata.jsonl");
+    let text = client
+        .get(&url)
+        .send()
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| format!("{url}: {e}"))?
+        .text()
+        .map_err(|e| format!("{url}: {e}"))?;
+    Ok(metadata_rows(&text))
+}
+
+fn metadata_rows(text: &str) -> Vec<serde_json::Value> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| match serde_json::from_str::<serde_json::Value>(line) {
+            Ok(v) => Some(v),
+            Err(e) => {
+                tracing::warn!("voices catalog: a metadata line is not JSON, skipped: {e}");
+                None
+            }
+        })
+        .collect()
+}
+
+/// The catalogue's filters (all optional, the MCP tool's and the window's).
+#[derive(Debug, Default)]
+pub struct CatalogFilter {
+    pub gender: Option<String>,
+    pub age_group: Option<String>,
+    pub language: Option<String>,
+    pub query: Option<String>,
+    pub min_duration: Option<f64>,
+    pub max_duration: Option<f64>,
+}
+
+/// The voices of the catalogue that pass `f`: fields compared without case, the query in the names and description.
+pub fn filter_catalog(voices: &[serde_json::Value], f: &CatalogFilter) -> Vec<serde_json::Value> {
+    let eq = |value: Option<&str>, want: &Option<String>| match want {
+        Some(w) if !w.trim().is_empty() => value.is_some_and(|v| v.eq_ignore_ascii_case(w.trim())),
+        _ => true,
+    };
+    let query = f.query.as_deref().map(str::trim).filter(|q| !q.is_empty()).map(str::to_lowercase);
+    voices
+        .iter()
+        .filter(|v| {
+            eq(v["gender"].as_str(), &f.gender)
+                && eq(v["age_group"].as_str(), &f.age_group)
+                && eq(v["language"].as_str(), &f.language)
+                && f.min_duration.is_none_or(|lo| v["duration_s"].as_f64().is_some_and(|d| d >= lo))
+                && f.max_duration.is_none_or(|hi| v["duration_s"].as_f64().is_some_and(|d| d <= hi))
+                && query.as_ref().is_none_or(|q| {
+                    [v["displayName"].as_str(), v["name"].as_str(), v["description"].as_str()]
+                        .into_iter()
+                        .flatten()
+                        .any(|s| s.to_lowercase().contains(q))
+                })
+        })
+        .cloned()
+        .collect()
 }
 
 fn catalog_cache() -> &'static std::sync::Mutex<Option<serde_json::Value>> {
@@ -227,8 +317,10 @@ fn catalog_cache() -> &'static std::sync::Mutex<Option<serde_json::Value>> {
     CACHE.get_or_init(|| std::sync::Mutex::new(None))
 }
 
-/// Каталог доп-голосов из HF-датасета закреплённой ревизии: [{name, gender, url, size, sha256, txt_size}]. Ревизия
-/// не меняется, поэтому удачный ответ живёт до конца процесса; неудачный не запоминается.
+/// Каталог доп-голосов из HF-датасета закреплённой ревизии: по строке metadata.jsonl на голос
+/// ({name, file, displayName, gender, age_group, language, description, duration_s, birth_year, url, size, sha256,
+/// txt_size}), размер и SHA-256 аудио — из списка файлов датасета. Ревизия не меняется, поэтому удачный ответ живёт
+/// до конца процесса; неудачный не запоминается.
 pub fn catalog() -> Result<serde_json::Value, String> {
     if let Some(v) = catalog_cache().lock().unwrap_or_else(|e| e.into_inner()).clone() {
         return Ok(v);
@@ -245,7 +337,8 @@ pub fn catalog() -> Result<serde_json::Value, String> {
             return Err(t!("voices-list-endless", page = page.clone()));
         }
     }
-    let v = serde_json::json!({ "voices": voices_of(&items) });
+    let meta = fetch_metadata(&client)?;
+    let v = serde_json::json!({ "voices": voices_of(&items, &meta) });
     *catalog_cache().lock().unwrap_or_else(|e| e.into_inner()) = Some(v.clone());
     Ok(v)
 }
@@ -312,12 +405,15 @@ pub fn fetch_voice(dir: &std::path::Path, name: &str) -> Result<(), String> {
         .find(|v| v["name"] == name)
         .cloned()
         .ok_or_else(|| t!("voices-not-in-dataset", name = name.to_string(), dataset = VOICES_DATASET))?;
+    let file = entry["file"].as_str().ok_or_else(|| t!("voices-not-in-dataset", name = name.to_string(), dataset = VOICES_DATASET))?;
     let size = entry["size"].as_u64().filter(|s| *s <= VOICE_FILE_LIMIT).ok_or_else(|| t!("voices-bad-size", name = name.to_string()))?;
-    let sha256 = entry["sha256"].as_str().ok_or_else(|| t!("voices-no-sha", name = name.to_string()))?;
+    // mp3 lives in LFS and carries a SHA-256; the few wav do too; a file without one is checked by size alone
+    let sha256 = entry["sha256"].as_str();
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let client = hf_client()?;
     let base = std::path::Path::new(name).file_name().and_then(|s| s.to_str()).unwrap_or(name);
-    fetch_checked(&client, &voice_file_url(&format!("{name}.mp3")), &dir.join(format!("{base}.mp3")), size, Some(sha256), &|_| {})?;
+    let ext = std::path::Path::new(file).extension().and_then(|e| e.to_str()).unwrap_or("mp3");
+    fetch_checked(&client, &voice_file_url(file), &dir.join(format!("{base}.{ext}")), size, sha256, &|_| {})?;
     if let Some(txt) = entry["txt_size"].as_u64() {
         if txt > VOICE_FILE_LIMIT {
             return Err(t!("voices-bad-size", name = format!("{name}.txt")));
@@ -469,23 +565,55 @@ mod tests {
     }
 
     #[test]
-    fn the_catalog_takes_hashes_from_the_tree_and_follows_its_pages() {
+    fn the_catalog_joins_metadata_with_the_file_list_and_follows_its_pages() {
         let items: Vec<serde_json::Value> = serde_json::from_str(r#"[
             {"type":"file","oid":"fd3a","size":6038690,"lfs":{"oid":"d4c4af1c2704a671f9352cd300b80bb92eee4d88b7642b84aa073009140cc710","size":6038690},"path":"RU_Female_abramova_oljga.mp3"},
             {"type":"file","oid":"517a","size":7928,"path":"RU_Female_abramova_oljga.txt"},
-            {"type":"file","oid":"aa","size":10,"path":"RU_Male_no_lfs.mp3"},
-            {"type":"file","oid":"bb","size":5,"lfs":{"oid":"cc","size":5},"path":"RU_Male_x.mp3"}
+            {"type":"file","oid":"aa","size":10,"path":"EN_Male_no_lfs.wav"},
+            {"type":"file","oid":"bb","size":5,"lfs":{"oid":"cc","size":5},"path":"RU_Child_x.mp3"}
         ]"#).unwrap();
-        let v = voices_of(&items);
-        assert_eq!(v.len(), 2, "an mp3 without a SHA-256 is not offered");
-        assert_eq!(v[0]["name"], "RU_Female_abramova_oljga");
-        assert_eq!((v[0]["size"].as_u64(), v[0]["txt_size"].as_u64(), v[0]["gender"].as_str()), (Some(6038690), Some(7928), Some("female")));
-        assert!(v[0]["url"].as_str().unwrap().contains(VOICES_REVISION));
-        assert_eq!(v[1]["txt_size"], serde_json::Value::Null);
+        let meta = metadata_rows(concat!(
+            "{\"file\":\"RU_Female_abramova_oljga.mp3\",\"name\":\"Ольга Абрамова\",\"gender\":\"female\",\"age_group\":\"adult\",\"language\":\"ru\",\"description\":\"диктор\",\"duration_s\":25.8,\"birth_year\":1970}\n",
+            "{\"file\":\"EN_Male_no_lfs.wav\",\"name\":\"No Lfs\",\"gender\":\"male\",\"age_group\":\"adult\",\"language\":\"en\",\"duration_s\":9.0}\n",
+            "{\"file\":\"RU_Child_x.mp3\",\"name\":\"Kid\",\"gender\":\"female\",\"age_group\":\"child\",\"language\":\"ru\",\"duration_s\":5.0}\n",
+            "not json, skipped\n",
+            "{\"file\":\"RU_Missing.mp3\",\"name\":\"Gone\",\"gender\":\"male\"}\n",
+        ));
+        let v = voices_of(&items, &meta);
+        let by = |name: &str| v.iter().find(|x| x["name"] == name).unwrap_or_else(|| panic!("{name} not in {v:?}"));
+        assert_eq!(v.len(), 3, "a metadata row whose audio is not in the dataset is dropped: {v:?}");
+        let a = by("RU_Female_abramova_oljga");
+        assert_eq!((a["size"].as_u64(), a["txt_size"].as_u64(), a["gender"].as_str()), (Some(6038690), Some(7928), Some("female")));
+        assert_eq!((a["displayName"].as_str(), a["age_group"].as_str(), a["language"].as_str(), a["duration_s"].as_f64(), a["birth_year"].as_i64()), (Some("Ольга Абрамова"), Some("adult"), Some("ru"), Some(25.8), Some(1970)));
+        assert!(a["url"].as_str().unwrap().contains(VOICES_REVISION) && a["url"].as_str().unwrap().ends_with(".mp3"));
+        // a wav without a SHA-256 is offered, checked by size, and keeps its extension in the url
+        let w = by("EN_Male_no_lfs");
+        assert_eq!((w["sha256"].clone(), w["txt_size"].clone(), w["file"].as_str()), (serde_json::Value::Null, serde_json::Value::Null, Some("EN_Male_no_lfs.wav")));
+        assert_eq!(by("RU_Child_x")["txt_size"], serde_json::Value::Null);
         let mut h = reqwest::header::HeaderMap::new();
-        h.insert("link", "<https://huggingface.co/api/datasets/Slait/russia_voices/tree/x?recursive=1&cursor=abc>; rel=\"next\"".parse().unwrap());
-        assert_eq!(next_page(&h).as_deref(), Some("https://huggingface.co/api/datasets/Slait/russia_voices/tree/x?recursive=1&cursor=abc"));
+        h.insert("link", "<https://huggingface.co/api/datasets/nerualdreming/russia_voices/tree/x?recursive=1&cursor=abc>; rel=\"next\"".parse().unwrap());
+        assert_eq!(next_page(&h).as_deref(), Some("https://huggingface.co/api/datasets/nerualdreming/russia_voices/tree/x?recursive=1&cursor=abc"));
         assert_eq!(next_page(&reqwest::header::HeaderMap::new()), None);
+    }
+
+    #[test]
+    fn the_catalog_filters_by_the_metadata_fields() {
+        let meta = metadata_rows(concat!(
+            "{\"file\":\"RU_Female_adult.mp3\",\"name\":\"Анна\",\"gender\":\"female\",\"age_group\":\"adult\",\"language\":\"ru\",\"description\":\"спокойный диктор\",\"duration_s\":30.0}\n",
+            "{\"file\":\"RU_Female_child.mp3\",\"name\":\"Катя\",\"gender\":\"female\",\"age_group\":\"child\",\"language\":\"ru\",\"description\":\"ребёнок\",\"duration_s\":8.0}\n",
+            "{\"file\":\"EN_Male_adult.mp3\",\"name\":\"John\",\"gender\":\"male\",\"age_group\":\"adult\",\"language\":\"en\",\"description\":\"narrator\",\"duration_s\":60.0}\n",
+        ));
+        let items: Vec<serde_json::Value> = ["RU_Female_adult", "RU_Female_child", "EN_Male_adult"]
+            .iter()
+            .map(|n| serde_json::json!({"type":"file","size":5,"lfs":{"oid":"aa","size":5},"path":format!("{n}.mp3")}))
+            .collect();
+        let all = voices_of(&items, &meta);
+        let names = |f: &CatalogFilter| filter_catalog(&all, f).iter().map(|v| v["name"].as_str().unwrap().to_string()).collect::<Vec<_>>();
+        assert_eq!(names(&CatalogFilter { gender: Some("female".into()), age_group: Some("child".into()), language: Some("ru".into()), ..Default::default() }), ["RU_Female_child"]);
+        assert_eq!(names(&CatalogFilter { min_duration: Some(10.0), ..Default::default() }), ["EN_Male_adult", "RU_Female_adult"]);
+        assert_eq!(names(&CatalogFilter { query: Some("narrator".into()), ..Default::default() }), ["EN_Male_adult"]);
+        assert_eq!(names(&CatalogFilter { query: Some("катя".into()), ..Default::default() }), ["RU_Female_child"]);
+        assert_eq!(names(&CatalogFilter::default()).len(), 3);
     }
 
     #[test]
