@@ -8,6 +8,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **The Linux .deb installs the sound library it needs**: it depends on libasound2 (libasound2t64 on newer Ubuntu), as Speech Studio's does, so the studio starts on a clean system instead of failing on libasound.so.2.
 - **Higgs no longer stops a render with «too many failed voicing attempts»**: it voices with the sampling audio.cpp gives the model (at the low temperatures Dub used, Higgs often spoke past the end of a phrase and ran into its token cap); a phrase that still runs long comes back with its sound and is judged by its length, as in Speech Studio, and a defective take is a defect of that phrase only — the least damaged take with speech is kept, or the original line. Only an engine that keeps failing stops the render.
 - **Higgs takes any clone reference**: a reference is brought to the form the model's codec takes (mono 24 kHz, a whole number of codec steps, a second at least) in the studio's cache, so a short or odd-length reference is no longer refused, and a speaker recorded far below speech level is raised to it (Higgs speaks at the level of its reference, and such a speaker's every take was refused as silence); a server that ended before a phrase began is started again and asked once more; a phrase waits for the engine as long as it takes on this computer instead of a fixed 45 s, so a slow card is not stopped as hung.
 
