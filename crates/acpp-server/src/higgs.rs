@@ -11,8 +11,14 @@ pub const FRAMES_PER_SEC: f64 = 25.0;
 pub const CODEBOOK_DELAY: u32 = 8;
 /// The server takes a seed as a small unsigned integer.
 pub const SEED_RANGE: u64 = 1 << 31;
-/// Seconds of sound a letter past which a phrase is a runaway, and the seconds any phrase has on top (HiggsAudio-Studio).
-const RUNAWAY_PER_CHAR: f64 = 0.13;
+/// The sampling audio.cpp gives Higgs v3 (model_specs/higgs_audio_tts.json): at a much lower temperature the model
+/// speaks past the end of its phrase on most takes.
+pub const TEMPERATURE: f64 = 0.8;
+pub const TOP_P: f64 = 0.8;
+pub const TOP_K: u32 = 30;
+/// Seconds of sound a letter past which a phrase is a runaway (half the pace of usual reading, so slow voices stay
+/// within it), and the seconds any phrase has on top.
+const RUNAWAY_PER_CHAR: f64 = 0.2;
 const RUNAWAY_SLACK: f64 = 3.0;
 /// Letters a second of the language the runaway rule is set on (Russian): where a letter sounds longer (an ideograph
 /// is a syllable), the rule allows a letter as many times more.
@@ -92,7 +98,7 @@ mod tests {
 
     #[test]
     fn the_token_cap_follows_the_phrase_and_its_script() {
-        assert_eq!(token_cap(10, "ru"), ((10.0 * 0.13 + 3.0 + 1.0) * 25.0f64).ceil() as u32 + 8, "frames of 40 ms to a second past the runaway");
+        assert_eq!(token_cap(10, "ru"), ((10.0 * 0.2 + 3.0 + 1.0) * 25.0f64).ceil() as u32 + 8, "frames of 40 ms to a second past the runaway");
         assert_eq!(token_cap(2_000, "ru"), 2048);
         assert_eq!(token_cap(0, "ru"), 108);
         assert!(token_cap(40, "zh") > token_cap(40, "ru"), "an ideograph is a syllable");
@@ -101,13 +107,13 @@ mod tests {
 
     #[test]
     fn a_take_past_its_phrase_is_a_runaway() {
-        assert!(!is_runaway(4.0, 10, "ru"), "0.13 s a letter + 3 s is still speech");
-        assert!(is_runaway(4.5, 10, "ru"));
+        assert!(!is_runaway(4.8, 10, "ru"), "0.2 s a letter + 3 s is still speech");
+        assert!(is_runaway(5.5, 10, "ru"));
         assert!(!is_runaway(60.0, 0, "ru"), "a phrase without letters has no length to judge by");
     }
 
-    /// A Chinese phrase of language «auto» is paced as Chinese: 40 ideographs read in 9 s were a «runaway» by the
-    /// Russian rate on every attempt.
+    /// A Chinese phrase of language «auto» is paced as Chinese: 40 ideographs read slowly in 15 s are a «runaway» by
+    /// the Russian rate.
     #[test]
     fn a_phrase_of_auto_language_is_paced_by_its_script() {
         let zh = "今天晚上八点我们在老桥旁边见面然后一起去看电影吃饭聊天散步回家休息明天再见朋友们";
@@ -117,8 +123,8 @@ mod tests {
         assert_eq!(pace_lang("오늘 날씨가 좋네요", "auto"), "ko");
         assert_eq!(pace_lang("Сегодня в восемь вечера", "auto"), "ru");
         assert_eq!(pace_lang(zh, "en"), "en", "a language set by hand stands");
-        assert!(!is_runaway(9.0, spoken_chars(zh), pace_lang(zh, "auto")));
-        assert!(is_runaway(9.0, spoken_chars(zh), "ru"));
+        assert!(!is_runaway(15.0, spoken_chars(zh), pace_lang(zh, "auto")));
+        assert!(is_runaway(15.0, spoken_chars(zh), "ru"));
     }
 
     #[test]

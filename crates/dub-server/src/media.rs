@@ -735,6 +735,33 @@ pub fn trim_ref(src: &Path, dst: &Path, start: f64, end: f64) -> Result<(), Stri
     dub_core::atomic::write_with(dst, |tmp| run_ff_args(&trim_ref_args(src, tmp, start, end, out_rate)))
 }
 
+/// Samples of Higgs's codec hop at 24 kHz: a reference a whole number of them long gives its acoustic and semantic
+/// encoders the same frame count.
+pub const HIGGS_HOP: u64 = 960;
+
+/// The number of 24 kHz samples a reference of `secs` is brought to for Higgs: a whole number of hops, a second at least
+/// (the codec pads a shorter one on its acoustic side only).
+pub fn higgs_ref_samples(secs: f64) -> u64 {
+    let n = (secs.max(0.0) * 24_000.0).ceil() as u64;
+    n.div_ceil(HIGGS_HOP).max(24_000 / HIGGS_HOP) * HIGGS_HOP
+}
+
+/// A reference as Higgs's codec takes it: mono 24 kHz PCM16, `higgs_ref_samples` long (the end padded with silence).
+/// Its server refuses a reference whose length gives its two encoders different frame counts.
+pub fn ref_for_higgs(src: &Path, dst: &Path) -> Result<(), String> {
+    let n = higgs_ref_samples(duration(src)?);
+    let af = format!("aresample=24000,atrim=end_sample={n},apad=whole_len={n}");
+    let args = os_args(&[
+        OsStr::new("-y"), OsStr::new("-i"), src.as_os_str(), OsStr::new("-vn"), OsStr::new("-af"), OsStr::new(&af),
+        OsStr::new("-ac"), OsStr::new("1"), OsStr::new("-ar"), OsStr::new("24000"), OsStr::new("-c:a"), OsStr::new("pcm_s16le"),
+    ]);
+    dub_core::atomic::write_with(dst, |tmp| {
+        let mut a = args.clone();
+        a.push(tmp.as_os_str().to_os_string());
+        run_ff_args(&a)
+    })
+}
+
 // ─── Оконная нарезка для полнометражного пайплайна (#79) ──────────────────────────────────────────
 // Новые хелперы (не трогают существующие): вырезать ОДНО окно вокала в отдельный WAV (RAM O(окна)),
 // либо нарезать весь вокал segment-muxer'ом одним проходом. `-reset_timestamps 1` даёт локальный t=0 в

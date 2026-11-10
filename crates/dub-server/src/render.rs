@@ -512,12 +512,11 @@ pub fn dub_audio(
 /// Само значение регулирует пользователь (proj.audio.voiceover_gain_db, дефолт -6 dB).
 const VOICEOVER_DUCK_MIN_DB: f64 = -40.0;
 
-/// Анти-артефактный ретрай синтеза фразы: до MAX_TTS_ATTEMPTS попыток; детект дефектов — synth_defect
-/// (in-memory по сэмплам voice_clone, ~мкс, без ffmpeg-субпроцесса). Если ПОДРЯД больше CONSECUTIVE_ABORT
-/// артефакт-фраз ИЛИ суммарно ретраев больше бюджета (по длине ролика) — стоп с ошибкой (стенд/рефы).
-/// Лестница: 1 — дефолт; 2-3 — temp-бамп (0.9/1.2); 4-5 — АЛЬТЕРНАТИВНЫЙ реф спикера (+temp).
-/// Смена рефа выбивает вырожденный гул там, где сэмплинг бессилен (QC-вывод: битые кучкуются
-/// по коротким фразам с конкретными рефами).
+/// Повтор синтеза фразы: до MAX_TTS_ATTEMPTS попыток; дефекты дубля — take_defect по сэмплам. Брак дубля остаётся
+/// браком этой фразы (лучший из дублей с речью, иначе оригинал реплики); рендер останавливает только сбой движка
+/// у больше чем CONSECUTIVE_ABORT фраз подряд или сбоев больше бюджета (по длине ролика).
+/// Лестница: 1-3 — основной реф с новыми seed, 4-5 — АЛЬТЕРНАТИВНЫЙ реф спикера. Смена рефа выбивает вырожденный
+/// гул там, где сэмплинг бессилен (QC-вывод: битые кучкуются по коротким фразам с конкретными рефами).
 const MAX_TTS_ATTEMPTS: usize = 5;
 const CONSECUTIVE_ABORT: usize = 8;
 
@@ -535,39 +534,71 @@ const ENGINE_FAILED: &str = "ENGINE_FAILED";
 /// Prefix of «the phrase ran to its token cap without ending»: a runaway take, retried as one.
 const TOKEN_CAP: &str = "TOKEN_CAP";
 
-/// voice_clone с ЖЁСТКИМ таймаутом. Higgs (прекомпил-DLL) СТОХАСТИЧЕСКИ виснет на редких сегментах; in-process
-/// FFI не убить, но есть C-ABI `cancel()`. Гоним синтез в отдельном потоке с таймаутом. По таймауту: cancel()
-/// + ЖДЁМ grace, пока поток реально ВЫЙДЕТ из DLL (нельзя трогать движок конкурентно — single-caller контракт).
-/// Вышел -> движок свободен, Err(таймаут) => вызывающий ретраит. Не вышел -> Err(ENGINE_STUCK) => вызывающий
-/// обрывает рендер (НЕ гоняет движок параллельно с зависшим потоком). Так воркер не блокируется навечно и
-/// не ловит гонку FFI.
+/// Seconds of work an engine took on this machine per second of speech expected, lately: a slow card or the processor
+/// takes many times what a fast card does, and its phrase is not cut off as hung for that.
+static PACE: std::sync::Mutex<Vec<(String, f64)>> = std::sync::Mutex::new(Vec::new());
+
+/// How long a phrase of `expected` seconds may take `engine` before it is taken for hung: eight times the speech, three
+/// times what this engine took here lately when that is longer, 45 s at least, half an hour at most.
+fn guard_timeout(engine: &str, expected: f64) -> Duration {
+    let lately = PACE.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|(e, _)| e == engine).map_or(0.0, |(_, p)| *p);
+    Duration::from_secs_f64((expected.max(0.5) * (8.0f64).max(3.0 * lately)).clamp(45.0, 1800.0))
+}
+
+/// `engine` took `took` for a phrase of `expected` seconds; `finished` — it gave its answer, else it ran out of time,
+/// and took at least that much: the next phrase then waits half as long again.
+fn note_pace(engine: &str, expected: f64, took: Duration, finished: bool) {
+    let pace = took.as_secs_f64() / expected.max(0.5) * if finished { 1.0 } else { 1.5 };
+    let mut all = PACE.lock().unwrap_or_else(|p| p.into_inner());
+    match all.iter_mut().find(|(e, _)| e == engine) {
+        Some((_, p)) if finished => *p = (*p + pace) / 2.0,
+        Some((_, p)) => *p = p.max(pace),
+        None => all.push((engine.to_string(), pace)),
+    }
+}
+
+/// voice_clone фразы, которая звучит `expected` секунд, с ЖЁСТКИМ таймаутом по темпу движка на этой машине
+/// ([`guard_timeout`]). Синтез идёт в отдельном потоке; по таймауту: cancel() + ЖДЁМ grace, пока поток реально
+/// ВЫЙДЕТ из движка (нельзя трогать движок конкурентно — single-caller контракт). Вышел -> движок свободен,
+/// Err(таймаут) => вызывающий ретраит. Не вышел -> Err(ENGINE_STUCK) => вызывающий обрывает рендер (НЕ гоняет
+/// движок параллельно с зависшим потоком).
+
 fn voice_clone_guarded(
     engine: &Arc<TtsEngine>,
     text: &str,
+    lang: &str,
     ref_wav: &str,
     ref_text: Option<&str>,
     opts: &str,
-    timeout: Duration,
+    expected: f64,
 ) -> Result<(Vec<f32>, i32), String> {
+    let timeout = guard_timeout(engine.name(), expected);
+    let started = std::time::Instant::now();
     let (tx, rx) = mpsc::channel();
     let eng = engine.clone();
-    let (t, rw, rt, op) = (
+    let (t, lg, rw, rt, op) = (
         text.to_string(),
+        lang.to_string(),
         ref_wav.to_string(),
         ref_text.map(|s| s.to_string()),
         opts.to_string(),
     );
     std::thread::spawn(move || {
-        let r = eng.voice_clone(&t, &rw, rt.as_deref(), &op);
+        let r = eng.voice_clone(&t, &lg, &rw, rt.as_deref(), &op);
         let _ = tx.send(r); // получателя уже нет по таймауту — send вернёт Err, не паникуем
     });
     // Ждём порциями, чтобы отмена джобы доходила до движка, не дожидаясь таймаута синтеза.
     let ctl = crate::jobs::current();
-    let deadline = std::time::Instant::now() + timeout;
+    let deadline = started + timeout;
     let cancelled = loop {
         let left = deadline.saturating_duration_since(std::time::Instant::now());
         match rx.recv_timeout(left.min(Duration::from_millis(200))) {
-            Ok(r) => return r.map(within_full_scale),
+            Ok(r) => {
+                if r.is_ok() {
+                    note_pace(engine.name(), expected, started.elapsed(), true);
+                }
+                return r.map(within_full_scale);
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(t!("render-synth-thread-ended"));
             }
@@ -579,6 +610,9 @@ fn voice_clone_guarded(
             }
         }
     };
+    if !cancelled {
+        note_pace(engine.name(), expected, started.elapsed(), false);
+    }
     engine.cancel(); // сигнал движку остановить текущую генерацию
     // Ждём фактического выхода отменённого вызова из DLL — только тогда движок снова можно трогать.
     match rx.recv_timeout(Duration::from_secs(GUARD_GRACE_SECS)) {
@@ -591,10 +625,57 @@ fn voice_clone_guarded(
     }
 }
 
-fn load_higgs(paths: &RenderPaths) -> Result<HiggsServer, String> {
+/// `src` as Higgs's codec takes a reference (`media::ref_for_higgs`), a quiet one raised to speech level, kept in the
+/// studio's own cache under `cache`, by the source's path, size and time: never beside the source (a voice library, a
+/// project, a neighbour's file).
+
+fn higgs_reference(cache: &Path, src: &Path) -> Result<PathBuf, String> {
+    let meta = std::fs::metadata(src).map_err(|e| format!("{}: {e}", src.display()))?;
+    let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
+    let key = blake3::hash(format!("{}|{}|{stamp}", src.display(), meta.len()).as_bytes()).to_hex()[..16].to_string();
+    std::fs::create_dir_all(cache).map_err(|e| format!("{}: {e}", cache.display()))?;
+    let dst = cache.join(format!("{key}.wav"));
+    if !dst.is_file() {
+        let shaped = cache.join(format!("{key}.shaped.wav"));
+        media::ref_for_higgs(src, &shaped)?;
+        let (mut x, sr) = wavio::read_mono_f32(&shaped)?;
+        raise_quiet_reference(&mut x);
+        dub_core::atomic::write(&dst, &wavio::encode_wav(&x, sr as i32, 1)).map_err(|e| format!("{}: {e}", dst.display()))?;
+        std::fs::remove_file(&shaped).map_err(|e| format!("{}: {e}", shaped.display()))?;
+    }
+    Ok(dst)
+}
+
+/// RMS of a clone reference below which it is raised to it (−23 dBFS, the level of speech read for a recording):
+/// Higgs speaks at the level of its reference, and a take of a speaker recorded far below it is too quiet to tell from
+/// silence. A reference at or above the level is left as it is.
+const REF_LEVEL_RMS: f32 = 0.0708;
+
+/// Raises a quiet reference to [`REF_LEVEL_RMS`], its peaks kept under full scale.
+fn raise_quiet_reference(x: &mut [f32]) {
+    if x.is_empty() {
+        return;
+    }
+    let rms = (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len() as f64).sqrt() as f32;
+    let peak = x.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    if rms <= 0.0 || rms >= REF_LEVEL_RMS {
+        return;
+    }
+    let gain = (REF_LEVEL_RMS / rms).min(0.99 / peak);
+    if gain > 1.0 {
+        x.iter_mut().for_each(|v| *v *= gain);
+    }
+}
+
+/// Where the references prepared for Higgs are kept.
+fn higgs_cache(repo_root: &Path) -> PathBuf {
+    repo_root.join("temp").join("higgs-refs")
+}
+
+fn load_higgs(repo_root: &Path, models_root: &Path) -> Result<HiggsServer, String> {
     // the build of the voicing device (`tts_backend`, else `local_backend`; «auto»: the card's CUDA build, else Vulkan
     // on a card of another make, else the processor), as Speech Studio voices
-    let build = crate::acpp::build_for(crate::models::server_choice(&paths.models_root, "tts_backend")).map_err(|_| {
+    let build = crate::acpp::build_for(crate::models::server_choice(models_root, "tts_backend")).map_err(|_| {
         let gpu = crate::hw::gpu_report();
         let card = gpu.summary().unwrap_or_else(|| "-".to_string());
         let compute = gpu.compute.as_deref().and_then(|c| c.split_once('.')).and_then(|(a, b)| Some((a.parse::<u32>().ok()?, b.parse::<u32>().ok()?)));
@@ -605,13 +686,16 @@ fn load_higgs(paths: &RenderPaths) -> Result<HiggsServer, String> {
             None => t!("render-higgs-no-gpu", card = card),
         }
     })?;
-    let server = crate::acpp::server(&paths.repo_root, &paths.models_root, build, crate::acpp::HIGGS)
+    let server = crate::acpp::server(repo_root, models_root, build, crate::acpp::HIGGS)
         .map_err(|e| t!("render-higgs-load-failed", error = e))?;
     Ok(HiggsServer {
-        server,
+        server: std::sync::Mutex::new(server),
         cancel: Arc::new(AtomicBool::new(false)),
         running: Arc::new(AtomicBool::new(false)),
         spoke: AtomicBool::new(false),
+        repo_root: repo_root.to_path_buf(),
+        models_root: models_root.to_path_buf(),
+        build,
     })
 }
 
@@ -622,11 +706,15 @@ const HIGGS_CANCEL_GRACE: Duration = Duration::from_secs(5);
 
 /// Higgs Audio v3 in the studio's audiocpp_server, spoken as a stream and put together.
 pub struct HiggsServer {
-    server: Arc<acpp_server::Server>,
+    server: std::sync::Mutex<Arc<acpp_server::Server>>,
     cancel: Arc<AtomicBool>,
     running: Arc<AtomicBool>,
     /// A phrase of this render came out: from then on a failed phrase is that phrase's, not the engine's.
     spoke: AtomicBool,
+    /// Where its server is started again from when it ends before a phrase's first piece.
+    repo_root: PathBuf,
+    models_root: PathBuf,
+    build: crate::acpp::Build,
 }
 
 /// Done with Higgs: its weights leave the card (recognition and the next stages take it), the server stays.
@@ -637,16 +725,13 @@ impl Drop for HiggsServer {
 }
 
 impl HiggsServer {
-    fn speak(&self, text: &str, ref_wav: &str, ref_text: Option<&str>, opts: &str) -> Result<(Vec<f32>, i32), String> {
-        let options = match serde_json::from_str::<serde_json::Value>(opts) {
-            Ok(serde_json::Value::Object(m)) => m,
-            Ok(_) | Err(_) if opts.trim().is_empty() => serde_json::Map::new(),
-            other => return Err(format!("Higgs options are not a JSON object: {opts} ({other:?})")),
-        };
+    fn speak(&self, text: &str, lang: &str, ref_wav: &str, ref_text: Option<&str>, opts: &str) -> Result<(Vec<f32>, i32), String> {
+        let options = higgs_options(opts, text, lang)?;
+        let reference = higgs_reference(&higgs_cache(&self.repo_root), Path::new(ref_wav))?;
         let req = acpp_server::SpeechRequest {
             model: crate::acpp::HIGGS.to_string(),
             input: text.to_string(),
-            voice_ref: Some(acpp_server::VoiceRef::Path(PathBuf::from(ref_wav))),
+            voice_ref: Some(acpp_server::VoiceRef::Path(reference)),
             reference_text: ref_text.map(str::trim).filter(|t| !t.is_empty()).map(str::to_string),
             language: None,
             options,
@@ -654,15 +739,39 @@ impl HiggsServer {
         };
         self.cancel.store(false, Ordering::SeqCst);
         self.running.store(true, Ordering::SeqCst);
+        let ask = |server: &acpp_server::Server, samples: &mut Vec<f32>| {
+            server.speech_rate(&req.model).and_then(|rate| {
+                server
+                    .speech_stream(&req, &self.cancel, &mut |d| {
+                        samples.extend_from_slice(d);
+                        acpp_server::Flow::Continue
+                    })
+                    .map(|_| rate)
+            })
+        };
         let mut samples = Vec::new();
-        let r = self.server.speech_rate(&req.model).and_then(|rate| {
-            self.server
-                .speech_stream(&req, &self.cancel, &mut |d| {
-                    samples.extend_from_slice(d);
-                    acpp_server::Flow::Continue
-                })
-                .map(|_| rate)
-        });
+        let mut r = ask(&self.server(), &mut samples);
+        if let Err(e) = &r {
+            let gone = !matches!(e, acpp_server::AcppError::Cancelled | acpp_server::AcppError::Stalled { .. });
+            if let (true, Err(died)) = (gone, self.server().check_alive()) {
+                if !samples.is_empty() {
+                    self.running.store(false, Ordering::SeqCst);
+                    return Err(crate::acpp::localize(&died));
+                }
+                tracing::warn!("audiocpp_server ended before the phrase's first piece ({died}); started again for one more try");
+                match crate::acpp::server(&self.repo_root, &self.models_root, self.build, crate::acpp::HIGGS) {
+                    Ok(fresh) => {
+                        *self.server.lock().unwrap_or_else(|p| p.into_inner()) = fresh.clone();
+                        r = ask(&fresh, &mut samples);
+                    }
+                    Err(start) => {
+                        self.running.store(false, Ordering::SeqCst);
+                        crate::tts_host::unload();
+                        return Err(format!("{ENGINE_FAILED}: {}", t!("render-higgs-engine-failed", error = format!("{start} ({})", crate::acpp::localize(&died)))));
+                    }
+                }
+            }
+        }
         self.running.store(false, Ordering::SeqCst);
         match r {
             Ok(rate) => {
@@ -682,6 +791,10 @@ impl HiggsServer {
             }
             Err(e) => Err(crate::acpp::localize(&e)),
         }
+    }
+
+    fn server(&self) -> Arc<acpp_server::Server> {
+        self.server.lock().unwrap_or_else(|p| p.into_inner()).clone()
     }
 
     /// Ends the phrase being spoken: its connection closes at the next delta; a phrase that sends none within the
@@ -974,6 +1087,23 @@ fn cap_seconds(opts: &serde_json::Value) -> f64 {
     opts.get("max_tokens").and_then(|t| t.as_u64()).unwrap_or(2048) as f64 / (HIGGS_TOKENS_PER_SEC * HIGGS_CAP_MARGIN)
 }
 
+/// Request options of a Higgs v3 attempt of `text` in `lang` from the attempt's JSON: its seed and `max_tokens` stay,
+/// the sampling is the model's own (`acpp_server::higgs`; the ladder's temperature steps are the scale of the other
+/// engines), and the guard asks for the sound reached at the cap instead of an error, so a runaway is judged by its
+/// length like any other take.
+fn higgs_options(opts: &str, text: &str, lang: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let mut options = match serde_json::from_str::<serde_json::Value>(opts) {
+        Ok(serde_json::Value::Object(m)) => m,
+        Ok(_) | Err(_) if opts.trim().is_empty() => serde_json::Map::new(),
+        other => return Err(format!("Higgs options are not a JSON object: {opts} ({other:?})")),
+    };
+    options.insert("temperature".into(), serde_json::json!(acpp_server::higgs::TEMPERATURE));
+    options.insert("top_p".into(), serde_json::json!(acpp_server::higgs::TOP_P));
+    options.insert("top_k".into(), serde_json::json!(acpp_server::higgs::TOP_K));
+    acpp_server::higgs::guard(&mut options, text, lang);
+    Ok(options)
+}
+
 /// Параметры Qwen3-TTS из JSON попытки Higgs: seed его или свежий случайный, потолок `max_tokens` Higgs
 /// ([`higgs_token_cap`]) -> кадры Qwen (12.5/с с запасом 2), температура Higgs 0.1-0.35 -> 0.6-0.95 (по умолчанию 0.9).
 fn qwen_params(opts: &str) -> (u64, f32, i32) {
@@ -1048,7 +1178,7 @@ fn load_tts_engine(paths: &RenderPaths, lang: &str, progress: &Progress) -> Resu
         Ok(TtsEngine::Drama(load_drama(paths)?))
     } else {
         emit(progress, "tts", &t!("render-loading-higgs"));
-        Ok(TtsEngine::Higgs(load_higgs(paths)?))
+        Ok(TtsEngine::Higgs(load_higgs(&paths.repo_root, &paths.models_root)?))
     }
 }
 
@@ -1063,7 +1193,7 @@ pub enum TtsEngine {
 impl TtsEngine {
     /// Клон голоса рефа. `opts` — JSON лестницы попыток Higgs; Drama берёт из него seed, потолок длины и
     /// ступень температуры (у Drama своя шкала: 1.0 по умолчанию, ступени лестницы опускают её до 0.8).
-    fn voice_clone(&self, text: &str, ref_wav: &str, ref_text: Option<&str>, opts: &str) -> Result<(Vec<f32>, i32), String> {
+    fn voice_clone(&self, text: &str, lang: &str, ref_wav: &str, ref_text: Option<&str>, opts: &str) -> Result<(Vec<f32>, i32), String> {
         if !matches!(self, TtsEngine::Qwen(_)) && ref_wav.starts_with(QWEN_VOICE) {
             return Err(t!("render-qwen-voice-other-engine", voice = ref_wav.to_string()));
         }
@@ -1073,7 +1203,7 @@ impl TtsEngine {
         match self {
             TtsEngine::Qwen(voices) => voices.speak(text, ref_wav, ref_text, opts),
             TtsEngine::Supertonic(voices) => voices.speak(text, ref_wav, opts),
-            TtsEngine::Higgs(e) => e.speak(&qwentts::stress_marks(text, false), ref_wav, ref_text, opts),
+            TtsEngine::Higgs(e) => e.speak(&qwentts::stress_marks(text, false), lang, ref_wav, ref_text, opts),
             TtsEngine::Drama(e) => {
                 let text = qwentts::stress_marks(text, false);
                 let text = text.as_str();
@@ -1084,6 +1214,16 @@ impl TtsEngine {
                 })?;
                 Ok((audio, e.sample_rate() as i32))
             }
+        }
+    }
+
+    /// The engine's name, as its pace on this machine is kept under ([`guard_timeout`]).
+    fn name(&self) -> &'static str {
+        match self {
+            TtsEngine::Higgs(_) => "higgs",
+            TtsEngine::Drama(_) => "drama",
+            TtsEngine::Qwen(_) => "qwen",
+            TtsEngine::Supertonic(_) => "supertonic",
         }
     }
 
@@ -1162,53 +1302,42 @@ fn synth_abort(e: &str) -> bool {
     e.starts_with(ENGINE_STUCK) || e.starts_with(ENGINE_FAILED) || e == crate::jobs::CANCELLED
 }
 
-/// Детект TTS-артефакта «гудение» по сэмплам фразы (in-memory, прямо из voice_clone). Речь на клипе >0.4с
-/// всегда имеет паузы (тихие кадры) и большой размах громкости; непрерывный гул — почти без пауз и с
-/// плоской огибающей. Покадровый RMS (окно 25мс): silent_frac (доля кадров тише peak−30дБ = паузы) и
-/// range_db (размах peak↔trough). Артефакт, если silent_frac < 5% И range_db < 14дБ. Эмпирика: 4 реальных
-/// гудящих фразы → тишина 0%, размах 3-11дБ; 90 нормальных → размах в среднем 53дБ (0 ложных). Быстрее и
-/// проще ffmpeg-субпроцесса: сэмплы уже в руках, один проход арифметики, ноль зависимостей.
-/// Детектор дефектов синтеза v2. Пороги подобраны ПО ДАННЫМ QC-прогона (69 битых / 80 чистых,
-/// ноль ложных на чистой выборке, 2026-07-17):
-/// - "runaway": клип длиннее max(6с, 0.4с×символ) — модель ушла в гул до токен-капа (факт: фраза
-///   2.5с → клип 40.7с; таких найдено 7+, часть с ПРАВИЛЬНЫМ началом — ASR-sim их не ловил);
-/// - "cutoff": ≥4 символов, а клип < 0.045с/симв (факт: «Погнали!» за 0.36с);
-/// - "silence": пик покадрового RMS < 0.02 (минимум чистых 0.0213; провалы 0.014-0.0198 —
-///   СТАРЫЙ детектор их намеренно пропускал гейтом «peak<0.0056 = не судим»);
-/// - "hum": размах < 16дБ при почти нулевых паузах (уточнённый старый паттерн).
-/// None ≠ гарантия чистоты: финальную правду даёт ASR-верификация (QC-пасс после синтеза).
-fn synth_defect(samples: &[f32], sr: i32, tgt_chars: usize) -> Option<&'static str> {
+/// Seconds of sound a letter below which a phrase is cut off (22 letters a second; usual reading is 9–13).
+const CUTOFF_PER_CHAR: f64 = 0.045;
+/// The level from which a sample counts as clipped, and the share of clipped samples that fails a take (open-tts-eval).
+const CLIP_LEVEL: f32 = 0.999;
+const CLIP_SHARE: f64 = 0.01;
+
+/// The defect of a take of a phrase of `chars` letters and digits paced as `lang`, by its samples (Speech Studio's
+/// check, the thresholds of a QC run of 149 clips): a runaway past `acpp_server::higgs::runaway_secs`, a cut-off,
+/// clipping, silence, a hum. None is no proof of a clean take: recognition of the take against its text says that.
+
+fn synth_defect(samples: &[f32], sr: i32, chars: usize, lang: &str) -> Option<&'static str> {
     if sr <= 0 || samples.is_empty() {
         return Some("silence");
     }
     let srn = sr as usize;
     let dur = samples.len() as f64 / srn as f64;
-    if tgt_chars >= 1 && dur > (tgt_chars as f64 * 0.4).max(6.0) {
+    if acpp_server::higgs::is_runaway(dur, chars, lang) {
         return Some("runaway");
     }
-    if tgt_chars >= 4 && dur < tgt_chars as f64 * 0.045 {
+    if chars >= 4 && dur < chars as f64 * CUTOFF_PER_CHAR {
         return Some("cutoff");
+    }
+    let clipped = samples.iter().filter(|v| v.abs() >= CLIP_LEVEL).count() as f64 / samples.len() as f64;
+    if clipped >= CLIP_SHARE {
+        return Some("clipping");
     }
     let w = srn / 40;
     if w == 0 || samples.len() < w * 4 {
         return None;
     }
-    let frames = samples.len() / w;
-    let mut rms: Vec<f64> = Vec::with_capacity(frames);
-    for f in 0..frames {
-        let mut acc = 0.0f64;
-        for i in 0..w {
-            let v = samples[f * w + i] as f64;
-            acc += v * v;
-        }
-        rms.push((acc / w as f64).sqrt());
-    }
+    let rms: Vec<f64> = samples.chunks_exact(w).map(|c| (c.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / w as f64).sqrt()).collect();
     let peak = rms.iter().cloned().fold(0.0f64, f64::max);
     if peak < 0.02 {
         return Some("silence");
     }
-    let thr = peak * 0.0316;
-    let silent = rms.iter().filter(|&&r| r < thr).count() as f64 / frames as f64;
+    let silent = rms.iter().filter(|&&r| r < peak * 0.0316).count() as f64 / rms.len() as f64;
     let trough = rms.iter().cloned().filter(|&r| r > 1e-9).fold(peak, f64::min);
     let range = 20.0 * (peak / trough.max(1e-9)).log10();
     if range < 16.0 && silent < 0.03 {
@@ -1217,10 +1346,10 @@ fn synth_defect(samples: &[f32], sr: i32, tgt_chars: usize) -> Option<&'static s
     None
 }
 
-/// Дефект синтеза дубля текста `text`: признаки `synth_defect`, затем включённые признаки `tts_audit`.
-fn take_defect(samples: &[f32], sr: i32, text: &str, judge: crate::tts_audit::Judge) -> Option<&'static str> {
-    let chars = text.chars().filter(|c| c.is_alphanumeric()).count();
-    synth_defect(samples, sr, chars).or_else(|| {
+/// Дефект синтеза дубля текста `text` на языке `lang`: признаки `synth_defect`, затем включённые признаки `tts_audit`.
+fn take_defect(samples: &[f32], sr: i32, text: &str, lang: &str, judge: crate::tts_audit::Judge) -> Option<&'static str> {
+    let chars = acpp_server::higgs::spoken_chars(text);
+    synth_defect(samples, sr, chars, acpp_server::higgs::pace_lang(text, lang)).or_else(|| {
         if !judge.any() || sr <= 0 {
             return None;
         }
@@ -1241,12 +1370,12 @@ fn within_full_scale((mut samples, sr): (Vec<f32>, i32)) -> (Vec<f32>, i32) {
 
 /// Брак облачного дубля — в журнал: облачный синтез платный и сам не повторяется, реплику перегенерирует
 /// пользователь.
-fn note_cloud_defect(raw: &Path, line: usize, text: &str, judge: crate::tts_audit::Judge, progress: &Progress) -> Result<(), String> {
+fn note_cloud_defect(raw: &Path, line: usize, text: &str, lang: &str, judge: crate::tts_audit::Judge, progress: &Progress) -> Result<(), String> {
     if !judge.any() {
         return Ok(());
     }
     let (x, sr) = wavio::read_mono_f32(raw)?;
-    if let Some(kind) = take_defect(&x, sr as i32, text, judge) {
+    if let Some(kind) = take_defect(&x, sr as i32, text, lang, judge) {
         emit(progress, "tts", &t!("render-cloud-defect", line = line, defect = defect_name(kind)));
     }
     Ok(())
@@ -1304,7 +1433,19 @@ fn defect_name(kind: &str) -> String {
         "padding" => t!("render-defect-padding"),
         "whistle" => t!("render-defect-whistle"),
         "hiss" => t!("render-defect-hiss"),
+        "clipping" => t!("render-defect-clipping"),
         other => other.to_string(),
+    }
+}
+
+/// How bad a defective take is among the takes that still hold speech, the least bad first (Speech Studio's ranking);
+/// None for a take with no speech in it (silence, a hum), never kept for a phrase. The signs of `tts_audit` mark speech
+/// with a flaw at its edges, like clipping; a cut-off, drawn-out or repeating phrase may lack or add words.
+fn usable_rank(kind: &str) -> Option<u8> {
+    match kind {
+        "clipping" | "end_burst" | "padding" | "whistle" | "hiss" => Some(1),
+        "runaway" | "cutoff" | "repeat" => Some(2),
+        _ => None,
     }
 }
 
@@ -2060,7 +2201,7 @@ fn build_dub_pass(
                     ckpts.set(&sid_of(fi, s), &keys[idx])?;
                     batch_new.insert(idx);
                     ok += 1;
-                    note_cloud_defect(&wd.join(format!("seg_{}.wav", sid_of(fi, s))), fi, s.tgt_text.trim(), cloud_judge, progress)?;
+                    note_cloud_defect(&wd.join(format!("seg_{}.wav", sid_of(fi, s))), fi, s.tgt_text.trim(), &proj.tgt_lang, cloud_judge, progress)?;
                 }
             }
             emit(progress, "tts", &t!("render-cloud-tts-ready", count = ok),
@@ -2211,7 +2352,7 @@ fn build_dub_pass(
                 ) {
                 Ok(wav) => {
                     dub_core::atomic::write(&raw, &wav).map_err(|e| t!("render-write-cloud-segment", line = fi, error = e.to_string()))?;
-                    note_cloud_defect(&raw, fi, tgt, cloud_judge, progress)?;
+                    note_cloud_defect(&raw, fi, tgt, &proj.tgt_lang, cloud_judge, progress)?;
                 }
                 Err(e) => {
                     emit(progress, "tts", &t!("render-cloud-tts-failed", line = fi, error = e.to_string()),
@@ -2233,14 +2374,8 @@ fn build_dub_pass(
                 Some(emo) => emo,
                 None => (ref_of(s), reftext_of(s)),
             };
-            // Анти-артефактный ретрай: иногда Higgs выдаёт «гудение» (непрерывный гул без речи). Детект
-            // in-memory (synth_defect) по сэмплам; перегенерируем — синтез стохастичен, повтор обычно
-            // даёт валидный дубль. Вариативность ретрая (BORROWINGS #17 + ревью-находка D): у Higgs
-            // подтверждён рычаг сэмплинга `temperature` (PROSODY_FINDINGS §6.1); поле `seed` НЕ подтверждено
-            // (DLL прекомпилена, C++ нет). Если варьировать ТОЛЬКО seed и DLL его игнорит — все 3 попытки
-            // битово идентичны → тот же гул → жёсткий abort. Поэтому на ПОВТОРНОЙ попытке бампаем
-            // temperature (0.9→1.2) — выше рандом сэмплинга → выход из вырожденного гула; seed добавляем
-            // бонусом. Первая попытка — пустой opts = дефолт движка (питон-паритет).
+            // Повтор дефектного дубля (take_defect по сэмплам): синтез стохастичен, новая попытка с новым seed или
+            // альт-рефом обычно даёт годный дубль.
             let spk_key = s.speaker.clone().unwrap_or_else(|| "0".into());
             let alt = alt_refs.get(&spk_key);
             let tgt_chars = tgt.chars().filter(|c| c.is_alphanumeric()).count();
@@ -2248,8 +2383,8 @@ fn build_dub_pass(
             let expected_dur = (s.end - s.start).max(0.6);
             let tok_cap = higgs_token_cap(expected_dur, tgt, &proj.tgt_lang);
             
-            // Динамическая адаптация темпа (Speech Rate): если текст плотный (>14 знаков/сек), понижаем
-            // температуру и зажимаем повторы, выговаривая текст собранно; если редкий — повышаем.
+            // Динамическая адаптация темпа (Speech Rate) для Qwen3-TTS и Drama 3: если текст плотный (>14 знаков/сек),
+            // понижаем температуру, выговаривая текст собранно; если редкий — повышаем.
             let rate_ratio = if speech_rate_on && expected_dur > 0.1 && tgt_chars > 0 {
                 let ideal_dur = (tgt_chars as f64) / dub_core::fit::table_cps(&proj.tgt_lang);
                 (ideal_dur / expected_dur).clamp(0.70, 1.40)
@@ -2259,9 +2394,11 @@ fn build_dub_pass(
             let base_temp = if rate_ratio > 1.12 { 0.18 } else if rate_ratio < 0.88 { 0.32 } else { 0.30 };
 
             let mut attempt = 0usize;
-            let mut retried = false;
-            // Лучшая из ДЕФЕКТНЫХ попыток (по размаху) — на случай полного провала лестницы.
+            let mut engine_failed = false;
+            // Наименее повреждённая из дефектных попыток, где есть речь (usable_rank, затем размах), — на случай
+            // полного провала лестницы.
             let mut best_bad: Option<(Vec<f32>, i32, f64)> = None;
+            let mut best_rank = u8::MAX;
             // Drama клонирует голос только по рефу с расшифровкой; реф без речи (ASR не дал текста) — оригинал
             // реплики сразу, без лестницы попыток, которые все кончились бы той же ошибкой.
             let drama_no_text = matches!(engine.as_deref(), Some(TtsEngine::Drama(_)))
@@ -2273,9 +2410,9 @@ fn build_dub_pass(
                 emit(progress, "tts", &t!("render-drama-kept-original", line = fi));
                 (Vec::new(), 24_000)
             } else { loop {
-                // Лестница (ENGINES_FINDINGS §1.3/1.8: на КВАНТЕ temperature ВНИЗ 0.3→0.1, НЕ вверх;
-                // офиц. voice-clone примеры = 0.3): 0 — temp 0.3 + кап + RAS7; 1 — жёстче RAS (repeat=1),
-                // temp 0.2, seed; 2 — temp 0.1, top_p 0.9, seed; 3-4 — АЛЬТ-РЕФ спикера (0.3 / 0.15+RAS1).
+                // Лестница: 0 — кап; 1-2 — новые seed; 3-4 — АЛЬТ-РЕФ спикера. Ступени температуры — шкала Qwen3-TTS
+                // и Drama 3 (qwen_params, drama_params); Higgs берёт из попытки seed и кап, сэмплинг у него свой
+                // (higgs_options).
                 let use_alt = attempt >= 3 && alt.is_some();
                 let (rw, rt): (&PathBuf, Option<&str>) = if use_alt {
                     let (p, t) = alt.unwrap();
@@ -2301,25 +2438,23 @@ fn build_dub_pass(
                 attempt += 1;
                 take_params = opts.clone();
                 take_ref = rw.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                // Таймаут ~8× длины слота (флор 45с): нормальный синтез быстрее реалтайма, зависание —
-                // минуты, так что порог чисто разделяет. Ошибка/таймаут -> как дефект (ретрай стохастику
-                // обычно лечит); исчерпали попытки -> ОРИГИНАЛ (сегмент дороже потерять, чем зависший рендер).
-                let vc_to = Duration::from_secs((((s.end - s.start) * 8.0).ceil() as u64).max(45));
+                // Таймаут — по темпу движка на этой машине (guard_timeout от длины слота). Ошибка/таймаут -> новая
+                // попытка; исчерпали попытки -> лучший дубль с речью или ОРИГИНАЛ реплики.
+                let vc_to = s.end - s.start;
                 let eng = engine.as_ref().expect("the local Higgs (not the cloud)");
-                let (samples, sr) = match voice_clone_guarded(eng, tgt, &rw.to_string_lossy(), rt, &opts, vc_to,
+                let (samples, sr) = match voice_clone_guarded(eng, tgt, &proj.tgt_lang, &rw.to_string_lossy(), rt, &opts, vc_to,
                     ) {
                     Ok(v) => v,
                     Err(e) if synth_abort(&e) => return Err(e), // движок завис в DLL или отмена — обрыв, не гоняем параллельно
                     Err(e) => {
-                        retried = true;
-                        total_retries += 1;
                         let cause = if e.starts_with(TOKEN_CAP) { FailureCause::Defect("runaway") } else { FailureCause::Engine };
+                        if cause == FailureCause::Engine {
+                            engine_failed = true;
+                            total_retries += 1;
+                            last_failure = e.to_string();
+                        }
                         tracing::warn!("TTS line {fi}, attempt {attempt}/{MAX_TTS_ATTEMPTS}: {cause:?}: {e}");
                         *failures.entry(cause).or_insert(0) += 1;
-                        last_failure = match cause {
-                            FailureCause::Defect(kind) => defect_name(kind),
-                            FailureCause::Engine => e.to_string(),
-                        };
                         let e = match e.strip_prefix(TOKEN_CAP) {
                             Some(rest) => format!("{}: {}", defect_name("runaway"), rest.trim_start_matches(':').trim()),
                             None => e,
@@ -2344,7 +2479,7 @@ fn build_dub_pass(
                         continue;
                     }
                 };
-                match take_defect(&samples, sr, tgt, judge) {
+                match take_defect(&samples, sr, tgt, &proj.tgt_lang, judge) {
                     None => break (samples, sr), // дефектов не видно — берём
                     Some(kind) => {
                         let rng = hum_range_db(&samples, sr);
@@ -2352,8 +2487,11 @@ fn build_dub_pass(
                             "TTS line {fi}, attempt {attempt}/{MAX_TTS_ATTEMPTS}: {kind} ({:.1} s, loudness range {rng:.0} dB)",
                             samples.len() as f64 / sr.max(1) as f64
                         );
-                        if best_bad.as_ref().map_or(true, |(_, _, b)| rng > *b) {
-                            best_bad = Some((samples, sr, rng));
+                        if let Some(rank) = usable_rank(kind) {
+                            if best_bad.as_ref().is_none_or(|(_, _, b)| rank < best_rank || (rank == best_rank && rng > *b)) {
+                                best_bad = Some((samples, sr, rng));
+                                best_rank = rank;
+                            }
                         }
                         if attempt >= MAX_TTS_ATTEMPTS {
                             // Всегда используем сгенерированный TTS-звук (даже для коротких фраз / выкриков / хоров),
@@ -2372,12 +2510,9 @@ fn build_dub_pass(
                                 break (Vec::new(), sr);
                             }
                         }
-                        // Признаки tts_audit — брак отдельной фразы, а не сбой движка: в счёт обрыва рендера не идут.
+                        // Брак дубля — брак этой фразы, а не сбой движка: в счёт обрыва рендера не идёт.
                         if !crate::tts_audit::is_take_sign(kind) {
-                            retried = true;
-                            total_retries += 1;
                             *failures.entry(FailureCause::Defect(kind)).or_insert(0) += 1;
-                            last_failure = defect_name(kind);
                         }
                         let via = if attempt >= 3 { t!("render-retry-alt-ref") } else { t!("render-retry-temperature") };
                         emit(progress, "tts", &t!("render-defect-regenerating", line = fi, defect = defect_name(kind), via = via, attempt = attempt + 1, attempts = MAX_TTS_ATTEMPTS));
@@ -2388,8 +2523,8 @@ fn build_dub_pass(
                 let wav = crate::wavio::encode_wav(&samples, sr, 1);
                 dub_core::atomic::write(&raw, &wav).map_err(|e| t!("render-write-segment", line = fi, error = e.to_string()))?;
             }
-            // Много ретраев подряд/суммарно = систем. проблема (стенд/VRAM или реф-клипы) → стоп с ошибкой.
-            if retried {
+            // Сбои движка у многих фраз подряд или суммарно = системная проблема (стенд, видеопамять) → стоп с ошибкой.
+            if engine_failed {
                 consec += 1;
                 if consec > CONSECUTIVE_ABORT || total_retries > retry_budget {
                     let causes = failures
@@ -2465,12 +2600,12 @@ fn build_dub_pass(
                     "{{\"temperature\":{temp:.2},\"top_p\":0.95,\"top_k\":50,\"max_tokens\":{tok_cap},\"seed\":{seed}}}"
                 );
                 let rt_mt = ref_text_mt.as_deref();
-                let vc_to = Duration::from_secs((((s.end - s.start) * 8.0).ceil() as u64).max(45));
+                let vc_to = s.end - s.start;
                 let eng = engine.as_ref().unwrap();
-                match voice_clone_guarded(eng, tgt, &ref_wav_mt.to_string_lossy(), rt_mt, &opts, vc_to,
+                match voice_clone_guarded(eng, tgt, &proj.tgt_lang, &ref_wav_mt.to_string_lossy(), rt_mt, &opts, vc_to,
                 ) {
                     Ok((samples, sr)) => {
-                        if take_defect(&samples, sr, tgt, judge).is_none() {
+                        if take_defect(&samples, sr, tgt, &proj.tgt_lang, judge).is_none() {
                             let wav = crate::wavio::encode_wav(&samples, sr, 1);
                             dub_core::atomic::write(&take_path, &wav)?;
                             let td = media::duration(&take_path)?;
@@ -2682,8 +2817,8 @@ fn build_dub_pass(
                 let main_rw = ref_of(s);
                 let main_rt = reftext_of(s);
                 let alt = alt_refs.get(spk);
-                // до 3 свежих попыток (низкая temperature по ENGINES_FINDINGS §1.3 + кап токенов §1.1):
-                // альт-реф 0.3 → альт-реф 0.15+RAS1 → основной 0.10 с новым seed
+                // до 3 свежих попыток: альт-реф → альт-реф с seed → основной реф с новым seed (Higgs берёт из
+                // них seed и кап, сэмплинг у него свой — higgs_options)
                 let e_dur = (s.end - s.start).max(0.6);
                 let cap = higgs_token_cap(e_dur, s.tgt_text.trim(), &proj.tgt_lang);
                 let base = format!("\"top_k\":50,\"max_tokens\":{cap}");
@@ -2700,13 +2835,13 @@ fn build_dub_pass(
                 .into_iter()
                 .enumerate()
                 {
-                    let vc_to = Duration::from_secs((((s.end - s.start) * 8.0).ceil() as u64).max(45));
-                    let (smp, r) = match voice_clone_guarded(engine.as_ref().expect("the local Higgs (QC is not for the cloud)"), tgtq, &rw.to_string_lossy(), rt, &opts, vc_to) {
+                    let vc_to = s.end - s.start;
+                    let (smp, r) = match voice_clone_guarded(engine.as_ref().expect("the local Higgs (QC is not for the cloud)"), tgtq, &proj.tgt_lang, &rw.to_string_lossy(), rt, &opts, vc_to) {
                         Ok(v) => v,
                         Err(e) if synth_abort(&e) => return Err(e), // движок завис или отмена — обрыв, не гоняем параллельно
                         Err(_) => continue,
                     };
-                    if take_defect(&smp, r, tgtq, judge).is_some() {
+                    if take_defect(&smp, r, tgtq, &proj.tgt_lang, judge).is_some() {
                         continue;
                     }
                     let wav = crate::wavio::encode_wav(&smp, r, 1);
@@ -4118,7 +4253,7 @@ mod tests {
 
     #[test]
     fn a_take_without_samples_is_silence_and_measures_zero() {
-        assert_eq!(synth_defect(&[], 24_000, 12), Some("silence"));
+        assert_eq!(synth_defect(&[], 24_000, 12, "ru"), Some("silence"));
         let dir = tempfile::tempdir().unwrap();
         let wav = dir.path().join("seg_s213.wav");
         hound::WavWriter::create(&wav, hound::WavSpec { channels: 1, sample_rate: 24_000, bits_per_sample: 16, sample_format: hound::SampleFormat::Int }).unwrap().finalize().unwrap();
@@ -4784,5 +4919,181 @@ mod tests {
         assert_eq!((r.spec().sample_rate, r.spec().channels), (44_100, 2), "на сепарацию реплика идёт в полной полосе");
         assert!((r.duration() as f64 / 44_100.0 - 2.0).abs() < 0.01, "{}", r.duration());
         let _ = std::fs::remove_dir_all(&wd);
+    }
+
+    fn speech(secs: f64, sr: i32) -> Vec<f32> {
+        let n = (secs * sr as f64) as usize;
+        (0..n).map(|i| if (i / (sr as usize / 5)) % 2 == 0 { 0.3 * ((i as f32) * 0.05).sin() } else { 0.0 }).collect()
+    }
+
+    #[test]
+    fn a_runaway_a_cut_off_and_silence_are_defects_and_speech_is_not() {
+        let sr = 24_000;
+        assert_eq!(synth_defect(&speech(30.0, sr), sr, 10, "ru"), Some("runaway"));
+        assert_eq!(synth_defect(&speech(4.8, sr), sr, 10, "ru"), None, "0.2 s a char + 3 s is still speech");
+        assert_eq!(synth_defect(&speech(5.5, sr), sr, 10, "ru"), Some("runaway"));
+        assert_eq!(synth_defect(&speech(0.2, sr), sr, 40, "ru"), Some("cutoff"));
+        assert_eq!(synth_defect(&vec![0.0; 24_000], sr, 5, "ru"), Some("silence"));
+        let mut clipped = speech(2.0, sr);
+        clipped.iter_mut().take(1_000).for_each(|v| *v = 1.0);
+        assert_eq!(synth_defect(&clipped, sr, 10, "ru"), Some("clipping"));
+    }
+
+    /// A take with speech in it is ranked for keeping, the least damaged first; one without speech is never kept.
+    #[test]
+    fn a_take_without_speech_is_never_kept_for_a_phrase() {
+        assert!(usable_rank("clipping") < usable_rank("runaway"));
+        assert_eq!(usable_rank("runaway"), usable_rank("cutoff"));
+        assert_eq!(usable_rank("silence"), None);
+        assert_eq!(usable_rank("hum"), None);
+        assert!(usable_rank("end_burst").is_some());
+    }
+
+    /// Higgs takes its seed and cap from the attempt but samples as audio.cpp gives the model, and asks for the sound
+    /// at the cap instead of an error.
+    #[test]
+    fn a_higgs_attempt_keeps_its_seed_and_cap_and_samples_as_the_model() {
+        let o = higgs_options(r#"{"temperature":0.10,"top_p":0.90,"top_k":50,"max_tokens":182,"seed":2002}"#, "Да.", "ru").unwrap();
+        assert_eq!(o["seed"], serde_json::json!(2002));
+        assert_eq!(o["max_tokens"], serde_json::json!(182));
+        assert_eq!(o["temperature"], serde_json::json!(acpp_server::higgs::TEMPERATURE));
+        assert_eq!(o["top_p"], serde_json::json!(acpp_server::higgs::TOP_P));
+        assert_eq!(o["top_k"], serde_json::json!(acpp_server::higgs::TOP_K));
+        assert_eq!(o["allow_incomplete_generation"], serde_json::json!(true));
+        let bare = higgs_options("", "Да.", "ru").unwrap();
+        assert_eq!(bare["max_tokens"], serde_json::json!(acpp_server::higgs::token_cap(2, "ru")));
+        assert!(higgs_options("[1]", "Да.", "ru").is_err());
+    }
+
+    /// The frame counts of Higgs's codec encoders (audio.cpp `higgs_audio_tts/codec.cpp`) for a reference of `n` samples
+    /// at 24 kHz, as the server resamples it to 16 kHz for the semantic one: a length `ref_for_higgs` gives agrees; a
+    /// reference under a second, as it is cut, mostly does not.
+    #[test]
+    fn a_reference_of_whole_hops_gives_both_encoders_the_same_frames() {
+        let conv = |len: i64, k: i64, s: i64, p: i64| (len + 2 * p - k) / s + 1;
+        let semantic = |n16: i64| {
+            let mut f = n16 + 2 * 160;
+            for (k, s) in [(10, 5), (3, 2), (3, 2), (3, 2), (3, 2), (2, 2), (2, 2)] {
+                f = conv(f, k, s, 0);
+            }
+            (f + 1) / 2
+        };
+        let acoustic = |n24: i64| {
+            let mut f = conv(n24, 7, 1, 3);
+            for r in [8, 5, 4, 2, 3] {
+                f = conv(f, 2 * r, r, (r + 1) / 2);
+            }
+            conv(f, 3, 1, 1)
+        };
+        // the server's check: the acoustic count, or that of the input padded by half a hop each side, is the semantic one
+        let agrees = |n24: i64, n16: i64| {
+            let n24 = n24.max(24_000);
+            acoustic(n24) == semantic(n16) || acoustic(n24 + 960) == semantic(n16)
+        };
+        for secs in [0.3, 1.0, 2.37, 5.5, 9.99, 12.0, 29.7] {
+            let n = media::higgs_ref_samples(secs) as i64;
+            assert!(n % 960 == 0 && n >= 24_000);
+            assert!(agrees(n, n * 2 / 3), "{secs} s: {n} samples, acoustic {} semantic {}", acoustic(n), semantic(n * 2 / 3));
+        }
+        // a reference under a second, as it is cut: the codec pads only its acoustic side to a second, and refuses it
+        let at = |n: i64, to: i64| (n * to + 22_050) / 44_100;
+        let refused = (8_820..44_100).filter(|n| !agrees(at(*n, 24_000), at(*n, 16_000))).count();
+        assert!(refused > 30_000, "most references under a second are refused as they are: {refused}");
+    }
+
+    /// A reference prepared for Higgs is kept in the studio's cache, by the source's path, size and time: nothing new
+    /// appears beside the source, and the prepared file is mono 24 kHz of whole hops.
+    #[test]
+    fn a_reference_for_higgs_is_kept_in_the_cache_not_beside_its_source() {
+        let root = tempfile::tempdir().unwrap();
+        let voices = root.path().join("voices");
+        std::fs::create_dir_all(&voices).unwrap();
+        let tone: Vec<f32> = (0..44_100 * 2).map(|i| 0.2 * (i as f32 * 0.03).sin()).collect();
+        std::fs::write(voices.join("Анна.wav"), crate::wavio::encode_wav(&tone, 44_100, 1)).unwrap();
+        let cache = higgs_cache(root.path());
+        let first = higgs_reference(&cache, &voices.join("Анна.wav")).unwrap();
+        assert!(first.starts_with(&cache));
+        assert_eq!(higgs_reference(&cache, &voices.join("Анна.wav")).unwrap(), first, "kept, not made again");
+        assert_eq!(std::fs::read_dir(&voices).unwrap().count(), 1, "nothing beside the voice");
+        let (x, sr) = wavio::read_mono_f32(&first).unwrap();
+        assert_eq!(sr, 24_000);
+        assert_eq!(x.len() as u64 % media::HIGGS_HOP, 0);
+    }
+
+    /// A speaker recorded far below speech level gives Higgs a reference raised to it (Higgs speaks at its reference's
+    /// level, and a take of −43 dB was refused as silence on every attempt); a reference at speech level stays as it is.
+    #[test]
+    fn a_quiet_reference_is_raised_to_speech_level_and_a_normal_one_is_kept() {
+        let rms = |x: &[f32]| (x.iter().map(|v| (*v as f64).powi(2)).sum::<f64>() / x.len() as f64).sqrt() as f32;
+        let mut quiet: Vec<f32> = (0..24_000).map(|i| 0.01 * (i as f32 * 0.05).sin()).collect();
+        raise_quiet_reference(&mut quiet);
+        assert!((rms(&quiet) - REF_LEVEL_RMS).abs() < 1e-3, "{}", rms(&quiet));
+        let normal: Vec<f32> = (0..24_000).map(|i| 0.3 * (i as f32 * 0.05).sin()).collect();
+        let mut kept = normal.clone();
+        raise_quiet_reference(&mut kept);
+        assert_eq!(kept, normal);
+        let mut spiky = vec![0.001f32; 24_000];
+        spiky[100] = 0.5;
+        raise_quiet_reference(&mut spiky);
+        assert!(spiky.iter().all(|v| v.abs() <= 0.99), "peaks stay under full scale");
+    }
+
+    /// A phrase waits for its engine as long as that engine takes on this machine: 45 s for a short one at first, three
+    /// times its pace once it is known, and half as long again as a phrase that ran out of time.
+    #[test]
+    fn the_wait_for_a_phrase_follows_the_engine_s_pace_here() {
+        let engine = "test engine of the pace";
+        assert_eq!(guard_timeout(engine, 2.0), Duration::from_secs(45));
+        assert_eq!(guard_timeout(engine, 10.0), Duration::from_secs(80), "eight times a long phrase");
+        note_pace(engine, 2.0, Duration::from_secs(40), true);
+        assert_eq!(guard_timeout(engine, 2.0), Duration::from_secs(120), "a slow card: 20 s of work a second, three times that");
+        let hung = "test engine that ran out of time";
+        note_pace(hung, 1.0, Duration::from_secs(45), false);
+        assert_eq!(guard_timeout(hung, 1.0), Duration::from_secs_f64(202.5), "the next phrase waits half as long again, thrice");
+        assert_eq!(guard_timeout("test engine on a fast card", 600.0), Duration::from_secs(1800), "half an hour at most");
+    }
+
+    /// Higgs on a real server, before and after: `HIGGS_ROOT` — a studio root with the server under `tools` and Higgs
+    /// under `models`, `HIGGS_REF` — a voice recording. A reference of 0.6 s at 44.1 kHz given as it is cut, and given as
+    /// `speak` prepares it; a server killed before a phrase, then asked through `speak`.
+    #[test]
+    #[ignore = "needs the audio.cpp server, Higgs and a card"]
+    fn higgs_on_a_real_server_before_and_after() {
+        // a test process has no job object of the studio: the servers it starts outlive it unless stopped here
+        struct StopServers;
+        impl Drop for StopServers {
+            fn drop(&mut self) {
+                acpp_server::SERVERS.stop_all();
+            }
+        }
+        let _servers = StopServers;
+        let root = PathBuf::from(std::env::var("HIGGS_ROOT").expect("HIGGS_ROOT"));
+        let voice = PathBuf::from(std::env::var("HIGGS_REF").expect("HIGGS_REF"));
+        let work = tempfile::tempdir_in(&root).unwrap();
+        let short = work.path().join("short.wav");
+        let ok = std::process::Command::new("ffmpeg").args(["-v", "error", "-y", "-ss", "1", "-t", "0.6", "-i"]).arg(&voice).args(["-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le"]).arg(&short).status().unwrap();
+        assert!(ok.success());
+        let higgs = load_higgs(&root, &root.join("models")).unwrap();
+        let text = "Проверка голоса на коротком образце.";
+        let req = acpp_server::SpeechRequest {
+            model: crate::acpp::HIGGS.to_string(),
+            input: text.to_string(),
+            voice_ref: Some(acpp_server::VoiceRef::Path(short.clone())),
+            reference_text: None,
+            language: None,
+            options: higgs_options(r#"{"seed":7}"#, text, "ru").unwrap(),
+            stall: HIGGS_STALL,
+        };
+        let raw = higgs.server().speech_stream(&req, &AtomicBool::new(false), &mut |_| acpp_server::Flow::Continue);
+        eprintln!("before: the 0.6 s reference as it is cut: {:?}", raw.as_ref().map(|d| d.samples).map_err(|e| e.to_string()));
+        let started = std::time::Instant::now();
+        let prepared = higgs.speak(text, "ru", &short.to_string_lossy(), None, r#"{"seed":7}"#);
+        eprintln!("after: the same reference prepared: {:?} in {:.1} s", prepared.as_ref().map(|(x, _)| x.len()), started.elapsed().as_secs_f64());
+        let pid = higgs.server().pid();
+        higgs.server().kill();
+        let started = std::time::Instant::now();
+        let again = higgs.speak(text, "ru", &voice.to_string_lossy(), None, r#"{"seed":7}"#);
+        eprintln!("server {pid} killed before a phrase: {:?} in {:.1} s, server now {}", again.as_ref().map(|(x, _)| x.len()), started.elapsed().as_secs_f64(), higgs.server().pid());
+        assert!(prepared.is_ok() && again.is_ok());
     }
 }
