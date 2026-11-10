@@ -270,6 +270,7 @@ setup-pick-model-files = Archivo(s) del modelo
 setup-pick-models-folder = Carpeta con modelos listos
 setup-no-folder = no existe la carpeta { $path }
 voices-not-found = no se encontró la voz { $name } en voices/
+voice-bad-audio = { $name } no es un archivo de sonido que admita el estudio: WAV, MP3, FLAC, M4A u OGG.
 voices-no-vocals = no hay voz para medir F0; primero analiza
 voices-speakers-changed = voces por espacios: los hablantes cambiaron mientras se medía la voz; el proyecto no se modificó, ejecútalo de nuevo
 analyze-args-not-object = argumentos de analyze: se esperaba un objeto

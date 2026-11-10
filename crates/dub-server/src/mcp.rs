@@ -2332,6 +2332,47 @@ fn tools() -> &'static [Tool] {
                     post(project_path(args, "/voice-slots")?, json!({ "male": list("male"), "female": list("female") }))
                 },
             },
+            Tool {
+                name: "project_speakers",
+                description: "The project's speakers as the window's «Speakers and voices» list shows them: each speaker's gender measured from their pitch (null when the vocals do not tell), the pitch and how many seconds they talk.",
+                schema: || object(json!({ "pid": pid() }), &["pid"]),
+                call: |args| get(project_path(args, "/speakers")?),
+            },
+            Tool {
+                name: "voice_import",
+                description: "Make library voices of sound files on this computer (WAV, MP3, FLAC, M4A, OGG), each brought to the reference loudness. name names a single file's voice (a taken name gets a number). Answers the voices with the names added.",
+                schema: || object(json!({ "paths": { "type": "array", "items": { "type": "string" } }, "name": { "type": "string" } }), &["paths"]),
+                call: |args| {
+                    let paths = args.get("paths").and_then(Value::as_array).ok_or("paths must be a list of files")?;
+                    let mut files = Vec::new();
+                    for p in paths {
+                        let path = PathBuf::from(p.as_str().ok_or("every path must be a string")?);
+                        if !path.is_file() {
+                            return Err(format!("{} is not a file on this computer.", path.display()));
+                        }
+                        let name = file_name(&path);
+                        files.push(("file".to_string(), path, name));
+                    }
+                    let mut fields = Vec::new();
+                    if let Some(n) = args.get("name").and_then(Value::as_str).filter(|n| !n.trim().is_empty()) {
+                        fields.push(("name".to_string(), n.trim().to_string()));
+                    }
+                    Ok(Call { method: Method::POST, path: "/voices/import".into(), payload: Payload::Form { fields, files } })
+                },
+            },
+            Tool {
+                name: "voices_import_zip",
+                description: "Take voices from a ZIP file of voices (Speech Studio's or Dub Studio's export: sound, reference text, card, photo): a voice already in the library (the same sound) is skipped, a different one under a taken name gets a number.",
+                schema: || id_only("path", "the .zip file"),
+                call: |args| {
+                    let path = PathBuf::from(text(args, "path")?);
+                    if !path.is_file() {
+                        return Err(format!("{} is not a file on this computer.", path.display()));
+                    }
+                    let file = file_name(&path);
+                    Ok(Call { method: Method::POST, path: "/voices/import-zip".into(), payload: Payload::Form { fields: Vec::new(), files: vec![("file".to_string(), path, file)] } })
+                },
+            },
         ];
         all.extend(atomic::tools());
         all.extend(window::tools());
@@ -3027,6 +3068,7 @@ mod tests {
                 ("number", _) => json!(1.5),
                 ("boolean", _) => json!(true),
                 ("array", _) if property["items"]["type"] == "integer" => json!([1]),
+                ("array", "paths") => json!([video.to_string_lossy()]),
                 ("array", _) => json!(["x1"]),
                 ("object", _) => json!({}),
                 (_, "path") => json!(video.to_string_lossy()),

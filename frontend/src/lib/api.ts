@@ -492,6 +492,22 @@ export const api = {
   // Слоты голосов из библиотеки (#114): раздать голоса по спикерам по полу/приоритету. Пустые списки -> клон.
   voiceSlots: (pid: string, slots: { male: string[]; female: string[] }) =>
     postJson<{ ok: boolean; speakers: Record<string, { voice: string | null; gender: string | null; f0: number | null }> }>(`/projects/${pid}/voice-slots`, slots),
+  speakers: (pid: string) =>
+    getJson<{ speakers: Record<string, { gender: "male" | "female" | null; f0: number | null; seconds: number }> }>(`/projects/${pid}/speakers`),
+  voicesImport: (files: File[], name?: string) => {
+    const fd = new FormData();
+    files.forEach((f) => fd.append("file", f));
+    if (name) fd.append("name", name);
+    return fetch(`${BASE}/voices/import`, { method: "POST", body: fd })
+      .then(coded<{ voices: string[]; names: string[]; cards?: Record<string, VoiceCardView> }>)
+      .then((r) => { keepVoiceCards(r.cards, true); return r; });
+  },
+  voicesImportZip: (file: File) => {
+    const fd = new FormData(); fd.append("file", file);
+    return fetch(`${BASE}/voices/import-zip`, { method: "POST", body: fd })
+      .then(coded<{ voices: string[]; added: string[]; already: string[]; cards?: Record<string, VoiceCardView> }>)
+      .then((r) => { keepVoiceCards(r.cards, true); return r; });
+  },
   presets: () => getJson<{ presets: Record<string, Record<string, unknown>>; reveals: string[] }>("/presets"),
   createProject: (file: File, subs?: File | null) => {
     const fd = new FormData(); fd.append("file", file);

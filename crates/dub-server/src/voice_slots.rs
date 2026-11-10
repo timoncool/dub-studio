@@ -65,7 +65,7 @@ pub fn vocals_for(dir: &Path) -> Option<PathBuf> {
     [dir.join("vocals16_clean.wav"), dir.join("vocals16.wav")].into_iter().find(|p| p.is_file())
 }
 
-/// Итог раздачи для ответа: {speaker: {voice, gender, f0}}.
+/// Итог раздачи для ответа: {speaker: {voice, gender, f0, seconds}}.
 pub fn mapping(assigns: &[SpeakerAssign]) -> Value {
     assigns
         .iter()
@@ -81,6 +81,7 @@ pub fn mapping(assigns: &[SpeakerAssign]) -> Value {
                     "voice": a.voice.clone().map(Value::from).unwrap_or(Value::Null),
                     "gender": gender,
                     "f0": a.f0,
+                    "seconds": a.total_dur,
                 }),
             )
         })

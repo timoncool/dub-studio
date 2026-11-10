@@ -213,6 +213,7 @@ setup-pick-model-files = 模型文件
 setup-pick-models-folder = 包含现成模型的文件夹
 setup-no-folder = 文件夹 { $path } 不存在
 voices-not-found = 在 voices/ 中未找到音色 { $name }
+voice-bad-audio = { $name } 不是工作室支持的音频文件：WAV、MP3、FLAC、M4A 或 OGG。
 voices-no-vocals = 没有可测量 F0 的人声；请先分析
 voices-speakers-changed = 按槽位分配音色：测量音色期间说话人发生了变化；项目未修改，请重新运行
 analyze-args-not-object = analyze 参数：应为对象

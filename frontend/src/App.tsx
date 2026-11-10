@@ -58,6 +58,7 @@ import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
 import VoiceCatalog from "./components/voices/VoiceCatalog";
 import { errorText, prettyVoice } from "./lib/voices";
+import { voiceCard } from "./lib/voiceCards";
 import { applyUiScale, pageZoom, scaleForKey, setUiScale, storedUiScale, UI_SCALE_EVENT } from "./lib/uiScale";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
@@ -2594,6 +2595,17 @@ function Editor() {
     finally { setDenoiseBusy(null); }
   };
   const [spkVoiceBusy, setSpkVoiceBusy] = useState<string | null>(null);
+  // «Спикеры и голоса»: пол каждого спикера по F0 его реплик, заново при смене набора спикеров
+  const [speakerInfo, setSpeakerInfo] = useState<Record<string, { gender: "male" | "female" | null; seconds: number }>>({});
+  const speakerSet = [...new Set((p?.segments ?? []).map((s) => s.speaker ?? "0"))].sort().join(",");
+  useEffect(() => {
+    if (!pid || !speakerSet) return;
+    let live = true;
+    api.speakers(pid).then((r) => { if (live) setSpeakerInfo(r.speakers); })
+      .catch((err) => { if (live) pushActivity(errorText(err), "error"); });
+    return () => { live = false; };
+  }, [pid, speakerSet, pushActivity]);
+  const [autoCastBusy, setAutoCastBusy] = useState(false);
   const [voicePreview, setVoicePreview] = useState<string | null>(null);   // имя проигрываемого сэмпла голоса
   const voicePreviewAudio = useRef<HTMLAudioElement | null>(null);
   // Прослушать/остановить сэмпл выбранного голоса (плей-пауза у дропдауна).
@@ -3754,30 +3766,79 @@ function Editor() {
             <VoiceRecorder voiceList={voiceList} onVoices={setVoiceList}
               onDone={(nm) => branch("recast", { voice_mode: "voice", voice_name: nm })} />
             {(() => {
+              // «Спикеры и голоса»: по строке на спикера — пол, голос (клон или голос библиотеки), прослушать, голос из
+              // реплик спикера. Список голосов — по одному на отсортированного спикера, как его читает движок.
               const spks = [...new Set(p.segments.map((s) => s.speaker ?? "0"))].sort();
               if (spks.length === 0) return null;
+              const inPack = p.audio.voice.mode === "voice";
+              const names = inPack ? (p.audio.voice.name || "").split(",").map((s) => s.trim()) : [];
+              const slotOf = (j: number) => (inPack ? names[j] || "" : CLONE_SLOT);
+              const setSlot = (i: number, v: string) => branch("recast", {
+                voice_mode: "voice",
+                voice_name: spks.map((_, j) => (j === i ? v : slotOf(j))).join(","),
+              });
+              const autoByGender = async () => {
+                const male = voiceList.filter((v) => voiceCard(v)?.gender === "male");
+                const female = voiceList.filter((v) => voiceCard(v)?.gender === "female");
+                if (!male.length && !female.length) { pushActivity(t("voice.autoNoGenders"), "error"); return; }
+                setAutoCastBusy(true);
+                try {
+                  await api.voiceSlots(pid, { male, female });
+                  setProject(await api.getProject(pid)); setRendered(false); bump();
+                } catch (err) { await surfaceErr(err); }
+                finally { setAutoCastBusy(false); }
+              };
+              const genderMark = (g: "male" | "female" | null | undefined) =>
+                g === "male" ? t("voice.genderMale") : g === "female" ? t("voice.genderFemale") : t("voice.genderUnknown");
               return (
                 <div className="mt-2">
-                  <div className="text-[10px] text-[var(--color-muted)] mb-1">{t("voice.fromSpeakers")}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {spks.map((spk) => (
-                      <button key={spk} disabled={spkVoiceBusy !== null}
-                        onClick={async () => {
-                          setSpkVoiceBusy(spk);
-                          try {
-                            const r = await makeSpeakerVoice(pid!, spk, t("voice.speakerName", { spk }));
-                            if (r) {
-                              setVoiceList(r.voices);
-                              // one slot per sorted speaker, as the engine reads the list; a lone name voices every speaker
-                              const prev = p.audio.voice.mode === "voice" ? (p.audio.voice.name || "").split(",").map((s) => s.trim()) : [];
-                              branch("recast", { voice_mode: "voice", voice_name: spks.map((s, j) => (s === spk ? r.name : p.audio.voice.mode === "voice" ? prev[j] || "" : CLONE_SLOT)).join(",") });
-                            } else playSfx("error");
-                          } finally { setSpkVoiceBusy(null); }
-                        }}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--color-border)] text-[12px] hover:border-[var(--color-accent)] disabled:opacity-40">
-                        {spkVoiceBusy === spk ? <Loader2 size={12} className="animate-spin" /> : <AudioLines size={12} className="text-[var(--color-accent)]" />}SPK {spk}
-                      </button>
-                    ))}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="text-[10px] text-[var(--color-muted)]">{t("voice.speakersTitle")}</span>
+                    <button type="button" disabled={autoCastBusy || !voiceList.length} onClick={autoByGender} title={t("voice.autoByGenderHint")}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[var(--color-border)] text-[11px] hover:border-[var(--color-accent)] disabled:opacity-40">
+                      {autoCastBusy ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}{t("voice.autoByGender")}
+                    </button>
+                  </div>
+                  <div className="space-y-2 w-full min-w-0">
+                    {spks.map((spk, i) => {
+                      const cur = slotOf(i);
+                      return (
+                        <div key={spk} className="w-full min-w-0">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <span className="mono text-[10px] text-[var(--color-muted)]">SPK {spk}</span>
+                            <span className="text-[10px] text-[var(--color-muted)]" title={t("voice.genderHint")}>{genderMark(speakerInfo[spk]?.gender)}</span>
+                            <button type="button" disabled={spkVoiceBusy !== null} title={t("voice.fromSpeakerHint")}
+                              onClick={async () => {
+                                setSpkVoiceBusy(spk);
+                                try {
+                                  const r = await makeSpeakerVoice(pid!, spk, t("voice.speakerName", { spk }));
+                                  if (r) { setVoiceList(r.voices); setSlot(i, r.name); } else playSfx("error");
+                                } finally { setSpkVoiceBusy(null); }
+                              }}
+                              className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[var(--color-border)] text-[11px] hover:border-[var(--color-accent)] disabled:opacity-40">
+                              {spkVoiceBusy === spk ? <Loader2 size={11} className="animate-spin" /> : <AudioLines size={11} className="text-[var(--color-accent)]" />}{t("voice.fromSpeaker")}
+                            </button>
+                          </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Combobox value={cur} onChange={(v) => setSlot(i, v)}
+                              options={[{ value: CLONE_SLOT, label: t("casting.voiceClone") }, ...voiceList.map((v) => ({ value: v, label: prettyVoice(v) }))]}
+                              placeholder={voiceList.length ? t("voice.search") : t("voice.packMissing")}
+                              noResults={t("voice.noMatch")} allowClear className="flex-1 min-w-0" />
+                            <button type="button" disabled={!cur || cur === CLONE_SLOT} onClick={() => toggleVoicePreview(cur)} title={t("voice.preview")}
+                              className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                              {voicePreview === cur && cur ? <Pause size={14} className="text-[var(--color-accent)]" /> : <Play size={14} />}
+                            </button>
+                            {cur && cur !== CLONE_SLOT && !cur.includes(":") && (
+                              <button type="button" disabled={!!denoiseBusy} onClick={() => toggleDenoise(cur)}
+                                title={voiceCleaned.includes(cur) ? t("voice.restore") : t("voice.denoise")}
+                                className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                                {denoiseBusy === cur ? <Loader2 size={14} className="animate-spin" /> : voiceCleaned.includes(cur) ? <RotateCcw size={14} /> : <AudioLines size={14} />}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -3804,46 +3865,6 @@ function Editor() {
             {p.audio.voice.mode !== "voice" && (
               <div className="mt-1 text-[10px] text-[var(--color-muted)] leading-snug">{t("voice.recordHint")}</div>
             )}
-            {p.audio.voice.mode === "voice" && (() => {
-              // per-speaker pack voices: engine maps a comma-list to sorted speakers (cycling), so each
-              // diarized speaker can get a DISTINCT/funny voice. 1 speaker -> a single picker.
-              const spks = [...new Set(p.segments.map((s) => s.speaker ?? "0"))].sort();   // lexical — matches engine sorted()
-              const names = (p.audio.voice.name || "").split(",").map((s) => s.trim());
-              const pick = (cur: string, on: (v: string) => void, withClone = false) => (
-                <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                  <Combobox value={cur} onChange={on}
-                    options={[...(withClone ? [{ value: CLONE_SLOT, label: t("casting.voiceClone") }] : []), ...voiceList.map((v) => ({ value: v, label: prettyVoice(v) }))]}
-                    placeholder={voiceList.length ? t("voice.search") : t("voice.packMissing")}
-                    noResults={t("voice.noMatch")} allowClear className="flex-1 min-w-0" />
-                  <button type="button" disabled={!cur || cur === CLONE_SLOT} onClick={() => toggleVoicePreview(cur)} title={t("voice.preview")}
-                    className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                    {voicePreview === cur && cur ? <Pause size={14} className="text-[var(--color-accent)]" /> : <Play size={14} />}
-                  </button>
-                  {cur && cur !== CLONE_SLOT && !cur.includes(":") && (
-                    <button type="button" disabled={!!denoiseBusy} onClick={() => toggleDenoise(cur)}
-                      title={voiceCleaned.includes(cur) ? t("voice.restore") : t("voice.denoise")}
-                      className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                      {denoiseBusy === cur ? <Loader2 size={14} className="animate-spin" /> : voiceCleaned.includes(cur) ? <RotateCcw size={14} /> : <AudioLines size={14} />}
-                    </button>
-                  )}
-                </div>
-              );
-              if (spks.length <= 1)
-                return <div className="mt-2 flex w-full min-w-0">{pick(names[0] || "", (v) => branch("recast", { voice_mode: "voice", voice_name: v }))}</div>;
-              return (
-                <div className="mt-2 space-y-1.5 w-full min-w-0">
-                  {spks.map((spk, i) => (
-                    <div key={spk} className="flex items-center gap-2 w-full min-w-0">
-                      <span className="mono text-[10px] text-[var(--color-muted)] w-12 shrink-0">SPK {spk}</span>
-                      {pick(names[i] || "", (v) => branch("recast", {
-                        voice_mode: "voice",
-                        voice_name: spks.map((_, j) => (j === i ? v : names[j] || "")).join(","),
-                      }), true)}
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
             <div className="mt-3">
               <div className="flex items-center justify-between text-[11px] mb-1">
                 <span className="text-[var(--color-muted)]">{t("voice.gain")}</span>
@@ -3968,6 +3989,29 @@ function VoiceRecorder({ voiceList, onVoices, onDone }: { voiceList: string[]; o
   const [pack, setPack] = useState(false);
   const [rename, setRename] = useState<{ from: string; to: string } | null>(null);
   const lvlTimer = useRef<number | null>(null);
+  const importInput = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
+  const pushActivity = useStore((s) => s.pushActivity);
+
+  // Свои файлы голосов (WAV, MP3, FLAC, M4A, OGG) и архивы голосов (.zip экспорта Speech Studio) — в библиотеку.
+  const importFiles = async (files: File[]) => {
+    setImporting(true);
+    try {
+      const sounds = files.filter((f) => !f.name.toLowerCase().endsWith(".zip"));
+      for (const zip of files.filter((f) => f.name.toLowerCase().endsWith(".zip"))) {
+        const r = await api.voicesImportZip(zip);
+        onVoices(r.voices);
+        pushActivity(t("voice.importedZip", { added: r.added.length, already: r.already.length }), "work");
+      }
+      if (sounds.length) {
+        const r = await api.voicesImport(sounds);
+        onVoices(r.voices);
+        pushActivity(t("voice.imported", { names: r.names.map(prettyVoice).join(", ") }), "work");
+      }
+    } catch (err) {
+      pushActivity(errorText(err), "error");
+    } finally { setImporting(false); }
+  };
 
   const start = async () => {
     const auto = t("voice.autoName", { n: voiceList.length + 1 }); // авто-имя, переименовать можно после
@@ -3993,7 +4037,7 @@ function VoiceRecorder({ voiceList, onVoices, onDone }: { voiceList: string[]; o
 
   return (
     <div className="mt-2 space-y-2">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {rec ? (
           <button onClick={stop} className="flex-1 inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--color-danger,#ef4444)] text-white text-[12px] font-semibold">
             <Square size={13} />{t("voice.recordStop")}
@@ -4007,6 +4051,12 @@ function VoiceRecorder({ voiceList, onVoices, onDone }: { voiceList: string[]; o
           className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)]">
           <Download size={13} />{t("voice.more")}
         </button>
+        <button onClick={() => importInput.current?.click()} disabled={importing} title={t("voice.importHint")}
+          className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[12px] text-[var(--color-muted)] hover:border-[var(--color-accent)] hover:text-[var(--color-text)] disabled:opacity-40">
+          {importing ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}{t("voice.import")}
+        </button>
+        <input ref={importInput} type="file" multiple hidden accept=".wav,.mp3,.flac,.m4a,.ogg,.zip"
+          onChange={(e) => { const files = [...(e.target.files ?? [])]; e.target.value = ""; if (files.length) importFiles(files); }} />
       </div>
       {rec && (
         <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">

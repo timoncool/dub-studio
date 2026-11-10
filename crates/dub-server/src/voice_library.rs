@@ -233,6 +233,85 @@ pub fn restore_original(dir: &Path, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Имя голоса, безопасное для файла: буквы, цифры, пробел, `-`, `_`, до 48 знаков.
+pub fn sanitize(s: &str) -> String {
+    let n: String = s.chars().filter(|c| c.is_alphanumeric() || *c == ' ' || *c == '-' || *c == '_').take(48).collect();
+    n.trim().to_string()
+}
+
+/// Имя, свободное в папке: `base`, затем `base 2`, `base 3`…
+pub fn free_name(dir: &Path, base: &str) -> String {
+    let base = if base.is_empty() { "Voice".to_string() } else { base.to_string() };
+    if audio_path(dir, &base).is_none() {
+        return base;
+    }
+    (2..).map(|i| format!("{base} {i}")).find(|n| audio_path(dir, n).is_none()).expect("an unused name")
+}
+
+/// Новый голос из звукового файла: WAV с громкостью рефа -20 LUFS (пик -2 dBTP), под свободным именем.
+pub fn import_audio(dir: &Path, base: &str, src: &Path, card: VoiceCard) -> Result<String, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let name = free_name(dir, base);
+    let target = dir.join(format!("{name}.wav"));
+    let part = staging_wav(dir, &name)?;
+    let made = crate::media::loudnorm(src, &part, -20.0, -2.0, 11.0).and_then(|_| std::fs::rename(&part, &target).map_err(|e| format!("{}: {e}", target.display())));
+    if let Err(e) = made {
+        let _ = std::fs::remove_file(&part);
+        return Err(e);
+    }
+    write_card(dir, &name, &card)?;
+    Ok(name)
+}
+
+/// Голоса из архива экспорта Speech Studio или Dub Studio: имя, занятое в библиотеке, получает номер; повторный
+/// импорт того же голоса (тот же звук побайтно) распознаётся и пропускается. `(добавленные, уже бывшие)`.
+pub fn import_zip(dir: &Path, bytes: &[u8]) -> Result<(Vec<String>, Vec<String>), String> {
+    use std::io::Read;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+    let mut groups: std::collections::BTreeMap<String, Vec<(String, Vec<u8>)>> = Default::default();
+    for i in 0..archive.len() {
+        let mut f = archive.by_index(i).map_err(|e| e.to_string())?;
+        if f.is_dir() {
+            continue;
+        }
+        let raw = f.name().map_err(|e| e.to_string())?.into_owned();
+        let entry = Path::new(&raw).file_name().and_then(|s| s.to_str()).unwrap_or("").to_string();
+        let Some((stem, ext)) = entry.strip_suffix(".words.json").map(|stem| (stem, "words.json")).or_else(|| entry.rsplit_once('.')) else { continue };
+        let name = sanitize(stem);
+        let ext = ext.to_ascii_lowercase();
+        let known = AUDIO_EXTS.contains(&ext.as_str()) || ["jpg", "jpeg", "png", "webp"].contains(&ext.as_str()) || ext == "txt" || ext == "json" || ext == "words.json";
+        if name.is_empty() || !known {
+            continue;
+        }
+        let mut data = Vec::new();
+        f.read_to_end(&mut data).map_err(|e| e.to_string())?;
+        groups.entry(name).or_default().push((ext, data));
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let (mut added, mut same) = (Vec::new(), Vec::new());
+    for (name, files) in groups {
+        let Some((audio_ext, audio)) = files.iter().find(|(e, _)| AUDIO_EXTS.contains(&e.as_str())) else { continue };
+        if let Some(existing) = audio_path(dir, &name) {
+            if std::fs::read(&existing).ok().as_deref() == Some(audio.as_slice()) {
+                same.push(name);
+                continue;
+            }
+        }
+        let target = free_name(dir, &name);
+        std::fs::write(dir.join(format!("{target}.{audio_ext}")), audio).map_err(|e| format!("{target}: {e}"))?;
+        for (ext, data) in files.iter().filter(|(e, _)| !AUDIO_EXTS.contains(&e.as_str())) {
+            if ext == "json" {
+                let card: VoiceCard = serde_json::from_slice(data).map_err(|e| format!("{name}.json: {e}"))?;
+                write_card(dir, &target, &card)?;
+            } else {
+                std::fs::write(dir.join(format!("{target}.{ext}")), data).map_err(|e| format!("{target}: {e}"))?;
+            }
+        }
+        added.push(target);
+    }
+    Ok((added, same))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -277,5 +356,48 @@ mod tests {
         voice(&d.path().join(".originals"), "A", "wav");
         delete(d.path(), "A").unwrap();
         assert!(sidecars(d.path(), "A").is_empty());
+    }
+
+    fn zip_of(files: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut buf = std::io::Cursor::new(Vec::new());
+        {
+            let mut zip = zip::ZipWriter::new(&mut buf);
+            for (name, data) in files {
+                zip.start_file(*name, zip::write::SimpleFileOptions::default()).unwrap();
+                zip.write_all(data).unwrap();
+            }
+            zip.finish().unwrap();
+        }
+        buf.into_inner()
+    }
+
+    /// A voice exported by Speech Studio comes in whole with its card; the same voice again is recognised, a different
+    /// one under a taken name gets a number.
+    #[test]
+    fn an_exported_voice_comes_in_whole_and_a_second_import_is_recognised() {
+        let card = serde_json::to_vec(&VoiceCard { favorite: true, gender: "female".into(), ..Default::default() }).unwrap();
+        let zip = zip_of(&[("Анна.wav", b"RIFFaudio"), ("Анна.txt", "привет".as_bytes()), ("Анна.json", &card), ("readme.md", b"x")]);
+        let b = tempfile::tempdir().unwrap();
+        let (added, same) = import_zip(b.path(), &zip).unwrap();
+        assert_eq!((added, same.len()), (vec!["Анна".to_string()], 0));
+        assert_eq!(std::fs::read_to_string(b.path().join("Анна.txt")).unwrap(), "привет");
+        assert!(read_card(b.path(), "Анна").unwrap().favorite);
+        assert!(!b.path().join("readme.md").exists(), "what is not a voice's file stays out");
+        let (added, same) = import_zip(b.path(), &zip).unwrap();
+        assert!(added.is_empty() && same == ["Анна"]);
+        std::fs::write(b.path().join("Анна.wav"), b"RIFFother").unwrap();
+        let (added, _) = import_zip(b.path(), &zip).unwrap();
+        assert_eq!(added, ["Анна 2"], "a different voice under a taken name gets a number");
+    }
+
+    #[test]
+    fn a_free_name_counts_up_and_a_name_is_made_safe_for_a_file() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(free_name(d.path(), "Голос"), "Голос");
+        std::fs::write(d.path().join("Голос.wav"), b"x").unwrap();
+        assert_eq!(free_name(d.path(), "Голос"), "Голос 2");
+        assert_eq!(free_name(d.path(), ""), "Voice");
+        assert_eq!(sanitize("  ../Мой: голос?  "), "Мой голос");
     }
 }

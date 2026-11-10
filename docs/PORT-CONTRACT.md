@@ -101,6 +101,9 @@ Batch: SDK `rust-genai` 0.3.1 загружает JSONL через Files API, с�
 | — | | | **Раунд 2:** analyze покрывает ТОЛЬКО транскрипт-стадию (ASR+диаризация); перевод/vision/OCR/captions — раунд 3 |
 | GET | `/fonts` | **done** | {fonts: family→описание} из captions.FONTS (порядок питона, endpoints.rs::fonts) |
 | GET | `/voices` | **done** | {voices: []} — у порта нет именованного voice-пака (Higgs клонирует из ref-аудио), отдаём пусто как питон при отсутствии пака (endpoints.rs::voices) |
+| POST | `/voices/import` | **done** | multipart: file… (WAV/MP3/FLAC/M4A/OGG), name? — каждый файл становится голосом библиотеки с громкостью рефа (−20 LUFS) и карточкой source=file; name — имя единственного файла, занятое получает номер. Ответ — список голосов как у GET /voices + names; не тот файл → 400 voice-bad-audio |
+| POST | `/voices/import-zip` | **done** | multipart: file — архив голосов (экспорт Speech Studio / Dub Studio: звук, .txt, .json карточки, фото). Тот же звук уже в библиотеке — в already, другой под занятым именем — с номером. Ответ — список голосов + added, already |
+| GET | `/projects/{pid}/speakers` | **done** | {speakers: {id: {voice: null, gender: male\|female\|null, f0, seconds}}} — пол по медиане F0 реплик на чистом вокале (как POST /voice-slots), без вокала — null |
 | GET | `/presets` | **done** | {presets: TEMPLATES{reveal,plate,font,base,plate_c?,accent?}, reveals: [...]} (fresh-семейство без plate_c, endpoints.rs::presets) |
 | POST | `/projects` | **done** | multipart-загрузка видео → `workspace/<pid>/source.<ext>` + `source.txt`; вернуть {project_id, filename} |
 | GET | `/projects` | **done** | Сводка проектов для «Недавних» + job_kind/job_state/job_stage/job_error из job.json |

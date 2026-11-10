@@ -447,7 +447,9 @@ without it they answer that the window is not open, and everything else still wo
 - **glossary**: `glossary_get`, `glossary_set`, `glossary_extract`, `series_glossary_get`,
   `series_glossary_set`.
 - **voices**: `voices_list`, `voices_catalog`, `voice_download`, `voices_download_pack`,
-  `voice_rename`, `voice_delete`, `voice_from_speaker`, `voice_slots_assign`; noise out of a
+  `voice_rename`, `voice_delete`, `voice_from_speaker`, `voice_slots_assign`; the speakers with
+  their measured gender: `project_speakers`; the user's own sound files or a .zip of voices into the
+  library: `voice_import`, `voices_import_zip`; noise out of a
   voice's reference (DPDFNet, a job): `voice_denoise`, and its original back: `voice_restore`; a voice from the
   user's microphone: `voice_record_devices`, `voice_record_start`, `voice_record_level`,
   `voice_record_stop`.

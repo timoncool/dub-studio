@@ -285,6 +285,7 @@ setup-pick-model-files = Файл(ы) модели
 setup-pick-models-folder = Папка с готовыми моделями
 setup-no-folder = нет папки { $path }
 voices-not-found = голос { $name } не найден в voices/
+voice-bad-audio = «{ $name }» — не тот звуковой файл: студия берёт WAV, MP3, FLAC, M4A и OGG.
 voices-no-vocals = нет вокала для замера F0 — сначала analyze
 voices-speakers-changed = голоса по слотам: спикеры изменились, пока мерился голос — проект не менялся, запустите ещё раз
 analyze-args-not-object = analyze args: ожидался объект

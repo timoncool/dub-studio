@@ -591,6 +591,9 @@ pub fn build_router(state: AppState) -> Router {
         .route("/voices/delete", post(voices_delete))
         .route("/voices/denoise", post(voices_denoise))
         .route("/voices/restore", post(voices_restore))
+        .route("/voices/import", post(voices_import))
+        .route("/voices/import-zip", post(voices_import_zip))
+        .route("/projects/{pid}/speakers", get(speakers_get))
         .route("/projects/{pid}/speaker-voice", post(speaker_voice))
         .route("/projects/{pid}/voice-slots", post(voice_slots_assign))
         .route("/projects/{pid}/casting", get(casting_get).post(casting_save),
@@ -1476,6 +1479,29 @@ async fn voice_slots_assign(
     }
 }
 
+/// GET /projects/{pid}/speakers — спикеры проекта для списка «Спикеры и голоса»: пол по медиане F0 реплик на чистом
+/// вокале (как у авто-распределения #114), F0 и секунды речи: {speakers: {id: {voice: null, gender, f0, seconds}}}.
+/// Проект без вокала анализа — пол у всех null.
+async fn speakers_get(State(st): State<AppState>, axum::extract::Path(pid): axum::extract::Path<String>) -> Response {
+    let dir = match st.proj_dir(&pid) {
+        Ok(d) => d,
+        Err(r) => return r,
+    };
+    let proj = match st.load_project(&pid) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let res = tokio::task::spawn_blocking(move || {
+        let vocals = voice_slots::vocals_for(&dir).unwrap_or_else(|| dir.join("vocals16.wav"));
+        voice_slots::plan(&proj, &vocals, &dir, &voice_slots::Slots { male: Vec::new(), female: Vec::new() })
+    })
+    .await;
+    match res {
+        Ok(assigns) => Json(json!({ "speakers": voice_slots::mapping(&assigns) })).into_response(),
+        Err(e) => join_failure(e),
+    }
+}
+
 // ─── Кастинг персонажей (#115) ──────────────────────────────────────────────
 
 /// Единый шейп персонажа для фронта (тип Character в api.ts): id/name/gender/voice/speaker_ids/
@@ -1901,6 +1927,84 @@ async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> J
     match voice_library::delete(&st.voices_dir, &name) {
         Ok(()) => Json(voices_listing(&st.voices_dir)),
         Err(e) => Json(json!({ "error": e, "voices": list_voice_names(&st.voices_dir) })),
+    }
+}
+
+/// POST /voices/import (multipart: file…, name?) — голоса из звуковых файлов, как в Speech Studio: каждый файл
+/// становится голосом с громкостью рефа; `name` называет голос единственного файла (занятое имя получает номер).
+/// Ответ — список голосов, как у GET /voices, и `names` добавленных.
+async fn voices_import(State(st): State<AppState>, mut multipart: Multipart) -> Response {
+    let mut base = String::new();
+    let mut files: Vec<(String, Vec<u8>)> = Vec::new();
+    while let Ok(Some(field)) = multipart.next_field().await {
+        let field_name = field.name().unwrap_or("").to_string();
+        let fname = field.file_name().map(str::to_string);
+        let data = match field.bytes().await {
+            Ok(b) => b,
+            Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        };
+        match field_name.as_str() {
+            "name" => base = voice_library::sanitize(&String::from_utf8_lossy(&data)),
+            _ => files.push((fname.unwrap_or_default(), data.to_vec())),
+        }
+    }
+    if files.is_empty() {
+        return (StatusCode::BAD_REQUEST, "no audio file").into_response();
+    }
+    let dir = st.voices_dir.clone();
+    let single = files.len() == 1;
+    let res = tokio::task::spawn_blocking(move || -> Result<Vec<String>, String> {
+        let mut names = Vec::new();
+        for (fname, data) in files {
+            let path = Path::new(&fname);
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+            if !voice_library::AUDIO_EXTS.contains(&ext.as_str()) {
+                return Err(t!("voice-bad-audio", name = fname.clone()));
+            }
+            let stem = voice_library::sanitize(path.file_stem().and_then(|s| s.to_str()).unwrap_or(""));
+            let name = if single && !base.is_empty() { base.clone() } else { stem };
+            let work = tempfile::Builder::new().prefix("import-").tempdir().map_err(|e| e.to_string())?;
+            let src = work.path().join(format!("in.{ext}"));
+            std::fs::write(&src, &data).map_err(|e| format!("{}: {e}", src.display()))?;
+            let card = voice_library::VoiceCard { source: "file".into(), ..voice_library::guess_card(&name) };
+            names.push(voice_library::import_audio(&dir, &name, &src, card)?);
+        }
+        Ok(names)
+    })
+    .await;
+    match res {
+        Ok(Ok(names)) => {
+            let mut v = voices_listing(&st.voices_dir);
+            v["names"] = json!(names);
+            Json(v).into_response()
+        }
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => join_failure(e),
+    }
+}
+
+/// POST /voices/import-zip (multipart: file) — голоса из архива экспорта (Speech Studio, Dub Studio): уже бывший
+/// голос (тот же звук) пропускается, другой под занятым именем получает номер. Ответ — список голосов, `added` и
+/// `already`.
+async fn voices_import_zip(State(st): State<AppState>, mut multipart: Multipart) -> Response {
+    let mut data = None;
+    while let Ok(Some(field)) = multipart.next_field().await {
+        match field.bytes().await {
+            Ok(b) => data = Some(b.to_vec()),
+            Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        }
+    }
+    let Some(bytes) = data else { return (StatusCode::BAD_REQUEST, "no archive").into_response() };
+    let dir = st.voices_dir.clone();
+    match tokio::task::spawn_blocking(move || voice_library::import_zip(&dir, &bytes)).await {
+        Ok(Ok((added, same))) => {
+            let mut v = voices_listing(&st.voices_dir);
+            v["added"] = json!(added);
+            v["already"] = json!(same);
+            Json(v).into_response()
+        }
+        Ok(Err(e)) => (StatusCode::BAD_REQUEST, e).into_response(),
+        Err(e) => join_failure(e),
     }
 }
 
