@@ -8,9 +8,9 @@ description = "Кастинг персонажей: детект лиц (SCRFD) 
 [dependencies]
 dub-core = { path = "../dub-core", features = ["ort"] }
 tracing = { workspace = true }
-# ort строго той же версии, что dub-asr/dub-ocr (=2.0.0-rc.13, load-dynamic + api-28): ДВЕ разные версии
-# ort в одном бинаре = рассинхрон OrtApi -> дедлок (тот же трап, что чужая system32 DLL). ensure_ort_dylib()
-# тут повторяет паттерн dub-ocr: ORT_DYLIB_PATH -> onnxruntime 1.28.2. ndarray (версия = та, что у ort)
+# ort строго той же версии, что dub-asr/dub-ocr (=2.0.0-rc.15, load-dynamic + api-31): ДВЕ разные версии
+# ort в одном бинаре = рассинхрон OrtApi -> дедлок (тот же трап, что чужая system32 DLL). библиотеку выбирает
+# dub_core::runtime::ensure_ort_dylib: ORT_DYLIB_PATH -> onnxruntime 1.31.1. ndarray (версия = та, что у ort)
 # для тензоров SCRFD/LVFace.
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "ndarray", "tracing", "api-31", "cuda"] }
 ndarray = "0.17"

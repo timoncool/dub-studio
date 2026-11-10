@@ -1,5 +1,5 @@
-//! ONNX-движки кастинга через ort (load-dynamic, та же 1.28.2, что dub-asr/dub-ocr). SCRFD (детект лиц,
-//! 9 выходов) + LVFace-L (эмбеддинг лица, [1,512]). ensure_ort_dylib() — копия паттерна dub-ocr: без
+//! ONNX-движки кастинга через ort (load-dynamic, та же 1.31.1 и то же окружение dub_core::runtime::ort_env, что dub-asr/dub-ocr). SCRFD (детект лиц,
+//! 9 выходов) + LVFace-L (эмбеддинг лица, [1,512]). dub_core::runtime::ensure_ort_dylib: без
 //! явного ORT_DYLIB_PATH ort цепляет чужую system32\onnxruntime.dll (1.17) -> ДЕДЛОК при создании сессии.
 
 use crate::FacesError;

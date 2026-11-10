@@ -1,6 +1,6 @@
-//! ONNX-движки PP-OCR через ort (load-dynamic, та же 1.28.2, что dub-asr). Det (DBNet) + Rec (CRNN).
-//! ensure_ort_dylib() — копия паттерна dub-asr: без явного ORT_DYLIB_PATH ort цепляет чужую
-//! system32\onnxruntime.dll (1.17) -> ДЕДЛОК при создании сессии. Выставляем на встроенную 1.28.2.
+//! ONNX-движки PP-OCR через ort (load-dynamic, та же 1.31.1 и то же окружение dub_core::runtime::ort_env, что dub-asr). Det (DBNet) + Rec (CRNN).
+//! dub_core::runtime::ensure_ort_dylib: без явного ORT_DYLIB_PATH ort цепляет чужую
+//! system32\onnxruntime.dll (1.17) -> ДЕДЛОК при создании сессии. Выставляем на встроенную 1.31.1.
 
 use crate::OcrError;
 use ndarray::Array4;

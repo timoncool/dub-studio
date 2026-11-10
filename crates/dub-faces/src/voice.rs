@@ -58,7 +58,7 @@ pub struct VoiceEmbedder {
 }
 
 impl VoiceEmbedder {
-    /// Загрузить ONNX (ту же onnxruntime.dll, что SCRFD/LVFace — ensure_ort_dylib внутри OnnxModel::load).
+    /// Загрузить ONNX (ту же onnxruntime.dll, что SCRFD/LVFace — окружение dub_core::runtime::ort_env внутри OnnxModel::load).
     pub fn load(onnx: &Path) -> Result<Self, FacesError> {
         Ok(Self {
             model: OnnxModel::load(onnx)?,

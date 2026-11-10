@@ -4,9 +4,9 @@
 //!
 //! Движки det (DBNet+DBPostProcess: min-area-rect, edge-normal unclip) / cls (0/180) / rec (CRNN+CTC,
 //! словарь из метадаты ONNX) — PP-OCR ONNX через ort (models/ocr/). Рантайм — свой ort-пайплайн
-//! (paddle-ocr-rs использует ort rc.10 + download-binaries, что конфликтует с нашим пинном rc.13
-//! load-dynamic api-28 и рискует тем же дедлоком, что чужая system32 DLL — потому свой движок на общей
-//! 1.28.2). Внутренности (unclip/словарь/препроцесс/тесты) поглощены из ветки r4-ocr — строго лучше.
+//! (paddle-ocr-rs использует ort rc.10 + download-binaries, что конфликтует с нашим пинном rc.15
+//! load-dynamic api-31 и рискует тем же дедлоком, что чужая system32 DLL — потому свой движок на общей
+//! 1.31.1). Внутренности (unclip/словарь/препроцесс/тесты) поглощены из ветки r4-ocr — строго лучше.
 
 mod cls;
 mod det;

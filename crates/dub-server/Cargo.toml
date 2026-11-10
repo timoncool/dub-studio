@@ -69,7 +69,7 @@ sha2 = "0.11"
 studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "365c2b757bfddd45fff67e7264b41f4f961a0032" }
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
-# RUAccent (ударения русской озвучки) — ONNX на той же onnxruntime 1.28.2, что кастинг.
+# RUAccent (ударения русской озвучки) — ONNX на той же onnxruntime 1.31.1, что кастинг.
 ort = { version = "=2.0.0-rc.15", default-features = false, features = ["load-dynamic", "tracing", "api-31", "cuda"] }
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 fst = "0.4"
