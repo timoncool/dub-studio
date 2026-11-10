@@ -3184,6 +3184,7 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
         progress(json!({ "stage": "download", "phase": "extract", "file": f.dest_rel, "msg": t!("setup-unpacking", file = f.dest_rel) }),
         );
     }
+    let before = read_record(repo_root, f);
     let written = match f.extract {
         Extract::None => {
             std::fs::rename(part, &dest).map_err(|e| {
@@ -3206,9 +3207,27 @@ fn publish(repo_root: &Path, f: &FileSpec, part: &Path, cancel: &dyn Fn() -> boo
         extract => extract_archive(part, f.dest_rel, extract, dir),
     };
     let written = written.map_err(|e| DlError::new("extract", e))?;
+    remove_left_behind(repo_root, before, &written);
     write_record(repo_root, f, &written)?;
     discard_part(part);
     Ok(())
+}
+
+/// An archive unpacked over its earlier version leaves that version's files the new one does not have (a library
+/// renamed between releases): the files the earlier install record lists and the new unpacking did not write are
+/// removed, once the new ones are in place. Only the record's own files; what lies in the folder beside them stays.
+fn remove_left_behind(repo_root: &Path, before: Option<ArchiveRecord>, written: &[PathBuf]) {
+    let Some(before) = before else { return };
+    for old in before.files.iter().map(|x| repo_root.join(&x.path)) {
+        if written.iter().any(|w| w == &old) {
+            continue;
+        }
+        match std::fs::remove_file(&old) {
+            Ok(()) => tracing::info!("removed {}: the earlier version's file the update no longer has", old.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::error!("[ERROR] the earlier version's file {} is left: {e}", old.display()),
+        }
+    }
 }
 
 /// Итог закачки: статус каждого компонента; скачанный вариант модели становится активным (models/active.json),
@@ -4827,6 +4846,27 @@ mod tests {
         assert!(!component_status(root.path(), &c).installed, "not the pinned build");
         let record = read_record(root.path(), f).expect("recorded again");
         assert_ne!(record.sha256, "stale", "the record names the file now in place");
+    }
+
+
+    /// An engine's new version unpacked over the old one: the old version's library the new archive does not have is
+    /// removed, the files the new one wrote and a file that was never the archive's stay.
+    #[test]
+    fn an_update_removes_the_files_only_the_earlier_version_had() {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("models/transcribe-engine");
+        std::fs::create_dir_all(&dir).unwrap();
+        for name in ["transcribe.dll", "ggml.dll", "ggml-base.dll", "transcribe-ggml.dll", "notes.txt"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        let recorded = |name: &str| RecordedFile { path: format!("models/transcribe-engine/{name}"), size: 1 };
+        let before = ArchiveRecord { sha256: "old".into(), url: String::new(), files: vec![recorded("transcribe.dll"), recorded("ggml.dll"), recorded("ggml-base.dll")] };
+        let written = vec![dir.join("transcribe.dll"), dir.join("transcribe-ggml.dll")];
+        remove_left_behind(root.path(), Some(before), &written);
+        let mut left: Vec<String> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        left.sort();
+        assert_eq!(left, ["notes.txt", "transcribe-ggml.dll", "transcribe.dll"]);
+        remove_left_behind(root.path(), None, &written);
     }
 
     /// Vendor libraries the studio downloads whose AVX-512 the vendor picks at run time (they run on every x86-64
