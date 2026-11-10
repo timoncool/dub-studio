@@ -2167,6 +2167,7 @@ function InteractiveTimeline({
   scrub,
   segments,
   playing,
+  clock,
   onSeek,
   onPlaySeg,
   setProject,
@@ -2176,6 +2177,8 @@ function InteractiveTimeline({
   scrub: number;
   segments: Project["segments"];
   playing: boolean;
+  /** The playing audio's time, read every frame while `playing`. */
+  clock: () => number;
   onSeek: (t: number) => void;
   onPlaySeg: (seg: Project["segments"][number]) => void;
   setProject: (p: Project) => void;
@@ -2183,6 +2186,7 @@ function InteractiveTimeline({
   const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
+  const playheadRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(60); // pixels per second
   const [draggingSeg, setDraggingSeg] = useState<{
     id: string;
@@ -2195,13 +2199,20 @@ function InteractiveTimeline({
   const total = Math.max(0.1, duration);
   const totalPx = Math.max(800, total * zoom);
 
-  // Auto-scroll follow playhead during playback
-  useEffect(() => {
-    if (!containerRef.current || !playing) return;
-    const playheadPx = scrub * zoom;
-    const halfWidth = containerRef.current.clientWidth / 2;
-    containerRef.current.scrollLeft = Math.max(0, playheadPx - halfWidth);
-  }, [scrub, playing, zoom]);
+  // The playhead and the scroll follow the audio every frame while it plays: the editor's scrub moves in steps.
+  useLayoutEffect(() => {
+    const box = containerRef.current;
+    if (!box || !playing) return;
+    let frame = 0;
+    const follow = () => {
+      const x = clock() * zoom;
+      if (playheadRef.current) playheadRef.current.style.left = `${x}px`;
+      box.scrollLeft = Math.max(0, x - box.clientWidth / 2);
+      frame = requestAnimationFrame(follow);
+    };
+    follow();
+    return () => cancelAnimationFrame(frame);
+  }, [playing, zoom, clock]);
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
@@ -2436,8 +2447,9 @@ function InteractiveTimeline({
 
           {/* Red Playhead Line */}
           <div
+            ref={playheadRef}
             className="absolute top-0 bottom-0 w-0.5 bg-[var(--color-accent)] z-20 pointer-events-none shadow-[0_0_8px_var(--color-accent)]"
-            style={{ left: `${scrub * zoom}px` }}
+            style={playing ? undefined : { left: `${scrub * zoom}px` }}
           />
         </div>
       </div>
@@ -2629,6 +2641,7 @@ function Editor() {
   const previewRef = useRef<HTMLDivElement>(null);                    // контейнер превью -> фулскрин по F + Ctrl-колесо
   const scrubRef = useRef(0);                                         // свежий scrub без stale-замыкания в хоткеях
   const audioRef = useRef<HTMLAudioElement>(null);
+  const audioClock = useCallback(() => audioRef.current?.currentTime ?? scrubRef.current, []);
   const [vol, setVol] = useState<number>(() => { const s = localStorage.getItem("dub-vol"); return s ? parseFloat(s) : 1; });
 
   const playEndRef = useRef<number>(Infinity);                        // stop time for single-phrase playback (Infinity = full)
@@ -3558,7 +3571,7 @@ function Editor() {
                 onChange={(e) => onSeek(parseFloat(e.target.value))}
                 className="w-full h-1 accent-[var(--color-accent)] cursor-pointer" />
               <InteractiveTimeline pid={pid} duration={p.meta.duration || 0} scrub={scrub} segments={p.segments}
-                playing={play} onSeek={onSeek} onPlaySeg={playSeg} setProject={setProject} />
+                playing={play} clock={audioClock} onSeek={onSeek} onPlaySeg={playSeg} setProject={setProject} />
             </div>
           )}
         </div>
