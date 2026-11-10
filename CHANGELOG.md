@@ -6,6 +6,10 @@ release notes on GitHub are taken from the release's section.
 
 ## Unreleased
 
+### Added
+
+- **Silence compaction before analysis**: `compact_silence` of `/projects/{pid}/analyze`, MCP `project_analyze` and `transcribe_file` (off by default) squeezes every pause quieter than −60 dBFS and longer than 20 s down to 20 s, so separation, diarization and recognition of a 5-hour Discord track with 70 minutes of speech run over less than three hours and about twice as fast. Lines, word timings and the clean voice stay on the video's own time; pauses over a minute are kept in the project, and the text transcript of `transcribe_file` marks them with a «— пауза N мин —» line. When it would cut less than a minute, or with imported subtitles, the analysis runs on the original recording and says why.
+
 ### Fixed
 
 - **CrisperWhisper recognises recordings of many hours**: it hears a long recording in pieces of up to 90 seconds cut at its pauses (Silero VAD), as Parakeet Ultra does, instead of the whole file at once, which failed with «invalid decoder prompt or token limit» once the model lost its thread on silence, music or noise. A piece ends where the diarization hears another speaker if it can, and the lines are made from the words of all pieces at once, so a phrase is not split where a piece ends. A piece on which the model still loses its thread is recognised again in parts of 30 seconds, and the progress says so. Under «Auto» the language is heard once, at the start of the recording. A project analysed before recognises its speech anew.

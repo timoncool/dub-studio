@@ -288,6 +288,8 @@ pub struct AnalyzeArgs {
                                  // tgt = импортированный текст, Даб Студио только озвучивает. Работает лишь с import_subs.
     pub align_subs: bool, // выровнять тайминги импортированных субтитров по распознанной речи (subalign):
                           // полный прогон ASR ради слов; только для субтитров на языке речи.
+    /// Сжать долгую тишину перед разделением, диаризацией и распознаванием (см. `compact`).
+    pub compact_silence: bool,
 }
 
 /// Пути к моделям/входу для одной джобы analyze.
@@ -978,6 +980,140 @@ fn merge_short_turns(segs: &mut Vec<Segment>) {
     *segs = out;
 }
 
+/// Шаги после успешного разделения: отметки стемов, чистый голос 16 кГц и при сжатии — его развёртка
+/// на исходную шкалу. Любая ошибка — ошибка анализа.
+fn after_separation(
+    stems: &std::path::Path,
+    fresh: bool,
+    clean16: &std::path::Path,
+    compact: Option<(&crate::compact::Map, &crate::compact::Files)>,
+    vocals16: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    if fresh {
+        media::mark_separation(stems)?;
+        if let Some((map, files)) = compact {
+            files.mark_stems(map)?;
+        }
+    }
+    media::to_16k_mono(&stems.join("vocals.wav"), clean16)?;
+    // Кастинг, voice_slots и выравнивание читают чистый голос на исходной шкале.
+    if let Some((map, files)) = compact {
+        crate::compact::expand_wav(clean16, &files.clean16_expanded, map, crate::compact::frames(vocals16)?)?;
+    }
+    Ok(clean16.to_path_buf())
+}
+
+/// Выбор голоса для диаризации и распознавания после разделения. Сбой самого разделителя (и без сжатия —
+/// любой сбой, как до compact_silence) — сообщение и продолжение по несепарированному `raw`. При сжатии
+/// сбой шагов `after` после успешного разделения — ошибка анализа: сжатые файлы без тихих обходов.
+fn separation_outcome(
+    separated: Result<(), String>,
+    compact: bool,
+    after: impl FnOnce() -> Result<std::path::PathBuf, String>,
+    raw: &std::path::Path,
+    progress: &Progress,
+) -> Result<std::path::PathBuf, String> {
+    let failed = match separated {
+        Ok(()) => match after() {
+            Ok(clean) => return Ok(clean),
+            Err(e) if compact => return Err(e),
+            Err(e) => e,
+        },
+        Err(e) => e,
+    };
+    emit(progress, "separate", &t!("analyze-separation-failed", error = failed));
+    Ok(raw.to_path_buf())
+}
+
+fn asr_cache_key(input: &str, source: &str, lang: &str, diar_fp: &str) -> String {
+    cache::hash_stage(&[ASR_VER, input, source, lang, diar_fp])
+}
+
+/// Карта сжатия тишины и запись для `meta.extra.compact_silence`; None в карте — анализ идёт по исходной
+/// записи (параметр выключен, импорт субтитров или вырезать почти нечего).
+fn compact_stage(
+    args: &AnalyzeArgs,
+    paths: &AnalyzePaths,
+    vocals16: &std::path::Path,
+    extract_key: &str,
+    files: &crate::compact::Files,
+    cache: &mut StageCache,
+    progress: &Progress,
+) -> Result<(Option<crate::compact::Map>, Option<Value>), String> {
+    use crate::compact::Prepared;
+    if !args.compact_silence {
+        return Ok((None, None));
+    }
+    if paths.import_subs.is_some() {
+        emit(progress, "compact", &t!("analyze-compact-skipped-subs"));
+        return Ok((None, Some(crate::compact::skipped_meta("imported_subtitles"))));
+    }
+    let key = cache::hash_stage(&[crate::compact::VER, extract_key]);
+    let prepared = if cache.stage_cached(&paths.work_dir, "compact", &key) {
+        crate::jobs::emit_resumed(progress, "compact", &t!("analyze-compact-cached"));
+        Prepared::Applied(crate::compact::load_map(files)?)
+    } else {
+        emit(progress, "compact", &t!("analyze-compact-searching"));
+        let prepared = crate::compact::prepare(vocals16, files)?;
+        if let Prepared::Applied(_) = &prepared {
+            cache.write_stage(&paths.work_dir, "compact", &key, &[&files.vocals16, &files.map]);
+            if let Err(e) = cache.save(&paths.work_dir) {
+                emit(progress, "compact", &t!("analyze-checkpoint-not-saved", stage = "compact", error = e));
+            }
+        }
+        prepared
+    };
+    Ok(match prepared {
+        Prepared::Applied(map) => {
+            emit(progress, "compact", &t!(
+                "analyze-compact-done",
+                left = format!("{:.1}", map.compact_len() / 60.0),
+                total = format!("{:.1}", map.orig_len / 60.0),
+                pauses = map.pauses.len()
+            ));
+            let meta = map.meta();
+            (Some(map), Some(meta))
+        }
+        Prepared::Skipped { cut } => {
+            emit(progress, "compact", &t!(
+                "analyze-compact-skipped-short",
+                cut = format!("{cut:.0}"),
+                min = format!("{:.0}", crate::compact::MIN_SAVING)
+            ));
+            (None, Some(crate::compact::skipped_meta("too_little_silence")))
+        }
+    })
+}
+
+/// `compact/audio_hq.wav`: 44,1 кГц стерео, вырезанная по карте. Общая `audio_hq.wav` только читается;
+/// без неё полная запись извлекается во временный файл в compact/ и после выреза удаляется.
+fn compact_audio_hq(paths: &AnalyzePaths, map: &crate::compact::Map, files: &crate::compact::Files, progress: &Progress) -> Result<(), String> {
+    if files.audio_hq.is_file() {
+        return Ok(());
+    }
+    let shared = paths.work_dir.join("audio_hq.wav");
+    let source = if shared.is_file() {
+        shared
+    } else {
+        emit(progress, "separate", &t!("atomic-extract-separation-audio"));
+        media::extract_audio(&paths.input, &files.audio_hq_full, 44100, 2)?;
+        files.audio_hq_full.clone()
+    };
+    cut_audio_hq(&source, files, map)
+}
+
+/// Вырез `compact/audio_hq.wav`; временный `audio_hq_full.wav` удаляется и при ошибке выреза,
+/// возвращается первая ошибка.
+fn cut_audio_hq(source: &std::path::Path, files: &crate::compact::Files, map: &crate::compact::Map) -> Result<(), String> {
+    let cut = crate::compact::cut_wav(source, &files.audio_hq, map);
+    if source == files.audio_hq_full {
+        let removed = std::fs::remove_file(source).map_err(|e| format!("{}: {e}", source.display()));
+        cut?;
+        return removed;
+    }
+    cut
+}
+
 /// Запустить analyze: extract -> diarize -> transcribe -> Project. Возвращает готовый Project.
 /// Диаризация/транскрипция тяжёлые (ONNX CPU) — вызывать в блокирующем контексте (job worker).
 ///
@@ -1060,8 +1196,16 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     //    (как питон whole-clip; иначе diarize-first порезал бы субтитры по спикерам иначе, чем оригинал).
     // 2c) СЕПАРАЦИЯ ДО диаризации/ASR (best practices: чистый вокал вместо сырого микса — диаризация
     // не путается на музыке, ASR точнее; приказ 2026-07-17). stems-кэш ОБЩИЙ с рендером (wd/stems) —
-    // рендер переиспользует, двойной сепарации нет. Fail-safe: сбой/нет движка -> сырой vocals16.
+    // рендер переиспользует, двойной сепарации нет. Fail-safe: нет движка или сбой разделителя -> сырой
+    // vocals16 (при сжатии — сжатый). Без сжатия так же обходятся и сбои извлечения, отметок и WAV чистого
+    // голоса; при сжатии сбой шагов после разделения — ошибка анализа (см. separation_outcome).
     let want_diar = wants_diarization(args);
+    // 2b) сжатие тишины (compact_silence): разделение, диаризация и распознавание идут по короткой
+    //     записи из compact/, времена реплик переводятся обратно картой до сохранения транскрипта.
+    let compact_files = crate::compact::Files::under(&paths.work_dir);
+    let (compact_map, compact_meta) = compact_stage(args, paths, &vocals16, &extract_key, &compact_files, &mut cache, progress)?;
+    // Шкала распознавания: сжатая запись или исходная.
+    let scale_vocals16 = if compact_map.is_some() { compact_files.vocals16.clone() } else { vocals16.clone() };
     crate::jobs::check_cancelled()?;
     bench.stage("separate");
     if media::drop_stale_separation(&paths.work_dir)? {
@@ -1071,49 +1215,66 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         && paths.bsroformer_cli.is_file()
         && paths.bsroformer_model.is_file()
     {
-        let clean16 = paths.work_dir.join("vocals16_clean.wav");
-        let stems = paths.work_dir.join("stems");
+        let (clean16, stems) = match &compact_map {
+            Some(map) => {
+                compact_files.drop_stale_stems(map)?;
+                (compact_files.clean16.clone(), compact_files.stems.clone())
+            }
+            None => (paths.work_dir.join("vocals16_clean.wav"), paths.work_dir.join("stems")),
+        };
         let cached_voc = stems.join("vocals.wav");
         if !cached_voc.is_file() {
             if let Some(why) = crate::models::sep_unavailable(&paths.models_root) {
                 return Err(why);
             }
+            if let Some(map) = &compact_map {
+                compact_audio_hq(paths, map, &compact_files, progress)?;
+            }
         }
-        let sep_result: Result<std::path::PathBuf, String> = (|| {
-            if !cached_voc.is_file() {
-                let audio_hq = paths.work_dir.join("audio_hq.wav");
+        let fresh = !cached_voc.is_file();
+        let separated: Result<(), String> = if fresh {
+            (|| {
+                let audio_hq = match &compact_map {
+                    Some(_) => compact_files.audio_hq.clone(),
+                    None => paths.work_dir.join("audio_hq.wav"),
+                };
                 if !audio_hq.is_file() {
                     emit(progress, "separate", &t!("atomic-extract-separation-audio"));
                     media::extract_audio(&paths.input, &audio_hq, 44100, 2)?;
                 }
                 emit(progress, "separate", &t!("analyze-separating", model = "BSRoformer"));
                 dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model)
-                    .map_err(|e| e.localize())?;
-                media::mark_separation(&stems)?;
-            } else {
-                emit(progress, "separate", &t!("analyze-separation-cached"));
-            }
-            media::to_16k_mono(&cached_voc, &clean16)?;
-            Ok(clean16.clone())
-        })();
-        match sep_result {
-            Ok(p) => p,
-            Err(e) => {
-                emit(progress, "separate", &t!("analyze-separation-failed", error = e.to_string()));
-                vocals16.clone()
-            }
-        }
+                    .map(|_| ())
+                    .map_err(|e| e.localize())
+            })()
+        } else {
+            emit(progress, "separate", &t!("analyze-separation-cached"));
+            Ok(())
+        };
+        separation_outcome(
+            separated,
+            compact_map.is_some(),
+            || after_separation(&stems, fresh, &clean16, compact_map.as_ref().map(|m| (m, &compact_files)), &vocals16),
+            &scale_vocals16,
+            progress,
+        )?
     } else {
         if want_diar {
             emit(progress, "separate", &t!("analyze-separator-missing", model = "BSRoformer"));
         }
-        vocals16.clone()
+        scale_vocals16.clone()
+    };
+    // Вход перевода и фильтра по транскрипту из кэша — на исходной шкале.
+    let orig_asr_wav = match &compact_map {
+        Some(_) if asr_wav != scale_vocals16 => compact_files.clean16_expanded.clone(),
+        Some(_) => vocals16.clone(),
+        None => asr_wav.clone(),
     };
     crate::jobs::check_cancelled()?;
     bench.stage("diarize");
     emit(progress, "diarize", &t!("analyze-diarizing", model = "Nemotron 3 Diarization"));
     // Вход диаризации и ASR — asr_wav (чистый вокал или сырое аудио): ключи стадий от его отпечатка.
-    let asr_in_hash = cache::hash_file_prefix(&asr_wav);
+    let asr_in_hash = crate::compact::key_input(&cache::hash_file_prefix(&asr_wav), compact_map.is_some());
     let voice_model = dub_faces::wespeaker_path(&paths.models_root);
     let diar_key = diar_cache_key(&asr_in_hash, &paths.sortformer_onnx, &voice_model, args.speaker_count)?;
     let diar = if args.speaker_count == 1 {
@@ -1184,7 +1345,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         }
         None => paths.asr.describe(),
     };
-    let asr_key = cache::hash_stage(&[ASR_VER, &asr_in_hash, &asr_source, &args.src_lang, &diar_fp]);
+    let asr_key = asr_cache_key(&asr_in_hash, &asr_source, &args.src_lang, &diar_fp);
     let cached_transcript =
         stage_load::<TranscriptOut>(&cache, &paths.work_dir, "asr", &asr_key, TRANSCRIPT_FILE, progress);
     let resumed_asr = cached_transcript.is_some();
@@ -1362,8 +1523,8 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             })
             .collect();
         if parakeet && args.src_lang == "auto" {
-            let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
-            let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &vocals16)
+            let clean = (asr_wav != scale_vocals16).then_some(asr_wav.as_path());
+            let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &scale_vocals16)
                 .map_err(|e| t!("analyze-hallucination-filter", error = e.to_string()))?;
             let words: usize = segs
                 .iter()
@@ -1378,6 +1539,10 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         (segs, nsp)
     };
 
+    let orig_diar = match (&compact_map, &diar) {
+        (Some(map), Some(d)) => Some(map.diar_to_original(d)),
+        _ => None,
+    };
     // Галлюцинации ASR (титры субтитровщиков, «Продолжение следует», звуки в скобках): текстовое правило
     // находит кандидатов, звук на интервале (отделённый вокал, реплики диаризации или сырой микс) решает
     // «скрыть» или «только пометить». Импорт субтитров — текст пользователя, его не трогаем.
@@ -1387,9 +1552,22 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         } else {
             dub_asr::HallucinationRules::CaseAware
         };
-        let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
-        let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);
-        let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &vocals16)
+        // Свежий транскрипт и звук — на сжатой шкале; транскрипт из кэша уже на исходной.
+        let from_cache = compact_map.is_some() && resumed_asr;
+        let (clean, turns, voice) = if from_cache {
+            (
+                (orig_asr_wav != vocals16).then_some(orig_asr_wav.as_path()),
+                orig_diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]),
+                &vocals16,
+            )
+        } else {
+            (
+                (asr_wav != scale_vocals16).then_some(asr_wav.as_path()),
+                diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]),
+                &scale_vocals16,
+            )
+        };
+        let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, voice)
             .map_err(|e| t!("analyze-hallucination-filter", error = e.to_string()))?;
         let sel = crate::models::load_selection(&paths.models_root);
         let loops = dub_asr::LoopRules {
@@ -1425,6 +1603,9 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // каждый огрызок TTS-ится отдельно и звучит рвано. Клеим near-continuous короткие реплики ОДНОГО
     // спикера в одну фразу (не для import_subs — там реплики уже цельные из сабов).
     if !resumed_asr {
+        if let Some(map) = &compact_map {
+            map.segments_to_original(&mut segments);
+        }
         if paths.import_subs.is_none() {
             let before = segments.len();
             merge_short_turns(&mut segments);
@@ -1553,6 +1734,9 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // храним как есть; render маппит непустой не-auto код через iso639, иначе "und". Инвариант extra=allow.
     proj.meta.extra.insert("src_lang".into(), Value::String(args.src_lang.clone()));
     proj.meta.extra.insert("speaker_count".into(), json!(args.speaker_count));
+    if let Some(v) = compact_meta {
+        proj.meta.extra.insert("compact_silence".into(), v);
+    }
     proj.subs.mode = subs_mode;
     proj.subs.burn = args.burn; // композируемость: вжигать субтитры/титры или нет
     proj.glossary = glossary;
@@ -1604,7 +1788,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         t.apply(&mut proj);
         crate::jobs::emit_resumed(progress, "translate", &t!("analyze-translation-cached"));
     } else {
-        crate::translate::stage(args, paths, &mut proj, &asr_wav, meta.height, meta.duration, progress)?;
+        crate::translate::stage(args, paths, &mut proj, &orig_asr_wav, meta.height, meta.duration, progress)?;
         let out = TranslatedOut::of(&proj);
         stage_store(&mut cache, &paths.work_dir, "translate", &translate_key, TRANSLATED_FILE, &out, progress);
     }
@@ -1972,6 +2156,7 @@ mod segment_rules_tests {
             content_type: "auto".into(),
             import_translated: false,
             align_subs: false,
+            compact_silence: false,
         }
     }
 
@@ -2184,5 +2369,122 @@ mod pieces_tests {
         .unwrap_err();
         assert_eq!(e, "cancelled");
         assert_eq!(engine.heard.len(), 2, "the whole piece and its first part only: {:?}", engine.heard);
+    }
+}
+
+#[cfg(test)]
+mod compact_cache_key_tests {
+    use super::*;
+
+    #[test]
+    fn compact_off_keeps_old_cache_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let detector = dir.path().join("detector.onnx");
+        let voice = dir.path().join("voice.onnx");
+        std::fs::write(&voice, b"voice-model").unwrap();
+        let input = "prefix-hash";
+        for count in [0usize, 1, 4] {
+            let old = diar_cache_key_with_mode(input, &detector, &voice, count, false).unwrap();
+            let off = diar_cache_key_with_mode(&crate::compact::key_input(input, false), &detector, &voice, count, false).unwrap();
+            let on = diar_cache_key_with_mode(&crate::compact::key_input(input, true), &detector, &voice, count, false).unwrap();
+            assert_eq!(off, old);
+            assert_ne!(on, old);
+        }
+        let old = cache::hash_stage(&[ASR_VER, input, "parakeet", "ru", "diar"]);
+        assert_eq!(asr_cache_key(&crate::compact::key_input(input, false), "parakeet", "ru", "diar"), old);
+        assert_ne!(asr_cache_key(&crate::compact::key_input(input, true), "parakeet", "ru", "diar"), old);
+    }
+}
+
+#[cfg(test)]
+mod after_separation_tests {
+    use super::*;
+
+    #[test]
+    fn write_errors_after_separation_are_analysis_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let wd = dir.path();
+        let files = crate::compact::Files::under(wd);
+        let map = crate::compact::Map::default();
+        // стемов нет: отметка разделения не пишется
+        let missing = wd.join("stems");
+        let err = after_separation(&missing, true, &wd.join("clean.wav"), None, &wd.join("vocals16.wav")).unwrap_err();
+        assert!(err.contains("source.ver"), "{err}");
+        // отметка сжатых стемов не пишется: папки compact/stems нет
+        std::fs::create_dir_all(&missing).unwrap();
+        let err = after_separation(&missing, true, &wd.join("clean.wav"), Some((&map, &files)), &wd.join("vocals16.wav")).unwrap_err();
+        assert!(err.contains("compact.mark"), "{err}");
+        // vocals.wav нет: чистый голос не получается
+        assert!(after_separation(&missing, false, &wd.join("clean.wav"), None, &wd.join("vocals16.wav")).is_err());
+    }
+
+    /// Сообщения прогресса — чтобы видеть, что продолжение по сырому голосу объявлено.
+    fn recorder() -> (std::sync::Arc<std::sync::Mutex<Vec<Value>>>, impl Fn(Value) + Send + Sync) {
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = log.clone();
+        (log, move |v: Value| sink.lock().unwrap().push(v))
+    }
+
+    #[test]
+    fn separation_outcome_is_strict_only_with_compaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let wd = dir.path();
+        let files = crate::compact::Files::under(wd);
+        let map = crate::compact::Map::default();
+        let stems = wd.join("stems"); // нет папки: отметка разделения не пишется
+        let raw = wd.join("vocals16.wav");
+        let clean = wd.join("clean.wav");
+        let failing_after = |compact: bool| {
+            let (stems, clean, raw, files, map) = (&stems, &clean, &raw, &files, &map);
+            move || after_separation(stems, true, clean, compact.then_some((map, files)), raw)
+        };
+        let sep_failed = || Err::<(), String>("separator crashed".into());
+
+        // сжатие включено, разделение удалось, отметка не пишется — ошибка анализа с причиной
+        let (log, cb) = recorder();
+        let err = separation_outcome(Ok(()), true, failing_after(true), &raw, &cb).unwrap_err();
+        assert!(err.contains("source.ver"), "{err}");
+        assert!(log.lock().unwrap().is_empty());
+
+        // сжатие включено, сбой разделителя — продолжение по сырому (сжатому) голосу
+        let (log, cb) = recorder();
+        let got = separation_outcome(sep_failed(), true, failing_after(true), &raw, &cb).unwrap();
+        assert_eq!(got, raw);
+        assert_eq!(log.lock().unwrap().len(), 1);
+
+        // сжатие выключено, разделение удалось, запись падает — прежнее продолжение по сырому голосу
+        let (log, cb) = recorder();
+        let got = separation_outcome(Ok(()), false, failing_after(false), &raw, &cb).unwrap();
+        assert_eq!(got, raw);
+        assert!(log.lock().unwrap()[0].to_string().contains("source.ver"));
+
+        // сжатие выключено, сбой разделителя — продолжение по сырому голосу
+        let (log, cb) = recorder();
+        let got = separation_outcome(sep_failed(), false, failing_after(false), &raw, &cb).unwrap();
+        assert_eq!(got, raw);
+        assert!(log.lock().unwrap()[0].to_string().contains("separator crashed"));
+
+        // всё удалось — путь чистого голоса
+        let (_, cb) = recorder();
+        let got = separation_outcome(Ok(()), true, || Ok(clean.clone()), &raw, &cb).unwrap();
+        assert_eq!(got, clean);
+    }
+
+    #[test]
+    fn temporary_full_audio_is_removed_when_cut_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let wd = dir.path();
+        let files = crate::compact::Files::under(wd);
+        std::fs::create_dir_all(files.audio_hq_full.parent().unwrap()).unwrap();
+        std::fs::write(&files.audio_hq_full, b"not a wav").unwrap();
+        let map = crate::compact::Map::default();
+        let err = cut_audio_hq(&files.audio_hq_full, &files, &map).unwrap_err();
+        assert!(!err.is_empty());
+        assert!(!files.audio_hq_full.exists());
+        // общая audio_hq.wav не временная — не удаляется
+        let shared = wd.join("audio_hq.wav");
+        std::fs::write(&shared, b"not a wav").unwrap();
+        assert!(cut_audio_hq(&shared, &files, &map).is_err());
+        assert!(shared.exists());
     }
 }

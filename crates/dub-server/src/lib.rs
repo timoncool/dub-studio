@@ -10,6 +10,7 @@
 pub mod i18n;
 mod acpp;
 mod analyze;
+mod compact;
 mod asr_filter;
 mod atomic;
 mod bench;
@@ -148,6 +149,7 @@ pub fn verify_captions_e2e(
         content_type: String::new(),
         import_translated: false,
         align_subs: false,
+        compact_silence: false,
     };
     let sel = models::load_selection(&mroot);
     let (mt_model, mmproj) = models::resolve_mt(&mroot, &sel);
@@ -2398,6 +2400,8 @@ async fn analyze_enqueue(st: &AppState, pid: &str, args_json: Value,
         import_translated: import_subs.is_some() && qget("import_translated", "0") == "1",
         // выровнять тайминги импортированных субтитров по речи (полный прогон ASR ради слов).
         align_subs: import_subs.is_some() && qget("align_subs", "0") == "1",
+        // сжать долгую тишину перед анализом: ВЫКЛ по умолчанию
+        compact_silence: compact::flag(q.get("compact_silence").map(String::as_str)),
     };
     if args.mode != "transcribe" && !args.import_translated {
         llm_provider::configured(&st.models_root, llm_provider::LlmMode::Text)

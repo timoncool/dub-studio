@@ -78,6 +78,7 @@ pub(super) fn tools() -> Vec<Tool> {
                         "src_lang": language_arg("the spoken language, a code of studio://languages; auto by default"),
                         "diarize": { "type": "boolean", "description": "tell the speakers apart (default true)" },
                         "speaker_count": { "type": "integer", "minimum": 0, "maximum": 8, "description": "the expected number of speakers in the whole recording; 0 means automatic" },
+                        "compact_silence": { "type": "boolean", "description": "squeeze silences over 20 s down to 20 s before the analysis: quicker on long recordings with long quiet stretches; the times stay those of the file, and format text marks pauses over a minute (default false)" },
                         "format": { "type": "string", "enum": ["text", "srt", "vtt", "json"] },
                         "seconds": seconds_arg(),
                     }),
@@ -417,6 +418,7 @@ impl Analysis {
             && project["tgt_lang"] == self.get("tgt_lang")
             && project["meta"]["src_lang"] == self.get("src_lang")
             && project["meta"]["speaker_count"].as_u64().unwrap_or(0) == self.get("speaker_count").parse::<u64>().unwrap_or(0)
+            && project["meta"]["compact_silence"].is_object() == crate::compact::flag(Some(self.get("compact_silence")))
     }
 }
 
@@ -494,6 +496,7 @@ async fn transcribe(args: &Value, until: Instant) -> Result<Value, String> {
     if !diarize && count > 1 {
         return Err(t!("mcp-speakers-without-diarize"));
     }
+    let compact = switch(args, "compact_silence", false)?;
     // A transcript with speakers is the studio's transcribe mode; without them it is the
     // subtitles mode in the original language, which neither separates nor tells speakers apart.
     let mut analysis = Analysis {
@@ -509,12 +512,18 @@ async fn transcribe(args: &Value, until: Instant) -> Result<Value, String> {
     if args.get("speaker_count").is_some() {
         analysis.pairs.push(("speaker_count", count.to_string()));
     }
+    // Без сжатия запрос и ключ проекта — прежние.
+    if compact {
+        analysis.pairs.push(("compact_silence", "1".into()));
+    }
     let pid = project_of(&path, &analysis.key("transcribe_file", &[]), "transcribe_file").await?;
     let project = match analyze(&pid, &analysis, until).await? {
         Analyzed::Waiting(job) => return Ok(pending("transcribe_file", &pid, &job)),
         Analyzed::Ready { project, .. } => project,
     };
     let written = export(&pid, if format == "text" { "txt" } else { &format }, "src").await?;
+    let transcript = content(&format, &written)?;
+    let transcript = if format == "text" { with_pauses(&project, transcript)? } else { transcript };
     Ok(json!({
         "done": true,
         "project_id": pid,
@@ -523,8 +532,26 @@ async fn transcribe(args: &Value, until: Instant) -> Result<Value, String> {
         "lines": written["lines"],
         "speakers": speakers(&project).len(),
         "duration": project["meta"]["duration"],
-        "transcript": content(&format, &written)?,
+        "transcript": transcript,
     }))
+}
+
+/// Текст транскрипта со строками `— пауза N мин —` там, где анализ со сжатием нашёл паузы длиннее минуты.
+/// Строки — те же, что пишет выгрузка txt, каждая со временем своей реплики.
+fn with_pauses(project: &Value, transcript: Value) -> Result<Value, String> {
+    let pauses: Vec<(f64, f64)> = project["meta"]["compact_silence"]["pauses"]
+        .as_array()
+        .map(|all| all.iter().filter_map(|p| Some((p[0].as_f64()?, p[1].as_f64()?))).collect())
+        .unwrap_or_default();
+    if pauses.is_empty() {
+        return Ok(transcript);
+    }
+    let proj: dub_core::Project = serde_json::from_value(project.clone()).map_err(|e| format!("the project does not read as a project: {e}"))?;
+    let rows = crate::project_files::lines(&proj, crate::project_files::Which::Src);
+    let lines: Vec<String> = rows.iter().map(|r| crate::project_files::render_text(std::slice::from_ref(r), "txt", "Speaker")).collect();
+    let times: Vec<(f64, f64)> = rows.iter().map(|r| (r.start, r.end)).collect();
+    let refs: Vec<&str> = lines.iter().map(String::as_str).collect();
+    Ok(crate::compact::with_pauses(&refs, &times, &pauses).join("\n").into())
 }
 
 async fn translate(args: &Value, until: Instant) -> Result<Value, String> {

@@ -126,6 +126,12 @@ The same results come two ways.
   file's `path` and answer the result itself. The file is read where it lies, never copied.
   `export_subtitles` writes a project's subtitles as SRT, VTT, ASS or TXT, in its target
   language or the original.
+- **Long recordings with long silence** (a Discord bot's track per player, a phone recording
+  of a game night): `transcribe_file` or `project_analyze` with `compact_silence: true`
+  squeezes every silence over 20 s down to 20 s before separation, diarization and
+  recognition, so hours of quiet are not worked through. The lines keep the file's times;
+  `transcribe_file` in text format puts a `— пауза N мин —` line where a pause was over a
+  minute. It is off by default and does nothing with imported subtitles.
 - Each makes a project of the file, listed by `projects_list` with `source: agent`. The
   same tool called again with the same file and arguments finds that project and answers
   from the finished work at once; a changed file or other arguments make another project.
