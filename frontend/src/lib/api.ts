@@ -251,7 +251,7 @@ async function j<T>(r: Response): Promise<T> {
     const body = await r.text();
     const conflict = parseConflict(body);
     if (conflict) throw new JobConflictError(conflict.job_id, conflict.kind);
-    throw new Error(`409 ${body}`);
+    throw new Error(body);
   }
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json() as Promise<T>;

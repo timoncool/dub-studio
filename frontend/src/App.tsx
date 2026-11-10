@@ -57,7 +57,7 @@ import { fitOver } from "./lib/fit";
 import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
 import VoiceCatalog from "./components/voices/VoiceCatalog";
-import { prettyVoice } from "./lib/voices";
+import { errorText, prettyVoice } from "./lib/voices";
 import { applyUiScale, pageZoom, scaleForKey, setUiScale, storedUiScale, UI_SCALE_EVENT } from "./lib/uiScale";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
@@ -2788,9 +2788,9 @@ function Editor() {
     // PUT снимка (undo, импорт субтитров) на проект, который после него сохранили агент или другое окно: сервер
     // его не принял — показываем актуальный проект, а старые снимки undo больше не годятся.
     const changed = err instanceof ApiError && err.code === "project_changed";
-    pushActivity(changed ? t("bridge.undoRefused") : String(err), changed ? "agent" : "error"); playSfx("error");
+    pushActivity(changed ? t("bridge.undoRefused") : errorText(err), changed ? "agent" : "error"); playSfx("error");
     if (changed) useStore.getState().resetHistory();
-    else addExport({ id: `err-${Date.now()}`, name: t("common.error"), status: "error", msg: String(err) });
+    else addExport({ id: `err-${Date.now()}`, name: t("common.error"), status: "error", msg: errorText(err) });
     try { setProject(await api.getProject(pid)); } catch { /* offline -> keep optimistic state */ }
   }
   // Джобу отменили кнопкой в полосе джоб: не ошибка — строка в журнале и проект в том виде, в каком его оставила джоба.

@@ -14,6 +14,10 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Translation starts on graphics cards of 8 GB and less**: the translation server (llama.cpp) is no longer told to put every layer on the card; it fits the layers and the context to the memory the card has free, so Gemma loads where it stopped with 0xc0000409.
+- **A cloud translation that is rate-limited waits as long as it is asked** (up to a minute) before the next try, and a server that cannot be reached is named by its host, with a hint to check the proxy.
+- **Voicing does not start into a known failure**: with OpenRouter or Google chosen for voicing and no key, or OpenRouter without a voicing model, the window says what to add in Settings instead of a job that fails on every line.
+- **The playhead moves smoothly while the dub plays** and the timeline follows it.
 - **An updated engine leaves no files of its earlier version behind**: a download unpacked over the version before it removes that version's files the new one no longer has.
 - **Supertonic 3 voices every speaker** (#54): a speaker whose gender did not come out of the recording (or a project without separated vocals) gets a Supertonic voice in turn, and a speaker given a recorded voice or left cloning in the pack list gets one by gender; such a speaker no longer went to clone the project's reference, which Supertonic cannot, failing every line until the render stopped.
 - **«Voice from speaker» gives the voice to that speaker only** (#58): the voice made from SPK N goes to SPK N's place in the per-speaker list, and the others keep their voices or go on cloning their own, where before every speaker was voiced with the last voice made. The per-speaker list offers «Clone from video» for a speaker.
