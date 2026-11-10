@@ -67,10 +67,13 @@
 
 ## Возможности
 
-- **Клонирование голоса** — оригинальный тембр клонируется и говорит на новом языке (нативный движок [Higgs Audio v3](https://huggingface.co/bosonai), GGUF). Авто-каст по спикерам или свой голос из пака.
+- **Клонирование голоса** — оригинальный тембр клонируется и говорит на новом языке: клонируют **Higgs Audio v3** (по умолчанию), **Qwen3-TTS**, **Fish Audio Drama 3** и **Audio8 TTS**, **Supertonic 3** говорит своими голосами, в облаке — **OpenRouter** и **Google Gemini**. Каждый говорящий клонируется отдельно или берёт голос из библиотеки.
+- **Спикеры и голоса** — каждый говорящий в одной строке с определённым полом: создать голос из этого спикера, выбрать голос библиотеки или оставить клон из видео, прослушать, или **Подобрать по полу** сразу для всех.
+- **Библиотека голосов** — облачный каталог из 1600 голосов с именем, полом, возрастом, языком, описанием и длительностью: фильтры, поиск, прослушивание, скачивание выбранных или всех показанных; импорт своих голосов (WAV, MP3, FLAC, M4A, OGG или .zip).
+- **Масштаб интерфейса** — всё окно от 90 до 150 % (Настройки → Интерфейс, Ctrl + плюс / минус / 0).
 - **Диаризация спикеров** — кто и когда говорит (NVIDIA **Nemotron 3 Diarization**, до 8 голосов), разный голос на каждого.
 - **Кастинг персонажей (бета)** — персонаж это **связка «лицо + голос»**. Приложение собирает лица по всему видео, узнаёт одного и того же человека и **привязывает его к спикеру по со-встречаемости** реплик (кто в кадре крупным планом — получает голос, фоновый слушатель — нет); автоматически подбирает самый чёткий кадр-аватар и **сохраняет профиль кастинга на весь сериал** — назначил голоса и описания один раз, на **новой серии всё применяется само**. Тумблер **«Реальные лица / Мультфильм·аниме»** переключает распознавание лиц под тип контента.
-- **Выбор ASR-движка** — транскрипция через **Parakeet-TDT** (GPU, по умолчанию) или **Whisper** ([standalone faster-whisper от Purfview](https://github.com/Purfview/whisper-standalone-win), работает на CPU) — размер модели (tiny … large-v3-turbo) и квант (compute type) выбираются прямо в настройках.
+- **Выбор ASR-движка** — **Parakeet-TDT v3** (по умолчанию), **Parakeet Ultra** или **CrisperWhisper 2.0 turbo** (99 языков, время слов), на видеокарте или процессоре; в режиме «Авто» язык определяет VoxLingua107.
 - **Импорт готовых субтитров** — загрузи свой `.srt`/`.ass` как готовый транскрипт: текст и тайминг берутся прямо из файла вместо авто-распознавания (спикеров всё равно раздаёт диаризация). Галочка **«субтитры уже на языке перевода»** пропускает и перевод — англ. ролик + твои русские сабы → русский дубляж напрямую из них, без ASR и без MT.
 - **Мультиязычный экспорт** — стрелка **▾** у кнопки «Экспорт» отправляет одно видео сразу на несколько языков; каждый наследует все правки (раскладку субтитров, стили, блюр-боксы, клон голоса) — меняются только перевод и озвучка.
 - **Сохранение и открытие проектов** — автосейв, список недавних проектов на старте, возврат к незаконченному в один клик.
@@ -91,7 +94,7 @@
 - **Установка в одну кнопку + авто-обновление** — модели, движки, CUDA/VC++-рантайм и ffmpeg тянутся при первом запуске; приложение обновляет себя само.
 - **Устойчивая докачка** — большие модели (10 ГБ+) при обрыве связи докачиваются с места, а не заново.
 - **Считай где хочешь** — сепарация, диаризация и распознавание по отдельности переключаются между **GPU и CPU**, а распознавание, перевод, vision и озвучку можно вынести в **OpenRouter**. Таблица *Что где работает* ниже показывает, что реально может использовать каждая стадия.
-- **Настройка под железо** — у каждого движка несколько квантов (TTS Q8/Q6/Q4, перевод Q4…Q8, ASR int8/fp32 или Whisper tiny…large-v3-turbo, сепарация Q8/Q5/Q4) — переключаются в настройках; лимиты prefill-батча и длины реф-клипа под 8–12 ГБ GPU и 32 ГБ RAM.
+- **Настройка под железо** — у каждого движка несколько квантов (TTS Q8/Q6/Q4, перевод Q4…Q8, сепарация Q8/Q5/Q4) — переключаются в настройках; лимиты prefill-батча и длины реф-клипа под 8–12 ГБ GPU и 32 ГБ RAM; на карте 8 ГБ и меньше сервер перевода сам раскладывает слои под свободную память.
 - **Всё приложение на вашем языке** — прогресс, ошибки, установка, кастинг и отчёты для агента приходят на любом из шести языков окна.
 - **Голоса Google Gemini** — Gemini TTS рядом с локальным движком и OpenRouter, свой ключ и живой список моделей; **Batch** вдвое дешевле, а остановленный рендер подхватывает тот же оплаченный батч.
 - **Число спикеров** — авто или от 1 до 8 человек; голоса сопоставляются по всей длинной записи, а распознаётся она окнами примерно по 90 секунд.
@@ -233,7 +236,7 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 ### Linux (экспериментально)
 
-Сборки для Linux x86-64 (.deb и AppImage) — **экспериментальные**. Они собраны из того же кода с Linux-версиями тех же движков (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, движок Higgs для Linux, yt-dlp, faster-whisper), но автор работает на Windows и на живом Linux-десктопе их не гонял. **Будет круто, если кто-то, кто сидит на Linux, дошлифует их и вольёт правки обратно пулл-реквестом.**
+Сборки для Linux x86-64 (.deb и AppImage) — **экспериментальные**. Они собраны из того же кода с Linux-версиями тех же движков (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, сервер audio.cpp, transcribe.cpp, yt-dlp), но автор работает на Windows и на живом Linux-десктопе их не гонял. **Будет круто, если кто-то, кто сидит на Linux, дошлифует их и вольёт правки обратно пулл-реквестом.**
 
 - Локальной озвучке нужна NVIDIA начиная с Turing (GTX 16, RTX 20 и новее), как на Windows. Облачные голоса работают на любой машине.
 - Драйвер NVIDIA (580 или новее), `libgomp1` и `libssl3` берутся из системы; модели, движки и CUDA-библиотеки приложение скачивает при первом запуске в `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
@@ -280,10 +283,12 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 - **[Boson AI](https://huggingface.co/bosonai)** — модель Higgs Audio v3, и **[drbaph / Higgs-Audio-v3-Studio](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio)** — GGUF-кванты и нативный движок `audiocpp_engine.dll`.
 - **[NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)** (CC-BY-4.0) — ASR; ONNX-веса из [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx), рантайм [altunenes/parakeet-rs](https://github.com/altunenes/parakeet-rs).
 - **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)** от **[Moondream](https://huggingface.co/moondream)** на базе parakeet-tdt-0.6b-v3 от NVIDIA (CC-BY-4.0) — опциональный дообученный ASR с меньшим числом ошибок; ONNX-экспорт из [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs). int8: [Masterx/parakeet-tdt-0.6b-ultra-onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx).
+- **[nyra health / CrisperWhisper](https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo)** — CrisperWhisper 2.0 turbo, дословный Whisper с временем слов; **[VoxLingua107](https://huggingface.co/speechbrain/lang-id-voxlingua107-ecapa)** (SpeechBrain) определяет язык в режиме «Авто».
+- **[Supertone / Supertonic 3](https://huggingface.co/Supertone/supertonic-3)**, **[Edge0 / Audio8 TTS Realistic-Air](https://huggingface.co/Edge0/Audio8-TTS-Realistic-Air)**, **[Qwen3-TTS](https://huggingface.co/Qwen)** (с русскими ударениями от [siriusfreak](https://huggingface.co/siriusfreak/qwen3-tts-12hz-1.7b-ru-stress-cf)) и **[Fish Audio Drama 3](https://huggingface.co/fishaudio/drama-3)** — остальные движки озвучки.
+- **[WeSpeaker](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)** (голоса говорящих), **[DPDFNet](https://huggingface.co/Ceva-IP/DPDFNet)** (шумоподавление), **[Silero VAD](https://github.com/snakers4/silero-vad)** (поиск речи) и **[RUAccent](https://huggingface.co/ruaccent/accentuator)** (ударения в русском).
 - **[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization)** (Streaming Sortformer v3, [OpenMDW-1.1](https://openmdw.ai/license/1-1/)) — диаризация спикеров, до 8 голосов; ONNX-экспорт из [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs).
 - **[Google Gemma](https://huggingface.co/google/gemma-4-12b-it-qat-q4_0-gguf)** — Gemma-4 12B (перевод и vision), кванты от [unsloth](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF) и [llama.cpp](https://github.com/ggml-org/llama.cpp), на котором они запускаются.
 - **[chenmozhijin / BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp)** и **[GaboxR67](https://huggingface.co/GaboxR67)** — нативный движок сепарации с GGUF-моделями и чекпойнт Mel-Band Roformer.
-- **[Systran / faster-whisper](https://github.com/SYSTRAN/faster-whisper)**, **[deepdml](https://huggingface.co/deepdml)** и **[Purfview](https://github.com/Purfview/whisper-standalone-win)** — модели Whisper в формате CTranslate2 и автономная сборка, которая их запускает.
 - **[InsightFace](https://github.com/deepinsight/insightface)** (через [immich-app/buffalo_l](https://huggingface.co/immich-app/buffalo_l)), **[ByteDance LVFace](https://huggingface.co/bytedance-research/LVFace)**, **[deepghs](https://huggingface.co/deepghs)** (CCIP, детектор аниме-лиц), **[FaceFusion](https://huggingface.co/facefusion/models-3.1.0)** и **[WeSpeaker](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)** — модели лиц и голоса для кастинга персонажей.
 - **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** — PP-OCR, модели детекции и распознавания вшитого текста.
 - **[ONNX Runtime](https://github.com/microsoft/onnxruntime)**, **[FFmpeg](https://ffmpeg.org)** со сборками [BtbN](https://github.com/BtbN/FFmpeg-Builds), **[JASSUB](https://github.com/ThaUnknown/jassub)**, **[Tauri](https://tauri.app)** и **[ort](https://github.com/pykeio/ort)**.
@@ -310,9 +315,18 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 | Parakeet-TDT 0.6B v3 (NVIDIA) и его ONNX-экспорт | CC-BY-4.0 | Указывать NVIDIA |
 | Parakeet Ultra (Moondream, на основе NVIDIA Parakeet-TDT) | CC-BY-4.0 | Указывать Moondream и NVIDIA |
 | Nemotron 3 Diarization (NVIDIA) | [OpenMDW-1.1](https://openmdw.ai/license/1-1/) | Указывать NVIDIA; ONNX-экспорт из altunenes/parakeet-rs |
+| CrisperWhisper 2.0 turbo (nyra health) | nyra health non-commercial research license | **Только некоммерческие исследования** |
+| VoxLingua107 language id (SpeechBrain) | Apache-2.0 |  |
+| Supertonic 3 (Supertone) | BigScience OpenRAIL-M | Прочитайте ограничения использования |
+| Audio8 TTS Realistic-Air (Edge0) | Apache-2.0 |  |
+| Qwen3-TTS (Qwen) и его дообучение на русские ударения | Apache-2.0 |  |
+| Fish Audio Drama 3 | Fish Audio Research License | **Только некоммерческие исследования** |
+| WeSpeaker ResNet34 | CC-BY-4.0 | Указать WeSpeaker |
+| DPDFNet (Ceva) | Apache-2.0 |  |
+| Silero VAD v6.2 | MIT |  |
+| RUAccent | MIT |  |
 | Gemma-4 12B (Google) | Apache-2.0 на странице модели, которая ссылается на [условия Gemma 4 от Google](https://ai.google.dev/gemma/docs/gemma_4_license) | Прочитай оба |
 | Mel-Band Roformer voc_fv6 (GaboxR67), GGUF от chenmozhijin | На страницах моделей лицензия не указана; движок BSRoformer.cpp — MIT | Перед коммерческим использованием спроси авторов |
-| Модели Whisper (Systran, deepdml) и faster-whisper | MIT | У автономной сборки Purfview в репозитории нет файла лицензии |
 | Детектор лиц SCRFD (InsightFace buffalo_l) | InsightFace: предобученные модели **только для некоммерческих исследований** | Кастинг реальных лиц подпадает под это ограничение |
 | LVFace (ByteDance) | MIT |  |
 | CCIP (deepghs) | OpenRAIL | Прочитай ограничения на использование |

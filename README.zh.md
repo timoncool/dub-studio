@@ -67,10 +67,13 @@ Dub Studio 打开时会在 `http://127.0.0.1:8793/mcp` 提供 MCP 服务：Claud
 
 ## 功能
 
-- **声音克隆** —— 克隆原始音色并说出新语言（原生 [Higgs Audio v3](https://huggingface.co/bosonai) 引擎，GGUF）。按说话人自动分配或使用自带声音包。
+- **声音克隆** —— 克隆原始音色并说出新语言：**Higgs Audio v3**（默认）、**Qwen3-TTS**、**Fish Audio Drama 3** 与 **Audio8 TTS** 可克隆，**Supertonic 3** 使用自带音色，云端可用 **OpenRouter** 与 **Google Gemini**。每位说话人单独克隆，或使用声音库中的声音。
+- **说话人与声音** —— 每位说话人一行并显示检测到的性别：从该说话人创建声音、选择声音库中的声音或保持从视频克隆、试听，或一键 **按性别分配** 给所有人。
+- **声音库** —— 云端目录收录 1600 个声音，含名称、性别、年龄、语言、描述与时长：筛选、搜索、试听，下载选中的或全部显示的声音；导入自己的声音（WAV、MP3、FLAC、M4A、OGG 或 .zip）。
+- **界面缩放** —— 整个窗口 90% 至 150%（设置 → 界面，Ctrl + 加号 / 减号 / 0）。
 - **说话人分离** —— 谁在何时说话（NVIDIA **Nemotron 3 Diarization**，最多 8 个声音），每个说话人不同声音。
 - **角色选角（测试版）** —— 一个角色就是**「人脸 + 声音」的配对**。应用在整段视频中收集人脸、识别同一个人，并**按共同出现把他绑定到某个说话人**（近景出镜者获得声音，背景旁听者则否）；自动挑选最清晰的一帧作头像，并**为整部剧集保存选角档案** —— 声音和角色描述只需指定一次，**下一集自动套用**。**「真实人脸 / 卡通·动漫」**开关按内容切换人脸识别。
-- **可选 ASR 引擎** —— 用 **Parakeet-TDT**（GPU，默认）或 **Whisper**（[Purfview faster-whisper 独立版](https://github.com/Purfview/whisper-standalone-win)，可在 CPU 上运行）转写 —— 在设置里直接选择模型大小（tiny … large-v3-turbo）和量化（compute type）。
+- **可选 ASR 引擎** —— **Parakeet-TDT v3**（默认）、**Parakeet Ultra** 或 **CrisperWhisper 2.0 turbo**（99 种语言，词级时间），可在显卡或 CPU 上运行；「自动」模式下由 VoxLingua107 识别语言。
 - **导入现成字幕** —— 用你自己的 `.srt`/`.ass` 作为精确文稿：文本和时间轴直接取自文件，而非自动识别（说话人仍由声纹分离自动分配）。勾选 **“字幕已是目标语言”** 可连翻译一起跳过 —— 英文视频 + 你的俄语字幕 → 直接生成俄语配音，无需识别与翻译。
 - **多语言导出** —— 导出按钮旁的 **▾** 可把一个视频一次导出为多种语言；每种都继承你的全部编辑（字幕排版、样式、模糊框、克隆音色）—— 只重新翻译与配音。
 - **保存与重开项目** —— 自动保存、启动页的近期项目列表，一键回到未完成的工作。
@@ -91,7 +94,7 @@ Dub Studio 打开时会在 `http://127.0.0.1:8793/mcp` 提供 MCP 服务：Claud
 - **一键安装 + 应用内自动更新** —— 首次运行下载模型、引擎、运行库与 ffmpeg；应用自我更新。
 - **可续传下载** —— 大模型（10GB+）断线后从中断处续传，而非重新开始。
 - **想在哪算就在哪算** —— 分离、说话人分离和识别各自在 **GPU 与 CPU** 之间独立切换，识别、翻译、视觉和配音还可以交给 **OpenRouter**。下方的*各阶段运行在哪里*表列出了每个阶段实际能用什么。
-- **按硬件调优** —— 每个引擎都有多种量化（TTS Q8/Q6/Q4、翻译 Q4…Q8、ASR int8/fp32 或 Whisper tiny…large-v3-turbo、分离 Q8/Q5/Q4），在设置中切换；可限制 prefill 批大小与参考片段时长，以适配 8–12 GB 显卡和 32 GB 内存。
+- **按硬件调优** —— 每个引擎都有多种量化（TTS Q8/Q6/Q4、翻译 Q4…Q8、分离 Q8/Q5/Q4），可在设置中切换；限制 **prefill 批大小** 与 **参考音频长度**，适配 8–12 GB 显卡和 32 GB 内存；在 8 GB 及以下的显卡上，翻译服务器会按空闲显存自行安排层数。
 - **整个应用使用你的语言** — 进度、错误、安装、选角以及智能体读取的报告都以窗口的六种语言之一显示。
 - **Google Gemini 声音** — 在本地引擎和 OpenRouter 之外可选 Gemini TTS，有独立密钥和实时模型列表；**Batch** 价格减半，停止的渲染会接上同一个已付费批次。
 - **说话人数量** — 自动或 1 到 8 人；长录音中的声音统一匹配，录音按约 90 秒的窗口识别。
@@ -233,7 +236,7 @@ cd desktop && npm install && npx tauri build            # 3) 桌面外壳 (Tauri
 
 ### Linux（实验性）
 
-Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份代码，配的是同一批引擎的 Linux 版本（llama.cpp、ONNX Runtime、BSRoformer.cpp、ffmpeg、Linux 版 Higgs 引擎、yt-dlp、faster-whisper），但作者在 Windows 上工作，没有在真实的 Linux 桌面上跑过。**如果你日常用 Linux，非常欢迎你把它们打磨好，再通过 pull request 把修复合回来。**
+Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份代码，配的是同一批引擎的 Linux 版本（llama.cpp、ONNX Runtime、BSRoformer.cpp、ffmpeg、audio.cpp 服务器、transcribe.cpp、yt-dlp），但作者在 Windows 上工作，没有在真实的 Linux 桌面上跑过。**如果你日常用 Linux，非常欢迎你把它们打磨好，再通过 pull request 把修复合回来。**
 
 - 本地配音需要 Turing 及更新的 NVIDIA 显卡（GTX 16、RTX 20 及以上），与 Windows 相同。云端声音在任何机器上都能用。
 - NVIDIA 驱动（580 或更新）、`libgomp1` 和 `libssl3` 由系统提供；模型、引擎和 CUDA 库由应用在首次运行时下载到 `~/.local/share/dub-studio`（`$XDG_DATA_HOME`）。
@@ -270,10 +273,12 @@ Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份�
 - **[Boson AI](https://huggingface.co/bosonai)** —— Higgs Audio v3 模型；**[drbaph / Higgs-Audio-v3-Studio](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio)** —— GGUF 量化与原生 `audiocpp_engine.dll`。
 - **[NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)**（CC-BY-4.0）—— ASR；ONNX 权重来自 [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx)，运行时 [altunenes/parakeet-rs](https://github.com/altunenes/parakeet-rs)。
 - **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)**，由 **[Moondream](https://huggingface.co/moondream)** 基于 NVIDIA 的 parakeet-tdt-0.6b-v3 微调（CC-BY-4.0）—— 可选的微调 ASR，识别错误更少；ONNX 导出来自 [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs)。 int8: [Masterx/parakeet-tdt-0.6b-ultra-onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx).
+- **[nyra health / CrisperWhisper](https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo)** —— CrisperWhisper 2.0 turbo，逐字转写并带词级时间；**[VoxLingua107](https://huggingface.co/speechbrain/lang-id-voxlingua107-ecapa)**（SpeechBrain）在「自动」模式下识别语言。
+- **[Supertone / Supertonic 3](https://huggingface.co/Supertone/supertonic-3)**、**[Edge0 / Audio8 TTS Realistic-Air](https://huggingface.co/Edge0/Audio8-TTS-Realistic-Air)**、**[Qwen3-TTS](https://huggingface.co/Qwen)**（含 [siriusfreak](https://huggingface.co/siriusfreak/qwen3-tts-12hz-1.7b-ru-stress-cf) 的俄语重音微调）与 **[Fish Audio Drama 3](https://huggingface.co/fishaudio/drama-3)** —— 其他配音引擎。
+- **[WeSpeaker](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)**（说话人声纹）、**[DPDFNet](https://huggingface.co/Ceva-IP/DPDFNet)**（降噪）、**[Silero VAD](https://github.com/snakers4/silero-vad)**（语音检测）与 **[RUAccent](https://huggingface.co/ruaccent/accentuator)**（俄语重音）。
 - **[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization)**（Streaming Sortformer v3，[OpenMDW-1.1](https://openmdw.ai/license/1-1/)）—— 说话人分离，最多 8 个说话人；ONNX 导出来自 [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs)。
 - **[Google Gemma](https://huggingface.co/google/gemma-4-12b-it-qat-q4_0-gguf)** —— Gemma-4 12B（翻译与视觉）、[unsloth](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF) 的量化版本，以及运行它们的 [llama.cpp](https://github.com/ggml-org/llama.cpp)。
 - **[chenmozhijin / BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp)** 与 **[GaboxR67](https://huggingface.co/GaboxR67)** —— 原生分离引擎及其 GGUF 模型，以及 Mel-Band Roformer 检查点。
-- **[Systran / faster-whisper](https://github.com/SYSTRAN/faster-whisper)**、**[deepdml](https://huggingface.co/deepdml)** 与 **[Purfview](https://github.com/Purfview/whisper-standalone-win)** —— CTranslate2 格式的 Whisper 模型及运行它们的独立版本。
 - **[InsightFace](https://github.com/deepinsight/insightface)**（经由 [immich-app/buffalo_l](https://huggingface.co/immich-app/buffalo_l)）、**[ByteDance LVFace](https://huggingface.co/bytedance-research/LVFace)**、**[deepghs](https://huggingface.co/deepghs)**（CCIP、动漫人脸检测）、**[FaceFusion](https://huggingface.co/facefusion/models-3.1.0)** 与 **[WeSpeaker](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)** —— 角色选角所用的人脸与声音模型。
 - **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** —— PP-OCR，画面文字检测与识别模型。
 - **[ONNX Runtime](https://github.com/microsoft/onnxruntime)**、**[FFmpeg](https://ffmpeg.org)** 及 [BtbN 构建](https://github.com/BtbN/FFmpeg-Builds)、**[JASSUB](https://github.com/ThaUnknown/jassub)**、**[Tauri](https://tauri.app)** 与 **[ort](https://github.com/pykeio/ort)**。
@@ -300,9 +305,18 @@ Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份�
 | Parakeet-TDT 0.6B v3（NVIDIA）及其 ONNX 导出 | CC-BY-4.0 | 需注明 NVIDIA |
 | Parakeet Ultra（Moondream，基于 NVIDIA Parakeet-TDT） | CC-BY-4.0 | 需注明 Moondream 与 NVIDIA |
 | Nemotron 3 Diarization（NVIDIA） | [OpenMDW-1.1](https://openmdw.ai/license/1-1/) | 需注明 NVIDIA；ONNX 导出来自 altunenes/parakeet-rs |
+| CrisperWhisper 2.0 turbo（nyra health） | nyra health non-commercial research license | **仅限非商业研究** |
+| VoxLingua107 语言识别（SpeechBrain） | Apache-2.0 |  |
+| Supertonic 3（Supertone） | BigScience OpenRAIL-M | 请阅读其使用限制 |
+| Audio8 TTS Realistic-Air（Edge0） | Apache-2.0 |  |
+| Qwen3-TTS（Qwen）及其俄语重音微调 | Apache-2.0 |  |
+| Fish Audio Drama 3 | Fish Audio Research License | **仅限非商业研究** |
+| WeSpeaker ResNet34 | CC-BY-4.0 | 注明 WeSpeaker |
+| DPDFNet（Ceva） | Apache-2.0 |  |
+| Silero VAD v6.2 | MIT |  |
+| RUAccent | MIT |  |
 | Gemma-4 12B（Google） | 模型页面为 Apache-2.0，并链接到 [Google 的 Gemma 4 条款](https://ai.google.dev/gemma/docs/gemma_4_license) | 请两者都阅读 |
 | Mel-Band Roformer voc_fv6（GaboxR67），chenmozhijin 的 GGUF | 模型页面未注明许可证；引擎 BSRoformer.cpp 为 MIT | 商用前请询问作者 |
-| Whisper 模型（Systran、deepdml）与 faster-whisper | MIT | Purfview 的独立版本在其仓库中没有许可证文件 |
 | SCRFD 人脸检测器（InsightFace buffalo_l） | InsightFace：预训练模型**仅限非商业研究** | 对真实人脸的角色选角受此限制 |
 | LVFace（ByteDance） | MIT |  |
 | CCIP（deepghs） | OpenRAIL | 请阅读其使用限制 |

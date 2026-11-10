@@ -67,10 +67,13 @@ Chargez un clip une fois et envoyez-le dans n'importe quel mode depuis l'éditeu
 
 ## Fonctionnalités
 
-- **Clonage de voix** —— le timbre original est cloné et parle la nouvelle langue (moteur natif [Higgs Audio v3](https://huggingface.co/bosonai), GGUF). Distribution auto par locuteur ou votre propre voix depuis un pack.
+- **Clonage de voix** —— le timbre original est cloné et parle la nouvelle langue : **Higgs Audio v3** (par défaut), **Qwen3-TTS**, **Fish Audio Drama 3** et **Audio8 TTS** clonent, **Supertonic 3** parle avec ses propres voix, et dans le cloud **OpenRouter** et **Google Gemini**. Chaque locuteur est cloné à part ou prend une voix de la bibliothèque.
+- **Locuteurs et voix** —— chaque locuteur sur une ligne avec le genre détecté : créer une voix à partir de ce locuteur, choisir une voix de la bibliothèque ou garder le clonage depuis la vidéo, l'écouter, ou **Attribuer par genre** à tous d'un coup.
+- **Bibliothèque de voix** —— le catalogue cloud de 1 600 voix avec nom, genre, âge, langue, description et durée : filtrer, chercher, écouter et télécharger les voix choisies ou toutes celles affichées ; importer vos propres voix (WAV, MP3, FLAC, M4A, OGG ou un .zip).
+- **Échelle de l'interface** —— toute la fenêtre de 90 à 150 % (Réglages → Interface, Ctrl + plus / moins / 0).
 - **Diarisation des locuteurs** —— qui parle et quand (NVIDIA **Nemotron 3 Diarization**, jusqu'à 8 voix), une voix distincte par locuteur.
 - **Casting des personnages (bêta)** —— un personnage est une paire **« visage + voix »**. L'app rassemble les visages de toute la vidéo, reconnaît la même personne et **la lie à un locuteur par cooccurrence** (celui en gros plan reçoit la voix, un auditeur en arrière-plan non) ; elle choisit automatiquement l'image-avatar la plus nette et **enregistre un profil de casting pour toute la série** —— vous attribuez voix et descriptions une fois, et l'**épisode suivant les applique tout seul**. Un interrupteur **« visages réels / dessin·anime »** adapte la détection des visages au contenu.
-- **Choix du moteur ASR** — transcrivez avec **Parakeet-TDT** (GPU, par défaut) ou **Whisper** ([faster-whisper standalone de Purfview](https://github.com/Purfview/whisper-standalone-win), tourne sur CPU) — choisissez la taille du modèle (tiny … large-v3-turbo) et le quant (compute type) directement dans les réglages.
+- **Choix du moteur ASR** — **Parakeet-TDT v3** (par défaut), **Parakeet Ultra** ou **CrisperWhisper 2.0 turbo** (99 langues, horodatage des mots), sur la carte ou le processeur ; en « Auto » la langue est reconnue par VoxLingua107.
 - **Importer des sous-titres prêts** — utilisez votre `.srt`/`.ass` comme transcription exacte : le texte et le timing viennent du fichier au lieu de la reconnaissance auto (les locuteurs sont quand même attribués par diarisation). Cochez **« sous-titres déjà dans la langue cible »** et la traduction est aussi ignorée — une vidéo anglaise + vos sous-titres russes → un doublage russe directement à partir d'eux.
 - **Export multilingue** — la **▾** à côté d'Exporter envoie une vidéo dans plusieurs langues d'un coup ; chacune hérite de toutes vos modifications (mise en page des sous-titres, styles, zones de flou, voix clonée) — seuls la traduction et le doublage changent.
 - **Sauvegarder et rouvrir des projets** — sauvegarde auto, liste des projets récents sur l'écran d'accueil, et reprenez le travail inachevé en un clic.
@@ -91,7 +94,7 @@ Chargez un clip une fois et envoyez-le dans n'importe quel mode depuis l'éditeu
 - **Installation en un bouton + mise à jour auto** —— modèles, moteurs, runtime CUDA/VC++ et ffmpeg se téléchargent au premier lancement ; l'app se met à jour seule.
 - **Téléchargements reprenables** —— les gros modèles (10 Go+) reprennent là où ils se sont arrêtés après une coupure, au lieu de tout recommencer.
 - **Calculez chaque étape où vous voulez** —— la séparation, la diarisation et la reconnaissance basculent indépendamment entre **GPU et CPU**, et la reconnaissance, la traduction, la vision et la voix peuvent être déléguées à **OpenRouter**. Le tableau *Ce qui tourne où* ci-dessous indique ce que chaque étape peut réellement utiliser.
-- **Adaptez à votre matériel** —— chaque moteur propose plusieurs quantifications (TTS Q8/Q6/Q4, traduction Q4…Q8, ASR int8/fp32 ou Whisper tiny…large-v3-turbo, séparation Q8/Q5/Q4) — changez-les dans les réglages ; limitez le lot de prefill et la durée de référence pour les GPU de 8–12 Go et 32 Go de RAM.
+- **Adaptez à votre matériel** —— chaque moteur propose plusieurs quantifications (TTS Q8/Q6/Q4, traduction Q4…Q8, séparation Q8/Q5/Q4), à changer dans les réglages ; limitez le **lot de prefill** et la **longueur de la référence vocale** pour des GPU de 8–12 Go et 32 Go de RAM ; sur une carte de 8 Go ou moins, le serveur de traduction ajuste lui-même ses couches à la mémoire libre.
 - **Toute l'app dans votre langue** — progression, erreurs, installation, casting et rapports lus par un agent arrivent dans les six langues de la fenêtre.
 - **Voix Google Gemini** — Gemini TTS à côté du moteur local et d'OpenRouter, avec sa propre clé et une liste de modèles à jour ; **Batch** coûte moitié moins cher et un rendu arrêté reprend le même lot déjà payé.
 - **Nombre de locuteurs** — automatique ou de 1 à 8 personnes ; les voix sont appariées sur tout un long enregistrement, transcrit par fenêtres d'environ 90 secondes.
@@ -233,7 +236,7 @@ Nécessite Node 20+, Rust (toolchain MSVC) et WebView2. Les moteurs natifs n'ont
 
 ### Linux (expérimental)
 
-Le .deb et l'AppImage pour Linux x86-64 sont **expérimentaux**. Ils viennent du même code avec les versions Linux des mêmes moteurs (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, le moteur Higgs pour Linux, yt-dlp, faster-whisper), mais l'auteur travaille sous Windows et ne les a pas lancés sur un vrai bureau Linux. **Si vous vivez sous Linux, ce serait génial que vous les peaufiniez et renvoyiez les corrections en pull request.**
+Le .deb et l'AppImage pour Linux x86-64 sont **expérimentaux**. Ils viennent du même code avec les versions Linux des mêmes moteurs (llama.cpp, ONNX Runtime, BSRoformer.cpp, ffmpeg, le serveur audio.cpp, transcribe.cpp, yt-dlp), mais l'auteur travaille sous Windows et ne les a pas lancés sur un vrai bureau Linux. **Si vous vivez sous Linux, ce serait génial que vous les peaufiniez et renvoyiez les corrections en pull request.**
 
 - La voix locale demande une NVIDIA à partir de Turing (GTX 16, RTX 20 et plus récentes), comme sous Windows. Les voix dans le cloud fonctionnent sur n'importe quelle machine.
 - Le pilote NVIDIA (580 ou plus récent), `libgomp1` et `libssl3` viennent du système ; les modèles, moteurs et bibliothèques CUDA, l'application les télécharge au premier lancement dans `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
@@ -270,10 +273,12 @@ Jamais : vidéos, transcriptions, traductions, voix, noms de fichiers ou chemins
 - **[Boson AI](https://huggingface.co/bosonai)** —— le modèle Higgs Audio v3, et **[drbaph / Higgs-Audio-v3-Studio](https://huggingface.co/drbaph/Higgs-Audio-v3-Studio)** —— les quantifications GGUF et le moteur natif `audiocpp_engine.dll`.
 - **[NVIDIA Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3)** (CC-BY-4.0) —— ASR ; poids ONNX de [istupakov/parakeet-tdt-0.6b-v3-onnx](https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx), runtime [altunenes/parakeet-rs](https://github.com/altunenes/parakeet-rs).
 - **[Parakeet Ultra](https://huggingface.co/moondream/parakeet-ultra)** par **[Moondream](https://huggingface.co/moondream)**, basé sur parakeet-tdt-0.6b-v3 de NVIDIA (CC-BY-4.0) —— ASR affiné optionnel, avec moins d'erreurs de reconnaissance ; export ONNX de [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs). int8: [Masterx/parakeet-tdt-0.6b-ultra-onnx](https://huggingface.co/Masterx/parakeet-tdt-0.6b-ultra-onnx).
+- **[nyra health / CrisperWhisper](https://huggingface.co/nyralabs/CrisperWhisper2.0_turbo)** —— CrisperWhisper 2.0 turbo, le Whisper mot à mot avec l'horodatage des mots ; **[VoxLingua107](https://huggingface.co/speechbrain/lang-id-voxlingua107-ecapa)** (SpeechBrain) reconnaît la langue en « Auto ».
+- **[Supertone / Supertonic 3](https://huggingface.co/Supertone/supertonic-3)**, **[Edge0 / Audio8 TTS Realistic-Air](https://huggingface.co/Edge0/Audio8-TTS-Realistic-Air)**, **[Qwen3-TTS](https://huggingface.co/Qwen)** (avec l'affinage des accents russes de [siriusfreak](https://huggingface.co/siriusfreak/qwen3-tts-12hz-1.7b-ru-stress-cf)) et **[Fish Audio Drama 3](https://huggingface.co/fishaudio/drama-3)** —— les autres moteurs de voix.
+- **[WeSpeaker](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)** (voix des locuteurs), **[DPDFNet](https://huggingface.co/Ceva-IP/DPDFNet)** (réduction du bruit), **[Silero VAD](https://github.com/snakers4/silero-vad)** (détection de la parole) et **[RUAccent](https://huggingface.co/ruaccent/accentuator)** (accents du russe).
 - **[NVIDIA Nemotron 3 Diarization](https://huggingface.co/nvidia/Nemotron-3-Diarization)** (Streaming Sortformer v3, [OpenMDW-1.1](https://openmdw.ai/license/1-1/)) —— diarisation des locuteurs, jusqu'à 8 locuteurs ; export ONNX de [altunenes/parakeet-rs](https://huggingface.co/altunenes/parakeet-rs).
 - **[Google Gemma](https://huggingface.co/google/gemma-4-12b-it-qat-q4_0-gguf)** —— Gemma-4 12B (traduction et vision), les quantifications de [unsloth](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF) et [llama.cpp](https://github.com/ggml-org/llama.cpp) qui les exécute.
 - **[chenmozhijin / BSRoformer.cpp](https://github.com/chenmozhijin/BSRoformer.cpp)** et **[GaboxR67](https://huggingface.co/GaboxR67)** —— le moteur natif de séparation avec ses modèles GGUF, et le point de contrôle Mel-Band Roformer.
-- **[Systran / faster-whisper](https://github.com/SYSTRAN/faster-whisper)**, **[deepdml](https://huggingface.co/deepdml)** et **[Purfview](https://github.com/Purfview/whisper-standalone-win)** —— les modèles Whisper au format CTranslate2 et la version autonome qui les exécute.
 - **[InsightFace](https://github.com/deepinsight/insightface)** (via [immich-app/buffalo_l](https://huggingface.co/immich-app/buffalo_l)), **[ByteDance LVFace](https://huggingface.co/bytedance-research/LVFace)**, **[deepghs](https://huggingface.co/deepghs)** (CCIP, détection de visages d'anime), **[FaceFusion](https://huggingface.co/facefusion/models-3.1.0)** et **[WeSpeaker](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM)** —— les modèles de visages et de voix du casting de personnages.
 - **[PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)** —— PP-OCR, les modèles de détection et de reconnaissance du texte à l'écran.
 - **[ONNX Runtime](https://github.com/microsoft/onnxruntime)**, **[FFmpeg](https://ffmpeg.org)** avec les builds de [BtbN](https://github.com/BtbN/FFmpeg-Builds), **[JASSUB](https://github.com/ThaUnknown/jassub)**, **[Tauri](https://tauri.app)** et **[ort](https://github.com/pykeio/ort)**.
@@ -300,9 +305,18 @@ Le code de l'application est sous [MIT](LICENSE). **Les modèles ne le sont pas*
 | Parakeet-TDT 0.6B v3 (NVIDIA) et son export ONNX | CC-BY-4.0 | Créditer NVIDIA |
 | Parakeet Ultra (Moondream, basé sur NVIDIA Parakeet-TDT) | CC-BY-4.0 | Créditer Moondream et NVIDIA |
 | Nemotron 3 Diarization (NVIDIA) | [OpenMDW-1.1](https://openmdw.ai/license/1-1/) | Créditer NVIDIA ; l'export ONNX vient de altunenes/parakeet-rs |
+| CrisperWhisper 2.0 turbo (nyra health) | nyra health non-commercial research license | **Recherche non commerciale uniquement** |
+| VoxLingua107 language id (SpeechBrain) | Apache-2.0 |  |
+| Supertonic 3 (Supertone) | BigScience OpenRAIL-M | Lisez ses restrictions d'usage |
+| Audio8 TTS Realistic-Air (Edge0) | Apache-2.0 |  |
+| Qwen3-TTS (Qwen) et son affinage des accents russes | Apache-2.0 |  |
+| Fish Audio Drama 3 | Fish Audio Research License | **Recherche non commerciale uniquement** |
+| WeSpeaker ResNet34 | CC-BY-4.0 | Citer WeSpeaker |
+| DPDFNet (Ceva) | Apache-2.0 |  |
+| Silero VAD v6.2 | MIT |  |
+| RUAccent | MIT |  |
 | Gemma-4 12B (Google) | Apache-2.0 sur la page du modèle, qui renvoie aux [conditions Gemma 4 de Google](https://ai.google.dev/gemma/docs/gemma_4_license) | Lisez les deux |
 | Mel-Band Roformer voc_fv6 (GaboxR67), GGUF de chenmozhijin | Aucune licence indiquée sur les pages des modèles ; le moteur BSRoformer.cpp est sous MIT | Demandez aux auteurs avant tout usage commercial |
-| Modèles Whisper (Systran, deepdml) et faster-whisper | MIT | La version autonome de Purfview n'a pas de fichier de licence dans son dépôt |
 | Détecteur de visages SCRFD (InsightFace buffalo_l) | InsightFace : modèles préentraînés **pour la recherche non commerciale uniquement** | Le casting de visages réels est soumis à cette restriction |
 | LVFace (ByteDance) | MIT |  |
 | CCIP (deepghs) | OpenRAIL | Lisez ses restrictions d'usage |
