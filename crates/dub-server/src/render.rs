@@ -562,7 +562,6 @@ fn note_pace(engine: &str, expected: f64, took: Duration, finished: bool) {
 /// ВЫЙДЕТ из движка (нельзя трогать движок конкурентно — single-caller контракт). Вышел -> движок свободен,
 /// Err(таймаут) => вызывающий ретраит. Не вышел -> Err(ENGINE_STUCK) => вызывающий обрывает рендер (НЕ гоняет
 /// движок параллельно с зависшим потоком).
-
 fn voice_clone_guarded(
     engine: &Arc<TtsEngine>,
     text: &str,
@@ -628,7 +627,6 @@ fn voice_clone_guarded(
 /// `src` as Higgs's codec takes a reference (`media::ref_for_higgs`), a quiet one raised to speech level, kept in the
 /// studio's own cache under `cache`, by the source's path, size and time: never beside the source (a voice library, a
 /// project, a neighbour's file).
-
 fn higgs_reference(cache: &Path, src: &Path) -> Result<PathBuf, String> {
     let meta = std::fs::metadata(src).map_err(|e| format!("{}: {e}", src.display()))?;
     let stamp = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_nanos());
@@ -974,17 +972,19 @@ fn sentences(text: &str) -> Vec<&str> {
     out
 }
 
-/// Голоса Supertonic говорящим без голоса из пака: по полу, разным говорящим одного пола — разные.
-fn supertonic_cast(genders: &std::collections::HashMap<String, String>) -> std::collections::BTreeMap<String, String> {
+/// Голоса Supertonic каждому из `speakers`: по полу из `genders`, разным говорящим одного пола — разные; говорящему,
+/// чей пол не определился, — по кругу из всех голосов (без голоса он ушёл бы клонировать реф, а Supertonic не клонирует).
+fn supertonic_cast(speakers: &[String], genders: &std::collections::HashMap<String, String>) -> std::collections::BTreeMap<String, String> {
     let (female, male): (Vec<&str>, Vec<&str>) = crate::supertonic::VOICES.iter().partition(|v| v.starts_with('F'));
-    let mut spks: Vec<&String> = genders.keys().collect();
+    let mut spks: Vec<&String> = speakers.iter().collect();
     spks.sort();
+    spks.dedup();
     let (mut fi, mut mi, mut ai) = (0usize, 0usize, 0usize);
     spks.into_iter()
         .map(|spk| {
-            let voice = match genders[spk].as_str() {
-                "female" => { fi += 1; female[(fi - 1) % female.len()] }
-                "male" => { mi += 1; male[(mi - 1) % male.len()] }
+            let voice = match genders.get(spk).map(String::as_str) {
+                Some("female") => { fi += 1; female[(fi - 1) % female.len()] }
+                Some("male") => { mi += 1; male[(mi - 1) % male.len()] }
                 _ => { ai += 1; crate::supertonic::VOICES[(ai - 1) % crate::supertonic::VOICES.len()] }
             };
             (spk.clone(), format!("{SUPERTONIC_VOICE}{voice}"))
@@ -1311,7 +1311,6 @@ const CLIP_SHARE: f64 = 0.01;
 /// The defect of a take of a phrase of `chars` letters and digits paced as `lang`, by its samples (Speech Studio's
 /// check, the thresholds of a QC run of 149 clips): a runaway past `acpp_server::higgs::runaway_secs`, a cut-off,
 /// clipping, silence, a hum. None is no proof of a clean take: recognition of the take against its text says that.
-
 fn synth_defect(samples: &[f32], sr: i32, chars: usize, lang: &str) -> Option<&'static str> {
     if sr <= 0 || samples.is_empty() {
         return Some("silence");
@@ -1780,22 +1779,30 @@ fn build_dub_pass(
         std::collections::BTreeMap::new()
     };
     let use_pack = !pack_refs.is_empty();
-    // Supertonic не клонирует: без голосов из пака говорящим раздаются его голоса по полу, рефы не строятся.
+    // Supertonic не клонирует: говорящим без голоса Supertonic из пака (запись, слот клона, пусто) раздаются его голоса
+    // по полу, рефы не строятся.
     let supertonic_on = paths.higgs_quant == crate::models::SUPERTONIC_TTS;
-    let supertonic_voices = if supertonic_on && !use_pack {
-        let mut spk_ids: Vec<String> = proj.segments.iter().map(|s| s.speaker.clone().unwrap_or_else(|| "0".into())).collect();
+    let supertonic_voices = if supertonic_on {
+        let mut spk_ids: Vec<String> = proj
+            .segments
+            .iter()
+            .map(|s| s.speaker.clone().unwrap_or_else(|| "0".into()))
+            .filter(|spk| !pack_refs.get(spk).is_some_and(|p| p.to_string_lossy().starts_with(SUPERTONIC_VOICE)))
+            .collect();
         spk_ids.sort();
         spk_ids.dedup();
-        let cast = supertonic_cast(&crate::casting::speaker_genders_wd(&paths.work_dir, proj, &spk_ids));
-        let desc: Vec<String> = cast.iter().map(|(k, v)| format!("{k}→{}", &v[SUPERTONIC_VOICE.len()..])).collect();
-        emit(progress, "tts", &t!("render-supertonic-voices", voices = desc.join(", ")));
+        let cast = supertonic_cast(&spk_ids, &crate::casting::speaker_genders_wd(&paths.work_dir, proj, &spk_ids));
+        if !cast.is_empty() {
+            let desc: Vec<String> = cast.iter().map(|(k, v)| format!("{k}→{}", &v[SUPERTONIC_VOICE.len()..])).collect();
+            emit(progress, "tts", &t!("render-supertonic-voices", voices = desc.join(", ")));
+        }
         cast
     } else {
         std::collections::BTreeMap::new()
     };
     // Облачный TTS (OpenRouter) вместо локального Higgs: клон-рефы ему не нужны.
     let cloud_tts_on = crate::models::cloud_tts_on(&paths.models_root);
-    if mix_ref_noted(ref_from_mix, cloud_tts_on, !use_pack || !clone_slot_spks.is_empty(),
+    if mix_ref_noted(ref_from_mix, cloud_tts_on, !supertonic_on && (!use_pack || !clone_slot_spks.is_empty()),
     ) {
         emit(progress, "tts", &t!("render-ref-from-mix"),
         );
@@ -1803,7 +1810,7 @@ fn build_dub_pass(
     // ref_texts: расшифровка реф-клипа НА СПИКЕРА (Higgs клонирует качественнее с ref_text). Клон-режим —
     // src_text выбранного сегмента; пак-режим — АВТОТРАНСКРИПЦИЯ 12с-клипа (как Higgs build_speaker_reference;
     // пак-.txt = полный 3-мин транскрипт, к 12с не подходит). ASR best-effort: сбой -> None (не хуже прежнего).
-    let (spk_refs, mut ref_texts, alt_refs) = if supertonic_on && !use_pack {
+    let (spk_refs, mut ref_texts, alt_refs) = if supertonic_on {
         (std::collections::BTreeMap::new(), std::collections::BTreeMap::new(), std::collections::BTreeMap::new())
     } else if use_pack {
         if clone_slot_spks.is_empty() {
@@ -1827,7 +1834,7 @@ fn build_dub_pass(
         let mut asr = crate::models::build_engine(&paths.asr)?;
         build_speaker_refs(&segs, &ref_src, wd, ref_secs, qwen_refs, asr.as_mut(), progress)?
     };
-    if use_pack {
+    if use_pack && !supertonic_on {
         // Реф-транскрипция выбранным движком (Parakeet/CrisperWhisper), а не захардкоженным Parakeet: у юзера без
         // Parakeet-модели ref_text молча не считался бы. build_engine сам решает.
         let mut asr = crate::models::build_engine(&paths.asr)?;
@@ -4660,11 +4667,24 @@ mod tests {
     fn supertonic_casts_by_gender_and_gives_two_women_two_voices() {
         let genders: std::collections::HashMap<String, String> =
             [("0", "female"), ("1", "male"), ("2", "female"), ("3", "")].iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
-        let cast = supertonic_cast(&genders);
+        let speakers: Vec<String> = ["0", "1", "2", "3"].iter().map(|s| s.to_string()).collect();
+        let cast = supertonic_cast(&speakers, &genders);
         assert_eq!(cast["0"], "supertonic:F1");
         assert_eq!(cast["1"], "supertonic:M1");
         assert_eq!(cast["2"], "supertonic:F2");
         assert_eq!(cast["3"], "supertonic:F1");
+    }
+
+    /// #54: a speaker whose gender did not come out of the vocals still gets a Supertonic voice; without one every line
+    /// of theirs went to clone the project's reference, and Supertonic does not clone.
+    #[test]
+    fn supertonic_gives_a_voice_to_a_speaker_of_unknown_gender() {
+        let genders: std::collections::HashMap<String, String> = [("0".to_string(), "male".to_string())].into_iter().collect();
+        let speakers: Vec<String> = ["0", "1", "1"].iter().map(|s| s.to_string()).collect();
+        let cast = supertonic_cast(&speakers, &genders);
+        assert_eq!(cast.len(), 2);
+        assert_eq!(cast["0"], "supertonic:M1");
+        assert!(cast["1"].starts_with(SUPERTONIC_VOICE), "{}", cast["1"]);
     }
 
     #[test]
