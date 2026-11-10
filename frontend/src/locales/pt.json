@@ -252,6 +252,8 @@
     "takesGroup": "Verificação de tomadas",
     "theme": "Tema",
     "themeHint": "Escuro, claro ou como o sistema",
+    "uiScale": "Escala da interface",
+    "uiScaleHint": "Desenha todo o estúdio maior ou menor e é mantida para o próximo início. Ctrl + mais e Ctrl + menos também a alteram; Ctrl + 0 volta a 100 %.",
     "theme_system": "Como o sistema",
     "theme_dark": "Escuro",
     "theme_light": "Claro"

@@ -283,6 +283,8 @@
     "takesGroup": "Take checks",
     "theme": "Theme",
     "themeHint": "Dark, light, or as the system is",
+    "uiScale": "Interface scale",
+    "uiScaleHint": "Draws the whole studio larger or smaller and is kept for the next start. Ctrl + plus and Ctrl + minus change it too; Ctrl + 0 returns to 100 %.",
     "theme_system": "As the system",
     "theme_dark": "Dark",
     "theme_light": "Light"

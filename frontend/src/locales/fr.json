@@ -252,6 +252,8 @@
     "takesGroup": "Contrôle des prises",
     "theme": "Thème",
     "themeHint": "Sombre, clair ou comme le système",
+    "uiScale": "Échelle de l'interface",
+    "uiScaleHint": "Dessine tout le studio en plus grand ou plus petit et est conservée au prochain démarrage. Ctrl + plus et Ctrl + moins la changent aussi ; Ctrl + 0 revient à 100 %.",
     "theme_system": "Comme le système",
     "theme_dark": "Sombre",
     "theme_light": "Clair"

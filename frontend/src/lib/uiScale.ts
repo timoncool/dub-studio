@@ -1,0 +1,62 @@
+/** The interface scale, in per cent of the studio's own size. */
+export const UI_SCALE_MIN = 90;
+export const UI_SCALE_MAX = 150;
+export const UI_SCALE_STEP = 10;
+export const UI_SCALE_DEFAULT = 100;
+
+const STORAGE_KEY = "dub-studio:uiScale";
+/** Sent when the scale changes, so the setting and the shortcuts agree. */
+export const UI_SCALE_EVENT = "studio:ui-scale";
+
+export function clampUiScale(percent: number): number {
+  if (!Number.isFinite(percent)) return UI_SCALE_DEFAULT;
+  const stepped = Math.round(percent / UI_SCALE_STEP) * UI_SCALE_STEP;
+  return Math.min(UI_SCALE_MAX, Math.max(UI_SCALE_MIN, stepped));
+}
+
+/** The scale this window keeps; the studio's own size when none is kept or the storage cannot be read. */
+export function storedUiScale(): number {
+  try {
+    const kept = localStorage.getItem(STORAGE_KEY);
+    return kept === null ? UI_SCALE_DEFAULT : clampUiScale(Number(kept));
+  } catch (error) {
+    console.error("[ERROR] the interface scale could not be read:", error);
+    return UI_SCALE_DEFAULT;
+  }
+}
+
+/**
+ * Scales the whole interface by the window's zoom, which lays the page out again at the new size as a browser's
+ * zoom does. The studio's window is a page at http://127.0.0.1, in a browser or in the desktop webview alike.
+ */
+export function applyUiScale(percent: number): void {
+  const factor = clampUiScale(percent) / 100;
+  document.documentElement.style.zoom = String(factor);
+}
+
+/** Keeps and applies a scale, and tells the rest of the window. */
+export function setUiScale(percent: number): number {
+  const next = clampUiScale(percent);
+  try {
+    localStorage.setItem(STORAGE_KEY, String(next));
+  } catch (error) {
+    console.error("[ERROR] the interface scale could not be kept:", error);
+  }
+  applyUiScale(next);
+  window.dispatchEvent(new CustomEvent(UI_SCALE_EVENT, { detail: next }));
+  return next;
+}
+
+/** What Ctrl with a key does to the scale: larger, smaller, back to the studio's size; null for other keys. */
+export function scaleForKey(key: string, current: number): number | null {
+  if (key === "=" || key === "+") return clampUiScale(current + UI_SCALE_STEP);
+  if (key === "-" || key === "_") return clampUiScale(current - UI_SCALE_STEP);
+  if (key === "0") return UI_SCALE_DEFAULT;
+  return null;
+}
+
+/** The page's own scale: a pointer's clientX and an element's getBoundingClientRect come in screen pixels, the layout
+ * (scrollLeft, a width in CSS, a position set in style) in CSS pixels, which is the screen's divided by this. */
+export function pageZoom(): number {
+  return Number(document.documentElement.style.zoom) || 1;
+}

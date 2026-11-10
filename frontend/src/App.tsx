@@ -58,6 +58,7 @@ import LlmProviders from "./components/LlmProviders";
 import OpenRouterModelSelect, { OpenRouterCatalogRow } from "./components/OpenRouterModelSelect";
 import VoiceCatalog from "./components/voices/VoiceCatalog";
 import { prettyVoice } from "./lib/voices";
+import { applyUiScale, pageZoom, scaleForKey, setUiScale, storedUiScale, UI_SCALE_EVENT } from "./lib/uiScale";
 import BridgeHost from "./components/BridgeHost";
 import { useChanged, useEditorBridge, useProjectSync, useTranscriptBridge, type Draft } from "./components/editorBridge";
 import { CASTING_CHANGED, JOURNAL_CHANGED, PROJECTS_CHANGED, SETTINGS_CHANGED, VOICES_CHANGED, bridgeError, takeArgs, textArg, useBridgeCommand } from "./lib/mcpBridge";
@@ -2225,7 +2226,7 @@ function InteractiveTimeline({
     if (!containerRef.current) return 0;
     const rect = containerRef.current.getBoundingClientRect();
     const scrollLeft = containerRef.current.scrollLeft;
-    const x = clientX - rect.left + scrollLeft;
+    const x = (clientX - rect.left) / pageZoom() + scrollLeft;
     return Math.max(0, Math.min(total, x / zoom));
   };
 
@@ -2252,7 +2253,7 @@ function InteractiveTimeline({
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!draggingSeg) return;
-    const dt = (e.clientX - draggingSeg.startX) / zoom;
+    const dt = (e.clientX - draggingSeg.startX) / pageZoom() / zoom;
     let newStart = draggingSeg.origStart;
     let newEnd = draggingSeg.origEnd;
 
@@ -4898,6 +4899,25 @@ export default function App() {
     if (stage === "setup" || !tel || tel.acknowledged || tel.disabledByEnv) return;
     setTelemetry(tel.enabled, true).catch((e: Error) => console.warn("[hub] the statistics default was not saved:", e.message)).finally(hubChanged);
   }, [stage, hub?.telemetry.acknowledged]);
+  // Ctrl with the mouse wheel is the timeline's zoom and the preview's seek here, so the scale changes by keys only.
+  useEffect(() => {
+    let scale = storedUiScale();
+    applyUiScale(scale);
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
+      const next = scaleForKey(event.key, scale);
+      if (next === null) return;
+      event.preventDefault();
+      if (next !== scale) scale = setUiScale(next);
+    };
+    const onScale = (event: Event) => { scale = (event as CustomEvent<number>).detail; };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener(UI_SCALE_EVENT, onScale);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(UI_SCALE_EVENT, onScale);
+    };
+  }, []);
   const projMode = useStore((s) => (s.project as Project | null)?.mode);   // transcribe -> отдельный экран
   const setPid = useStore((s) => s.setPid);
   const setProject = useStore((s) => s.setProject);

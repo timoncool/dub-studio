@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { pageZoom } from "./uiScale";
 
 export type Floatable = {
   floating: boolean;
@@ -12,8 +13,8 @@ export type Floatable = {
 // Держим панель в пределах видимого окна. Защита от x/y за экраном: битый сохранённый pos
 // (например x=innerWidth-360 при innerWidth=0 -> -360) или сжатие окна не должны прятать панель.
 function clampPos(p: { x: number; y: number }): { x: number; y: number } {
-  const vw = window.innerWidth || 1280;
-  const vh = window.innerHeight || 800;
+  const vw = (window.innerWidth || 1280) / pageZoom();
+  const vh = (window.innerHeight || 800) / pageZoom();
   const x = Math.round(Math.max(4, Math.min(vw - 60, Number.isFinite(p.x) ? p.x : vw - 360)));
   const y = Math.round(Math.max(4, Math.min(vh - 40, Number.isFinite(p.y) ? p.y : 64)));
   return { x, y };
@@ -40,7 +41,8 @@ export function useFloatable(key: string, initial: { x: number; y: number }): Fl
 
   const onDragStart = useCallback((e: React.PointerEvent) => {
     if (e.button !== 0) return;
-    off.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
+    const z = pageZoom();
+    off.current = { x: e.clientX / z - pos.x, y: e.clientY / z - pos.y };
     setDragging(true);
     e.preventDefault();
   }, [pos]);
@@ -48,8 +50,9 @@ export function useFloatable(key: string, initial: { x: number; y: number }): Fl
   useEffect(() => {
     if (!dragging) return;
     const move = (e: PointerEvent) => {
-      const x = Math.max(4, Math.min(window.innerWidth - 60, e.clientX - off.current.x));
-      const y = Math.max(4, Math.min(window.innerHeight - 40, e.clientY - off.current.y));
+      const z = pageZoom();
+      const x = Math.max(4, Math.min(window.innerWidth / z - 60, e.clientX / z - off.current.x));
+      const y = Math.max(4, Math.min(window.innerHeight / z - 40, e.clientY / z - off.current.y));
       setPos({ x, y });
     };
     const up = () => setDragging(false);

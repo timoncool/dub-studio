@@ -252,6 +252,8 @@
     "takesGroup": "Revisión de tomas",
     "theme": "Tema",
     "themeHint": "Oscuro, claro o como el sistema",
+    "uiScale": "Escala de la interfaz",
+    "uiScaleHint": "Dibuja todo el estudio más grande o más pequeño y se mantiene para el próximo inicio. Ctrl + más y Ctrl + menos también la cambian; Ctrl + 0 vuelve al 100 %.",
     "theme_system": "Como el sistema",
     "theme_dark": "Oscuro",
     "theme_light": "Claro"
