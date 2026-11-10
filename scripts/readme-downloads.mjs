@@ -140,12 +140,28 @@ function windowsModule(src) {
   return src.slice(src.indexOf("#[cfg(windows)]\nmod platform"), src.indexOf("#[cfg(not(windows))]\nmod platform"));
 }
 
-// The body of `pub const X: Parts = Parts { ... };` of the Windows platform module.
+// The body of `pub const X: Parts = Parts { ... };` of the Windows platform module, written on one line or many; the
+// separation engine's `files: &SEP_<BUILD>` becomes the FileSpec of that build's Windows archive (dub-sep's asset.rs).
 function windowsParts(src, x) {
   const windows = windowsModule(src);
   const at = windows.indexOf(`pub const ${x}: Parts = Parts {`);
   if (at < 0) throw new Error(`platform::${x} Parts not found in the Windows platform module`);
-  return windows.slice(at, windows.indexOf("\n    };", at));
+  const lineEnd = windows.indexOf("\n", at);
+  const line = windows.slice(at, lineEnd);
+  const body = line.trimEnd().endsWith("};") ? line : windows.slice(at, windows.indexOf("\n    };", at));
+  return body.replace(/files: &SEP_(\w+)/, (_, build) => `files: &[${sepFile(build)}]`);
+}
+
+// The FileSpec of the separation engine's Windows archive of a build (SEP_CUDA13 → Build::Cuda13), as setup.rs's
+// sep_file makes it: unpacked flat.
+function sepFile(build) {
+  const name = { CUDA13: "Cuda13", CUDA12: "Cuda12", VULKAN: "Vulkan", CPU: "Cpu" }[build];
+  if (!name) throw new Error(`unknown separation build SEP_${build}`);
+  const asset = readFileSync(join(root, "crates/dub-sep/src/asset.rs"), "utf8").replace(/\r\n/g, "\n");
+  const windows = asset.slice(asset.indexOf("#[cfg(windows)]\n    pub const fn engine"));
+  const m = windows.match(new RegExp(`Build::${name} => Asset \\{\\s*url: "([^"]+)",\\s*archive: "([^"]+)",\\s*size: ([\\d_]+),\\s*sha256: "([0-9a-f]{64})"`));
+  if (!m) throw new Error(`the Windows asset of Build::${name} not found in dub-sep/src/asset.rs`);
+  return `FileSpec { url: "${m[1]}", dest_rel: "${m[2]}", size: ${m[3]}, sha256: "${m[4]}", extract: Extract::Flat }`;
 }
 
 // The body of `const NAME: &[FileSpec] = &[...];` with every `platform::X` replaced by the Windows definition of X.
@@ -182,7 +198,8 @@ function readManifest() {
     if (!id || !requirement || !delivery) throw new Error("cannot parse a manifest component: " + p.slice(0, 120));
     // files: CONST — a const array of setup.rs; files: platform::X.files — the Windows Parts X
     const listed = p.match(/files: ([A-Z][A-Z0-9_]+),/)?.[1];
-    const parts = p.match(/files: platform::(\w+)\.files,/)?.[1];
+    // files: llama_parts(llama_build()).files — the card's build; the table shows the default one, platform::LLAMA
+    const parts = p.match(/files: platform::(\w+)\.files,/)?.[1] ?? (/files: llama_parts\(llama_build\(\)\)\.files,/.test(p) ? "LLAMA" : undefined);
     const own = p.replace(/files: &\[([A-Z0-9_, ]+)\]/, (_, list) => "files: &[" + list.split(",").map((x) => specs[x.trim()] ?? x).join(", ") + "]");
     const scope = listed ? constArray(src, listed) : parts ? windowsParts(src, parts) : own;
     const files = [...scope.matchAll(/FileSpec \{ url: (?:"([^"]+)"|(\w+)), dest_rel: "([^"]+)", size: ([\d_]+),(?: sha256: "[0-9a-f]{64}",)? extract: Extract::(\w+) \}/g)].map((f) => {
