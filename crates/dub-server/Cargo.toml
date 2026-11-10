@@ -48,18 +48,18 @@ reqwest = { version = "0.13", default-features = false, features = ["blocking", 
 # Многопоточная (aria2-style) загрузка byte-range'ами через ureq (метод Higgs-Ultimate). HF Xet-CAS отдаёт
 # 206 на Range-запросы с ureq-UA (reqwest/curl-UA душит 403). Параллельные диапазоны сатурируют канал HF CDN.
 ureq = { version = "3", features = ["socks-proxy", "platform-verifier"] }   # socks-proxy: без него socks5:// паникует «Enable feature socks-proxy»
-zip = { version = "8", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 # Linux-сборки движков приходят tar.gz (llama.cpp, onnxruntime) и tar.xz (ffmpeg, BSRoformer, NVIDIA redist).
 tar = "0.4"
 flate2 = "1"
-lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "optimization", "xz"] }
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "optimization", "xz"] }
 # монитор ресурсов: GPU через NVML, RAM/CPU через sysinfo.
 nvml-wrapper = "0.13"
-sysinfo = "0.39"
+sysinfo = "0.40"
 # запись голоса с микрофона (нативный cpal + hound-WAV).
 cpal = "0.18"
 # нативный диалог выбора папки (импорт готовых моделей без докачки; на Windows — Win32, без GTK).
-rfd = "0.17"
+rfd = "0.18"
 # content-addressable per-stage кэш (analyze::cache): лёгкий, чистый хэш без C-зависимостей.
 # Префикс-хэш длинных wav (первые+последние N байт + размер) — быстрый ключ инвалидации стадий.
 blake3 = "1"

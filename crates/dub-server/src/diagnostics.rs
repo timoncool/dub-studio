@@ -244,7 +244,7 @@ fn report(root: &Path) -> Value {
     let dll = json!([]);
     json!({
         "version": crate::service::app_version(),
-        "os": format!("{} ({})", sysinfo::System::long_os_version().or_else(sysinfo::System::name).unwrap_or_else(|| std::env::consts::OS.to_string()), std::env::consts::ARCH),
+        "os": format!("{} ({})", sysinfo::System::long_os_version().or_else(|_| sysinfo::System::name()).unwrap_or_else(|_| std::env::consts::OS.to_string()), std::env::consts::ARCH),
         "gpu": gpu,
         "memory": { "vram_total": hw.total_vram, "vram_free": hw.free_vram, "ram_total": hw.total_ram, "ram_used": hw.used_ram },
         "ffmpeg_on_path": crate::setup::ffmpeg_on_path(),

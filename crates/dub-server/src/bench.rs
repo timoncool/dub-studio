@@ -53,7 +53,7 @@ impl Bench {
         }
         let (c2, s2, sm2) = (cur.clone(), stop.clone(), samples.clone());
         let handle = std::thread::spawn(move || {
-            let mut sys = sysinfo::System::new();
+            let mut sys = sysinfo::System::new().expect("sysinfo has Windows, Linux and macOS");
             while !s2.load(Ordering::Relaxed) {
                 // sysinfo требует интервал между двумя refresh для дельты CPU
                 sys.refresh_cpu_all();

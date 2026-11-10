@@ -35,7 +35,7 @@ fn nvml() -> &'static Mutex<Option<Nvml>> {
 
 fn sysinfo() -> &'static Mutex<System> {
     static S: OnceLock<Mutex<System>> = OnceLock::new();
-    S.get_or_init(|| Mutex::new(System::new()))
+    S.get_or_init(|| Mutex::new(System::new().expect("sysinfo has Windows, Linux and macOS")))
 }
 
 pub fn snapshot() -> HardwareSnapshot {

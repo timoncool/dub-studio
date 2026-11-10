@@ -3675,7 +3675,7 @@ fn extract_archive(archive: &Path, name: &str, extract: Extract, dir: &Path) -> 
                 if entry.is_dir() {
                     continue;
                 }
-                let entry_name = entry.name().replace('\\', "/");
+                let entry_name = entry.name().map_err(|e| t!("setup-zip-entry", error = e.to_string()))?.replace('\\', "/");
                 let Some(out) = place(&entry_name) else { continue };
                 let mode = entry.unix_mode();
                 write_entry(&mut entry, &out, mode)?;
@@ -4155,8 +4155,8 @@ mod tests {
         for (password, kind) in [("p@ss:1/x", ProxyKind::Http), ("p@ss:1/x", ProxyKind::Socks5), ("pa:ss", ProxyKind::Socks5), ("pa ss", ProxyKind::Http), ("p\u{e4}ss", ProxyKind::Http),
         ] {
             let address = format!("bob:{}@1.2.3.4:8000", dub_llm::net::encode_userinfo(password));
-            let refused = download_proxy(&address, kind).expect_err(password);
-            assert!(refused.contains("ureq") && !refused.contains(password) && !refused.contains(&dub_llm::net::encode_userinfo(password)), "{refused}");
+            let proxy = download_proxy(&address, kind).unwrap();
+            assert_eq!((proxy.username(), proxy.password(), proxy.host(), proxy.port()), (Some("bob"), Some(password), "1.2.3.4", 8000), "{password}");
         }
     }
 

@@ -20,7 +20,7 @@ export const ALLOW: Allow = {
  * spelled the same in the language. "*" applies to every language.
  */
 export const SAME_AS_EN: Record<"*" | "ru" | "zh" | "es" | "pt" | "fr", string[]> = {
-  "*": ["app.name", "bilingual.pct", "keepOrig.mp4", "keepOrig.mkv", "casting.gender.unknown", "asrVariant.int8", "asrVariant.fp32", "asrVariant.ultra", "asrVariant.ultraInt8", "ttsVariant.drama3", "ttsVariant.qwen", "ttsVariant.qwenQ8", "ttsVariant.supertonic", "jobs.atStage", "downloads.speed", "providers.localGemma", "providers.serverUrlPlaceholder", "url.qHeight", "url.tool.version", "journal.line", "journal.quoted"],
+  "*": ["app.name", "voices.seconds", "ttsVariant.audio8", "bilingual.pct", "keepOrig.mp4", "keepOrig.mkv", "casting.gender.unknown", "asrVariant.int8", "asrVariant.fp32", "asrVariant.ultra", "asrVariant.ultraInt8", "ttsVariant.drama3", "ttsVariant.qwen", "ttsVariant.qwenQ8", "ttsVariant.supertonic", "jobs.atStage", "downloads.speed", "providers.localGemma", "providers.serverUrlPlaceholder", "url.qHeight", "url.tool.version", "journal.line", "journal.quoted"],
   ru: [],
   zh: ["units.gb", "units.mb", "units.kb", "units.b"],
   es: [
@@ -39,7 +39,7 @@ export const SAME_AS_EN: Record<"*" | "ru" | "zh" | "es" | "pt" | "fr", string[]
     "glossary.auto", "journal.kind.download", "journal.kind.proxy",
   ],
   fr: [
-    "editor.style", "voice.recordStop", "voice.g_female", "remix.title", "jobs.kind.remix", "compare.original", "settings.vision",
+    "editor.style", "voice.recordStop", "voice.g_female", "voices.source", "remix.title", "jobs.kind.remix", "compare.original", "settings.vision",
     "settings.auto", "settings.sec", "settings.idleMinutes", "help.sectionsTitle", "common.pause", "comp.audioLabel", "comp.subsOriginal",
     "trStyle.normal", "casting.contentAuto", "units.watt", "proxy.title", "proxy.services", "secrets.proxyTitle", "bridge.agent",
     "takes.dur", "glossary.auto", "providers.agent", "journal.kind.casting", "journal.kind.proxy",

@@ -629,7 +629,7 @@ pub fn run_captured(mut cmd: Command, stop: &dyn Fn() -> bool, timeout: Option<D
 pub fn kill_tree(pid: u32) {
     use sysinfo::{Pid, ProcessesToUpdate, System};
     let root = Pid::from_u32(pid);
-    let mut sys = System::new();
+    let mut sys = System::new().expect("sysinfo has Windows, Linux and macOS");
     sys.refresh_processes(ProcessesToUpdate::All, true);
     let mut family = vec![root];
     let mut i = 0;

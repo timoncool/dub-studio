@@ -17,7 +17,7 @@ tauri-plugin-updater = "2"   # авто-обновление: качает по�
 tauri-plugin-dialog = "2"    # нативный диалог «Обновить? [Обновить] [Позже]»
 tauri-plugin-opener = "2"    # opener:default окна; страницу релиза оболочка открывает сама, вне job (spawn_update_check)
 tauri-plugin-single-instance = "2"  # второй запуск отдаёт фокус уже открытому окну
-rfd = "0.17"                 # диалог ошибки старта, когда окна Tauri ещё нет
+rfd = "0.18"                 # диалог ошибки старта, когда окна Tauri ещё нет
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # axum-бэкенд встроен В ЭТОТ ЖЕ процесс (один exe, без dub-server.exe-сайдкара): serve_blocking с фонового потока.

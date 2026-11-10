@@ -51,7 +51,8 @@ fn unpack(archive: &Path, dir: &Path) {
         if entry.is_dir() {
             continue;
         }
-        let name = Path::new(entry.name()).file_name().unwrap().to_owned();
+        let entry_name = entry.name().unwrap().into_owned();
+        let name = Path::new(&entry_name).file_name().unwrap().to_owned();
         let mut out = std::fs::File::create(dir.join(name)).unwrap();
         std::io::copy(&mut entry, &mut out).unwrap();
     }
