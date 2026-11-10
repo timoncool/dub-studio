@@ -130,6 +130,7 @@
     "importHint": "Adicionar à biblioteca seus próprios arquivos de voz (WAV, MP3, FLAC, M4A, OGG) ou um .zip de vozes do Speech Studio",
     "imported": "Vozes adicionadas: {{names}}",
     "importedZip": "Vozes adicionadas do arquivo: {{added}}, já existiam: {{already}}",
+    "recordedPickInPanel": "A gravação «{{name}}» está na biblioteca: atribua-a a um falante em «Falantes e vozes»",
     "addSpeaker": "＋ Adicionar locutor",
     "addSpeakerHint": "A IA encontrou menos locutores do que há? Marque as falas da segunda pessoa (ou pare o cursor de reprodução sobre uma) e clique — viram um novo SPK com sua própria voz.",
     "addSpeakerPick": "Primeiro marque algumas falas ou mova o cursor sobre uma fala",

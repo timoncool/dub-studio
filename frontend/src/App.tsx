@@ -3764,7 +3764,11 @@ function Editor() {
               </label>
             )}
             <VoiceRecorder voiceList={voiceList} onVoices={setVoiceList}
-              onDone={(nm) => branch("recast", { voice_mode: "voice", voice_name: nm })} />
+              onDone={(nm) => {
+                // one speaker takes the recording as their voice; with several the voice is chosen in «Speakers and voices»
+                if (new Set(p.segments.map((s) => s.speaker ?? "0")).size <= 1) branch("recast", { voice_mode: "voice", voice_name: nm });
+                else pushActivity(t("voice.recordedPickInPanel", { name: prettyVoice(nm) }), "work");
+              }} />
             {(() => {
               // «Спикеры и голоса»: по строке на спикера — пол, голос (клон или голос библиотеки), прослушать, голос из
               // реплик спикера. Список голосов — по одному на отсортированного спикера, как его читает движок.

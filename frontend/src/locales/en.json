@@ -162,6 +162,7 @@
     "importHint": "Add your own voice files (WAV, MP3, FLAC, M4A, OGG) or a .zip of voices from Speech Studio to the library",
     "imported": "Voices added: {{names}}",
     "importedZip": "Voices added from the archive: {{added}}, already there: {{already}}",
+    "recordedPickInPanel": "The recording «{{name}}» is in the library: give it to a speaker in «Speakers and voices»",
     "addSpeaker": "＋ Add speaker",
     "addSpeakerHint": "AI found fewer speakers than there are? Tick the second person's lines (or park the playhead on one) and click — they become a new SPK you can give its own voice.",
     "addSpeakerPick": "First tick some lines, or move the playhead onto a line",

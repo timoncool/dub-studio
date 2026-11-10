@@ -18,6 +18,10 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **A voice download that broke off goes on from where it stopped**, as in Speech Studio: a catalogue voice or the voice pack takes the rest of the file up to three times, and the part stays for the next press.
+- **A recorded voice no longer voices every speaker**: with several speakers the recording goes to the library and the journal says to give it to a speaker in «Speakers and voices»; with one speaker it becomes their voice as before.
+- **A take's card names what Higgs and Audio8 were given** (their own sampling, seed and cap) instead of the steps of the retry ladder.
+- **Reference candidates are checked in the language of their text**: the source language the project was given, else Russian for a Cyrillic transcript, so a speaker with an accent is not heard as Ukrainian and refused; references prepared for Higgs leave the studio's cache after 30 days unused.
 - **Translation starts on graphics cards of 8 GB and less**: the translation server (llama.cpp) is no longer told to put every layer on the card; it fits the layers and the context to the memory the card has free, so Gemma loads where it stopped with 0xc0000409.
 - **A cloud translation that is rate-limited waits as long as it is asked** (up to a minute) before the next try, and a server that cannot be reached is named by its host, with a hint to check the proxy.
 - **Voicing does not start into a known failure**: with OpenRouter or Google chosen for voicing and no key, or OpenRouter without a voicing model, the window says what to add in Settings instead of a job that fails on every line.

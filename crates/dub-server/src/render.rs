@@ -670,6 +670,22 @@ fn higgs_cache(repo_root: &Path) -> PathBuf {
     repo_root.join("temp").join("higgs-refs")
 }
 
+/// How long a reference prepared for Higgs is kept without being made again.
+const HIGGS_CACHE_KEEPS: Duration = Duration::from_secs(30 * 24 * 3600);
+
+/// The references prepared longer ago than `keeps` leave the cache: one still in use is made again from its source.
+fn prune_higgs_cache(cache: &Path, keeps: Duration) {
+    let Ok(entries) = std::fs::read_dir(cache) else { return };
+    for file in entries.filter_map(|e| e.ok().map(|e| e.path())).filter(|p| p.extension().is_some_and(|x| x == "wav")) {
+        let old = std::fs::metadata(&file).and_then(|m| m.modified()).ok().and_then(|at| at.elapsed().ok()).is_some_and(|age| age > keeps);
+        if old {
+            if let Err(e) = std::fs::remove_file(&file) {
+                tracing::warn!("the Higgs reference cache keeps {}: {e}", file.display());
+            }
+        }
+    }
+}
+
 fn load_higgs(repo_root: &Path, models_root: &Path) -> Result<HiggsServer, String> {
     // the build of the voicing device (`tts_backend`, else `local_backend`; «auto»: the card's CUDA build, else Vulkan
     // on a card of another make, else the processor), as Speech Studio voices
@@ -686,6 +702,7 @@ fn load_higgs(repo_root: &Path, models_root: &Path) -> Result<HiggsServer, Strin
     })?;
     let server = crate::acpp::server(repo_root, models_root, build, crate::acpp::HIGGS)
         .map_err(|e| t!("render-higgs-load-failed", error = e))?;
+    prune_higgs_cache(&higgs_cache(repo_root), HIGGS_CACHE_KEEPS);
     Ok(HiggsServer {
         server: std::sync::Mutex::new(server),
         cancel: Arc::new(AtomicBool::new(false)),
@@ -1112,6 +1129,18 @@ fn audio8_options(opts: &str, text: &str, lang: &str) -> Result<serde_json::Map<
     options.insert("top_p".into(), serde_json::json!(crate::audio8::TOP_P));
     options.insert("top_k".into(), serde_json::json!(crate::audio8::TOP_K));
     Ok(options)
+}
+
+/// What `engine` was given for an attempt of `text` in `lang` whose ladder step is `opts`, as the take records it:
+/// Higgs and Audio8 sample as their models do, so their take names those options; the other engines read the ladder's
+/// step as it is (each maps it onto its own scale, a seedless step drawing a new seed).
+
+fn sent_params(engine: &TtsEngine, opts: &str, text: &str, lang: &str) -> Result<String, String> {
+    Ok(match engine {
+        TtsEngine::Higgs(_) => serde_json::Value::Object(higgs_options(opts, text, lang)?).to_string(),
+        TtsEngine::Audio8(_) => serde_json::Value::Object(audio8_options(opts, text, lang)?).to_string(),
+        TtsEngine::Qwen(_) | TtsEngine::Drama(_) | TtsEngine::Supertonic(_) => opts.to_string(),
+    })
 }
 
 /// Параметры Qwen3-TTS из JSON попытки Higgs: seed его или свежий случайный, потолок `max_tokens` Higgs
@@ -1853,14 +1882,14 @@ fn build_dub_pass(
                 .cloned()
                 .collect();
             let mut asr = crate::models::build_engine(&paths.asr)?;
-            build_speaker_refs(&segs_clone, &ref_src, wd, ref_secs, qwen_refs, asr.as_mut(), progress,
+            build_speaker_refs(&segs_clone, &ref_src, wd, ref_secs, qwen_refs, &ref_check_lang(proj, &paths.asr), asr.as_mut(), progress,
             )?
         }
     } else {
         // Скоринг кандидатов + REF-QC (транскрипт каждого кандидата сверяется с текстом его окна,
         // брак -> следующий) — ref_text выставляется ВНУТРИ по фактически услышанному.
         let mut asr = crate::models::build_engine(&paths.asr)?;
-        build_speaker_refs(&segs, &ref_src, wd, ref_secs, qwen_refs, asr.as_mut(), progress)?
+        build_speaker_refs(&segs, &ref_src, wd, ref_secs, qwen_refs, &ref_check_lang(proj, &paths.asr), asr.as_mut(), progress)?
     };
     if use_pack && !supertonic_on {
         // Реф-транскрипция выбранным движком (Parakeet/CrisperWhisper), а не захардкоженным Parakeet: у юзера без
@@ -2473,7 +2502,7 @@ fn build_dub_pass(
                     ),
                 };
                 attempt += 1;
-                take_params = opts.clone();
+                take_params = sent_params(engine.as_ref().expect("the local Higgs (not the cloud)"), &opts, tgt, &proj.tgt_lang)?;
                 take_ref = rw.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                 // Таймаут — по темпу движка на этой машине (guard_timeout от длины слота). Ошибка/таймаут -> новая
                 // попытка; исчерпали попытки -> лучший дубль с речью или ОРИГИНАЛ реплики.
@@ -2652,7 +2681,7 @@ fn build_dub_pass(
                                 nonce: s.extra.get(REGEN_NONCE).cloned(),
                                 voice: voice_of(s),
                                 reference: ref_wav_mt.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-                                params: opts.clone(),
+                                params: sent_params(eng, &opts, tgt, &proj.tgt_lang)?,
                                 source: "multitake",
                             };
                             let n = crate::takes::History::update(wd, &sid, |h| {
@@ -2902,7 +2931,7 @@ fn build_dub_pass(
                                 nonce: s.extra.get(REGEN_NONCE).cloned(),
                                 voice: voice_of(s),
                                 reference: rw.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default(),
-                                params: opts.clone(),
+                                params: sent_params(engine.as_ref().expect("the local Higgs (QC is not for the cloud)"), &opts, tgtq, &proj.tgt_lang)?,
                                 source: "qc",
                             };
                             qc_takes[i] = Some(crate::takes::History::update(wd, &sid, |h| h.add(wd, &sid, raw, meta, raw_dur))?.1);
@@ -3410,6 +3439,23 @@ fn pick_ref_window(
     Some(RefWindow { start, end, text })
 }
 
+/// The language the reference candidates of a project are heard in, as Speech Studio checks a take in its text's
+/// language: the source language the project was given, else Russian when most of its lines are written in Cyrillic,
+/// else «auto». The check knows the words it expects; a Russian speaker with an accent was heard as Ukrainian and
+/// failed it. A language the chosen recogniser does not know stays «auto».
+fn ref_check_lang(proj: &dub_core::Project, asr: &crate::models::AsrChoice) -> String {
+    let given = proj.meta.extra.get("src_lang").and_then(|v| v.as_str()).map(str::trim).unwrap_or("");
+    let lang = if !given.is_empty() && given != "auto" {
+        given.to_string()
+    } else {
+        let (cyr, all) = proj.segments.iter().flat_map(|s| s.src_text.chars()).filter(|c| c.is_alphabetic()).fold((0usize, 0usize), |(c, a), ch| {
+            (c + usize::from(('\u{0400}'..='\u{04FF}').contains(&ch)), a + 1)
+        });
+        if all > 0 && cyr * 2 > all { "ru".to_string() } else { "auto".to_string() }
+    };
+    if lang != "auto" && !asr.knows(&lang) { "auto".to_string() } else { lang }
+}
+
 /// `ref_src` — дорожка, из которой режутся рефы (вокал в полной полосе, без сепарации — микс).
 fn build_speaker_refs(
     segs: &[(usize, &dub_core::Segment)],
@@ -3417,6 +3463,7 @@ fn build_speaker_refs(
     wd: &Path,
     ref_secs: f64,
     sentences: bool,
+    lang: &str,
     asr: &mut dyn dub_asr::AsrEngine,
     progress: &Progress,
 ) -> Result<SpkRefs, String> {
@@ -3522,7 +3569,7 @@ fn build_speaker_refs(
     // REF-QC: транскрипт каждого кандидата сверяем с текстом его окна — реф обязан ЗВУЧАТЬ как его
     // текст (кривой реф = кривой ref_text = каскад брака в клоне). Сбой ASR -> None -> кандидат
     // принимается без сверки (не хуже прежнего поведения).
-    let heard = asr.transcribe_many(&batch, "auto");
+    let heard = asr.transcribe_many(&batch, lang);
     let unheard = heard.iter().filter(|h| h.is_err()).count();
     if let Some(Err(e)) = heard.iter().find(|h| h.is_err()) {
         emit(progress, "tts", &t!("render-refs-unchecked", count = unheard, error = e.localize()));
@@ -5068,6 +5115,11 @@ mod tests {
         let (x, sr) = wavio::read_mono_f32(&first).unwrap();
         assert_eq!(sr, 24_000);
         assert_eq!(x.len() as u64 % media::HIGGS_HOP, 0);
+        prune_higgs_cache(&cache, Duration::from_secs(3600));
+        assert!(first.is_file(), "a reference made lately stays");
+        prune_higgs_cache(&cache, Duration::ZERO);
+        assert!(!first.is_file(), "one made longer ago than the cache keeps leaves it");
+        assert!(higgs_reference(&cache, &voices.join("Анна.wav")).unwrap().is_file(), "and is made again when asked for");
     }
 
     /// A speaker recorded far below speech level gives Higgs a reference raised to it (Higgs speaks at its reference's
@@ -5086,6 +5138,23 @@ mod tests {
         spiky[100] = 0.5;
         raise_quiet_reference(&mut spiky);
         assert!(spiky.iter().all(|v| v.abs() <= 0.99), "peaks stay under full scale");
+    }
+
+    /// Reference candidates are heard in the source's language: the one the project was given, else Russian for a
+    /// Cyrillic transcript; a language the recogniser does not know stays «auto».
+    #[test]
+    fn reference_candidates_are_heard_in_the_language_of_their_text() {
+        let proj_of = |lines: &[&str], src_lang: &str| {
+            let mut p = dub_core::Project::default();
+            p.meta.extra.insert("src_lang".into(), serde_json::json!(src_lang));
+            p.segments = lines.iter().map(|t| dub_core::Segment { src_text: t.to_string(), ..Default::default() }).collect();
+            p
+        };
+        let parakeet = crate::models::AsrChoice::unused();
+        assert_eq!(ref_check_lang(&proj_of(&["Привет, как дела?", "Ну и что теперь"], "auto"), &parakeet), "ru");
+        assert_eq!(ref_check_lang(&proj_of(&["Hello there", "What now"], "auto"), &parakeet), "auto");
+        assert_eq!(ref_check_lang(&proj_of(&["Hello there"], "de"), &parakeet), "de", "a language set by hand stands");
+        assert_eq!(ref_check_lang(&proj_of(&["こんにちは"], "ja"), &parakeet), "auto", "Parakeet does not know Japanese");
     }
 
     /// A phrase waits for its engine as long as that engine takes on this machine: 45 s for a short one at first, three

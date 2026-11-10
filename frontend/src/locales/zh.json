@@ -130,6 +130,7 @@
     "importHint": "将你自己的声音文件（WAV、MP3、FLAC、M4A、OGG）或 Speech Studio 的 .zip 声音包加入声音库",
     "imported": "已添加声音：{{names}}",
     "importedZip": "从压缩包添加的声音：{{added}}，已存在：{{already}}",
+    "recordedPickInPanel": "录音「{{name}}」已加入声音库：请在“说话人与声音”中分配给说话人",
     "addSpeaker": "＋ 添加说话人",
     "addSpeakerHint": "AI 识别的说话人比实际少？勾选第二个人的句子（或将播放头停在某句上）并点击——它们将成为新的 SPK，可为其单独设置配音。",
     "addSpeakerPick": "请先勾选一些句子，或将播放头移到某句上",

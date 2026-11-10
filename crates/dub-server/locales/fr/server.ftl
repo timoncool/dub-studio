@@ -470,6 +470,7 @@ voices-not-file-list = { $page } : ce n’est pas une liste de fichiers : { $err
 voices-list-endless = { $page } : la liste des fichiers du jeu de données ne finit pas
 voices-too-large = { $url } : plus que les { $size } octets fixés
 voices-size-mismatch = { $url } : { $got } octets reçus, { $size } fixés
+voices-fetch-failed = Le téléchargement a échoué ({ $tries } essais) : { $error }. Vérifiez le réseau et appuyez de nouveau : il reprendra là où il s’est coupé.
 voices-sha-mismatch = { $url } : le SHA-256 { $got } ne correspond pas au { $want } fixé
 voices-bad-name = nom invalide
 voices-not-in-dataset = la voix { $name } n’est pas dans le jeu de données { $dataset }

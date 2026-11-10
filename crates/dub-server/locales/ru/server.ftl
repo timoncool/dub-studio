@@ -492,6 +492,7 @@ voices-not-file-list = { $page }: не список файлов: { $error }
 voices-list-endless = { $page }: список файлов датасета не кончается
 voices-too-large = { $url }: больше закреплённых { $size } байт
 voices-size-mismatch = { $url }: пришло { $got } байт, закреплено { $size }
+voices-fetch-failed = Скачать не удалось ({ $tries } попытки): { $error }. Проверьте сеть и нажмите ещё раз — скачивание продолжится с места, где оборвалось.
 voices-sha-mismatch = { $url }: SHA-256 { $got } не совпал с закреплённым { $want }
 voices-bad-name = плохое имя
 voices-not-in-dataset = голоса { $name } нет в датасете { $dataset }

@@ -356,6 +356,7 @@ voices-not-file-list = { $page }：不是文件列表：{ $error }
 voices-list-endless = { $page }：数据集文件列表没有尽头
 voices-too-large = { $url }：超过固定的 { $size } 字节
 voices-size-mismatch = { $url }：收到 { $got } 字节，固定为 { $size } 字节
+voices-fetch-failed = 下载失败（尝试 { $tries } 次）：{ $error }。请检查网络后再点一次：会从中断处继续。
 voices-sha-mismatch = { $url }：SHA-256 { $got } 与固定值 { $want } 不符
 voices-bad-name = 名称无效
 voices-not-in-dataset = 数据集 { $dataset } 中没有音色 { $name }

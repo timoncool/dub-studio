@@ -470,6 +470,7 @@ voices-not-file-list = { $page }: not a file list: { $error }
 voices-list-endless = { $page }: the dataset file list does not end
 voices-too-large = { $url }: more than the pinned { $size } bytes
 voices-size-mismatch = { $url }: { $got } bytes arrived, { $size } are pinned
+voices-fetch-failed = The download failed ({ $tries } tries): { $error }. Check the network and press again: it goes on from where it broke off.
 voices-sha-mismatch = { $url }: SHA-256 { $got } does not match the pinned { $want }
 voices-bad-name = a bad name
 voices-not-in-dataset = voice { $name } is not in the dataset { $dataset }
