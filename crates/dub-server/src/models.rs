@@ -132,6 +132,7 @@ pub fn component_selection(id: &str) -> Vec<(&'static str, String)> {
         "qwen3-tts" => vec![("tts", "qwen3-tts".into())],
         "qwen3-tts-q8_0" => vec![("tts", "qwen3-tts-q8_0".into())],
         SUPERTONIC_TTS => vec![("tts", SUPERTONIC_TTS.into())],
+        AUDIO8_TTS => vec![("tts", AUDIO8_TTS.into())],
         "parakeet" => vec![("asr_engine", "parakeet".into()), ("asr", "int8".into())],
         "parakeet-ultra" => vec![("asr_engine", "parakeet".into()), ("asr", "ultra-int8".into())],
         "crisperwhisper-turbo" => vec![("asr_engine", "whisper".into())],
@@ -880,6 +881,9 @@ pub fn resolve_tts(mroot: &Path, sel: &Value) -> (PathBuf, String) {
     if pick(sel, "tts") == Some(SUPERTONIC_TTS) {
         return (crate::supertonic::dir(mroot), SUPERTONIC_TTS.to_string());
     }
+    if pick(sel, "tts") == Some(AUDIO8_TTS) {
+        return (crate::audio8::dir(mroot), AUDIO8_TTS.to_string());
+    }
     if let Some(choice) = pick(sel, "tts").filter(|choice| qwen_quant(choice).is_some()) {
         return (qwentts::dir(mroot), choice.to_string());
     }
@@ -902,6 +906,9 @@ pub fn resolve_tts(mroot: &Path, sel: &Value) -> (PathBuf, String) {
 
 /// Supertonic 3 в слоте `tts`: десять готовых голосов, без клона.
 pub const SUPERTONIC_TTS: &str = "supertonic3";
+
+/// Audio8 TTS (Realistic-Air Q8_0) в слоте `tts`: клон по рефу с его текстом, без рефа — свой голос.
+pub const AUDIO8_TTS: &str = "audio8";
 
 /// Квант Qwen3-TTS по значению слота `tts` (`qwen3-tts` — Q4_K_M, `qwen3-tts-q8_0`); None — выбран не Qwen.
 pub fn qwen_quant(tts: &str) -> Option<&'static str> {

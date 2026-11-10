@@ -31,6 +31,7 @@ pub enum Engine {
     Drama,
     Supertonic,
     Qwen,
+    Audio8,
     Cloud,
 }
 
@@ -43,6 +44,7 @@ impl Engine {
         match crate::models::resolve_tts(models_root, &sel).1.as_str() {
             crate::models::DRAMA_TTS => Engine::Drama,
             crate::models::SUPERTONIC_TTS => Engine::Supertonic,
+            crate::models::AUDIO8_TTS => Engine::Audio8,
             q if crate::models::qwen_quant(q).is_some() => Engine::Qwen,
             _ => Engine::Higgs,
         }
@@ -508,6 +510,7 @@ mod tests {
         assert_eq!(supertonic.ignored, vec!["<|emotion:anger|>", "<|emotion:rage|>", "<whisper>", "</whisper>"]);
         assert_eq!(on(Engine::Qwen, line).text, "Хватит! тише з+амок");
         assert_eq!(on(Engine::Cloud, line).text, "Хватит! тише замок");
+        assert_eq!(on(Engine::Audio8, line).text, "Хватит! тише замок", "Audio8 reads no tags and places stress itself");
     }
 
     #[test]

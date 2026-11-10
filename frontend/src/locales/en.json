@@ -863,6 +863,8 @@
     "qwenHint": "A light third voice engine: the original actors' voices or nine ready voices of its own for characters · ~3 GB of video memory",
     "supertonic": "Supertonic 3",
     "supertonicHint": "A fast voice engine: ten ready voices in 31 languages, no cloning; speakers get a voice by gender · ~0.6 GB",
+    "audio8": "Audio8 TTS",
+    "audio8Hint": "A compact multilingual voice (23 languages with Russian): clones a speaker from the reference and its text, speaks in its own voice without one · ~2 GB",
     "dramaVram": "VRAM for Drama 3",
     "dramaVramHint": "Auto sets itself up: the whole model when it fits the free VRAM, otherwise its experts (18 GB) live in RAM and the card keeps a cache of the ones in use. A number sets the amount by hand; 24 GB keeps the whole model on the card. The sound is the same; less VRAM is slower (measured on an RTX 4090): 24 GB about 8× faster than real time, 12 GB 4.7×, 8 GB 3×, 6 GB 2.2×."
   },

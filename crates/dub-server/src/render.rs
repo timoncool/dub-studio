@@ -1104,6 +1104,16 @@ fn higgs_options(opts: &str, text: &str, lang: &str) -> Result<serde_json::Map<S
     Ok(options)
 }
 
+/// Request options of an Audio8 attempt, as Speech Studio sends them: the attempt's seed and cap, the sampling of the
+/// model card, and the sound reached at the cap instead of an error.
+fn audio8_options(opts: &str, text: &str, lang: &str) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    let mut options = higgs_options(opts, text, lang)?;
+    options.insert("temperature".into(), serde_json::json!(crate::audio8::TEMPERATURE));
+    options.insert("top_p".into(), serde_json::json!(crate::audio8::TOP_P));
+    options.insert("top_k".into(), serde_json::json!(crate::audio8::TOP_K));
+    Ok(options)
+}
+
 /// Параметры Qwen3-TTS из JSON попытки Higgs: seed его или свежий случайный, потолок `max_tokens` Higgs
 /// ([`higgs_token_cap`]) -> кадры Qwen (12.5/с с запасом 2), температура Higgs 0.1-0.35 -> 0.6-0.95 (по умолчанию 0.9).
 fn qwen_params(opts: &str) -> (u64, f32, i32) {
@@ -1137,6 +1147,8 @@ fn tts_key(paths: &RenderPaths, lang: &str) -> String {
         format!("supertonic:{build}:{lang}")
     } else if paths.higgs_quant == crate::models::DRAMA_TTS {
         format!("drama:{}:{}", crate::models::drama_vram_limit_mb(mr), paths.higgs_model_root.display())
+    } else if paths.higgs_quant == crate::models::AUDIO8_TTS {
+        format!("audio8:{build}")
     } else {
         format!("higgs:{}:{}:{build}", paths.higgs_quant, paths.higgs_model_root.display())
     }
@@ -1173,6 +1185,15 @@ fn load_tts_engine(paths: &RenderPaths, lang: &str, progress: &Progress) -> Resu
         tracing::info!("voicing: Supertonic 3 on audiocpp_server {:?}", model.backend());
         return Ok(TtsEngine::Supertonic(SupertonicVoices { model, models_root: paths.models_root.clone(), lang: lang.to_string() }));
     }
+    if paths.higgs_quant == crate::models::AUDIO8_TTS {
+        if !crate::audio8::installed(&paths.models_root) {
+            return Err(t!("render-audio8-missing"));
+        }
+        emit(progress, "tts", &t!("render-loading-audio8"));
+        let model = crate::audio8::Model::load(&paths.repo_root, &paths.models_root).map_err(|e| t!("render-audio8-load-failed", error = e))?;
+        tracing::info!("voicing: Audio8 TTS on audiocpp_server {:?}", model.backend());
+        return Ok(TtsEngine::Audio8(model));
+    }
     if paths.higgs_quant == crate::models::DRAMA_TTS {
         emit(progress, "tts", &t!("render-loading-drama"));
         Ok(TtsEngine::Drama(load_drama(paths)?))
@@ -1188,6 +1209,7 @@ pub enum TtsEngine {
     Drama(drama::DramaEngine),
     Qwen(QwenVoices),
     Supertonic(SupertonicVoices),
+    Audio8(crate::audio8::Model),
 }
 
 impl TtsEngine {
@@ -1204,6 +1226,10 @@ impl TtsEngine {
             TtsEngine::Qwen(voices) => voices.speak(text, ref_wav, ref_text, opts),
             TtsEngine::Supertonic(voices) => voices.speak(text, ref_wav, opts),
             TtsEngine::Higgs(e) => e.speak(&qwentts::stress_marks(text, false), lang, ref_wav, ref_text, opts),
+            TtsEngine::Audio8(m) => {
+                let audio = m.speak(&qwentts::stress_marks(text, false), lang, Some(Path::new(ref_wav)), ref_text, audio8_options(opts, text, lang)?)?;
+                Ok((audio, m.sample_rate() as i32))
+            }
             TtsEngine::Drama(e) => {
                 let text = qwentts::stress_marks(text, false);
                 let text = text.as_str();
@@ -1224,6 +1250,7 @@ impl TtsEngine {
             TtsEngine::Drama(_) => "drama",
             TtsEngine::Qwen(_) => "qwen",
             TtsEngine::Supertonic(_) => "supertonic",
+            TtsEngine::Audio8(_) => "audio8",
         }
     }
 
@@ -1239,6 +1266,7 @@ impl TtsEngine {
             TtsEngine::Higgs(e) => e.cancel(),
             TtsEngine::Drama(e) => e.cancel(),
             TtsEngine::Qwen(voices) => voices.cancel(),
+            TtsEngine::Audio8(m) => m.cancel(),
             TtsEngine::Supertonic(_) => {}
         }
     }
@@ -2073,6 +2101,8 @@ fn build_dub_pass(
         format!("{}{}", crate::models::SUPERTONIC_TTS, stress_tag(&paths.models_root, &proj.tgt_lang))
     } else if paths.higgs_quant == crate::models::DRAMA_TTS {
         format!("drama:{}", crate::models::DRAMA_TTS)
+    } else if paths.higgs_quant == crate::models::AUDIO8_TTS {
+        format!("{}:q8_0", crate::models::AUDIO8_TTS)
     } else {
         format!(
             "higgs:{}:{}",

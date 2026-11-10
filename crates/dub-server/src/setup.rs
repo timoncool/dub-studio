@@ -1198,6 +1198,21 @@ pub fn manifest() -> Vec<Component> {
             external_url: None,
         },
         Component {
+            id: "audio8",
+            name: "Audio8 TTS (Realistic-Air 0.6B, Q8_0)".into(),
+            purpose: t!("setup-comp-audio8-purpose"),
+            requirement: Requirement::Optional,
+            delivery: Delivery::Download,
+            size: 1_495_693_728,
+            files: &[
+                FileSpec { url: "https://huggingface.co/Hansda/Audio8-TTS-Realistic-Air-GGUF/resolve/10f8bcf54be8b20b53abaaa1a074a62b34089ab2/Audio8-TTS-Realistic-Air-Q8_0.gguf", dest_rel: "models/audio8/Audio8-TTS-Realistic-Air-Q8_0.gguf", size: 1_495_693_728, sha256: "b679845dbced6cbf6d4642c7260372dc2c422d96e0e568eaac860a778dd7702e", extract: Extract::None },
+            ],
+            markers: &[
+                Marker { rel: "models/audio8/Audio8-TTS-Realistic-Air-Q8_0.gguf", expect: 1_495_693_728 },
+            ],
+            external_url: None,
+        },
+        Component {
             id: "ruaccent",
             name: "RUAccent".into(),
             purpose: t!("setup-comp-ruaccent-purpose"),
@@ -1702,6 +1717,7 @@ fn vram_estimate(id: &str) -> u64 {
         "qwen3-tts-q8_0" => gb(3.7),
         "qwen3-tts-ru-stress" => gb(0.1),
         "supertonic3" => gb(0.6),
+        "audio8" => gb(2.0),
         "gemma" => gb(8.5),
         "gemma-q5_0" => gb(9.9),
         "gemma-q6_k" => gb(11.2),

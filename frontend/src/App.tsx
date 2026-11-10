@@ -116,7 +116,7 @@ function LanguageSwitcher() {
 // резолвится при генерации.
 const VARIANT_SLOT: Record<string, [string, string]> = {
   higgs: ["tts", "q8_0"], "higgs-q6_k": ["tts", "q6_k"], "higgs-q4_k_m": ["tts", "q4_k_m"], drama3: ["tts", "drama3"],
-  "qwen3-tts": ["tts", "qwen3-tts"], "qwen3-tts-q8_0": ["tts", "qwen3-tts-q8_0"], supertonic3: ["tts", "supertonic3"],
+  "qwen3-tts": ["tts", "qwen3-tts"], "qwen3-tts-q8_0": ["tts", "qwen3-tts-q8_0"], supertonic3: ["tts", "supertonic3"], audio8: ["tts", "audio8"],
   parakeet: ["asr", "int8"], "parakeet-ultra": ["asr", "ultra-int8"],
   gemma: ["mt", "q4_0"], "gemma-q5_0": ["mt", "q5_0"], "gemma-q6_k": ["mt", "q6_k"], "gemma-q8_0": ["mt", "q8_0"],
   roformer: ["sep", "Q8_0"], "roformer-q5": ["sep", "Q5_0"], "roformer-q4": ["sep", "Q4_0"],
@@ -125,14 +125,15 @@ const VARIANT_SLOT: Record<string, [string, string]> = {
 const activeVariantId = (ids: string[], sel: Selection): string | undefined =>
   ids.find((id) => { const m = VARIANT_SLOT[id]; return !!m && sel[m[0]] === m[1]; });
 
-type VariantI18n = Record<string, { label: "asrVariant.int8" | "asrVariant.ultraInt8" | "ttsVariant.drama3" | "ttsVariant.qwen" | "ttsVariant.qwenQ8" | "ttsVariant.supertonic"; hint: "asrVariant.int8Hint" | "asrVariant.ultraInt8Hint" | "ttsVariant.drama3Hint" | "ttsVariant.qwenHint" | "ttsVariant.supertonicHint" }>;
+type VariantI18n = Record<string, { label: "asrVariant.int8" | "asrVariant.ultraInt8" | "ttsVariant.drama3" | "ttsVariant.qwen" | "ttsVariant.qwenQ8" | "ttsVariant.supertonic" | "ttsVariant.audio8"; hint: "asrVariant.int8Hint" | "asrVariant.ultraInt8Hint" | "ttsVariant.drama3Hint" | "ttsVariant.qwenHint" | "ttsVariant.supertonicHint" | "ttsVariant.audio8Hint" }>;
 // Drama 3 — второй движок озвучки в том же слоте tts, что и кванты Higgs: выбирается из того же списка.
-const TTS_IDS = ["higgs", "higgs-q6_k", "higgs-q4_k_m", "drama3", "qwen3-tts", "qwen3-tts-q8_0", "supertonic3"];
+const TTS_IDS = ["higgs", "higgs-q6_k", "higgs-q4_k_m", "drama3", "qwen3-tts", "qwen3-tts-q8_0", "supertonic3", "audio8"];
 const TTS_VARIANT_I18N: VariantI18n = {
   drama3: { label: "ttsVariant.drama3", hint: "ttsVariant.drama3Hint" },
   "qwen3-tts": { label: "ttsVariant.qwen", hint: "ttsVariant.qwenHint" },
   "qwen3-tts-q8_0": { label: "ttsVariant.qwenQ8", hint: "ttsVariant.qwenHint" },
   supertonic3: { label: "ttsVariant.supertonic", hint: "ttsVariant.supertonicHint" },
+  audio8: { label: "ttsVariant.audio8", hint: "ttsVariant.audio8Hint" },
 };
 const isQwenTts = (v: string | undefined) => v === "qwen3-tts" || v === "qwen3-tts-q8_0";
 // Варианты Parakeet: int8 и fp32 — базовая модель NVIDIA, Ultra — её дообученная Moondream версия.
@@ -445,7 +446,7 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
           <>
             {/* Higgs and Supertonic run in the audio.cpp server on the build of this device, Qwen3-TTS on its backend module */}
             {ttsPick !== "drama3" && backendTabs("tts_backend")}
-            {variantPicker(ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : "Higgs Audio v3", TTS_IDS, TTS_VARIANT_I18N)}
+            {variantPicker(ttsPick === "drama3" ? "Fish Audio Drama 3" : isQwenTts(ttsPick) ? "Qwen3-TTS 1.7B" : ttsPick === "supertonic3" ? "Supertonic 3" : ttsPick === "audio8" ? "Audio8 TTS" : "Higgs Audio v3", TTS_IDS, TTS_VARIANT_I18N)}
             {ttsPick === "drama3" && (
               <div className="px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)]">
                 <div className="flex items-center gap-2">
@@ -4937,7 +4938,7 @@ export default function App() {
     else if (c.llm_provider === "server") parts.push(`MT ${llm ? `${llm} (${t("providers.server")})` : t("providers.server")}`);
     else if (llm) parts.push(`MT+vision ${llm}`);
     const ttsQuant = sel.tts || c.tts_quant;
-    if (c.models?.tts) parts.push(sel.tts === "drama3" ? "TTS Fish Audio Drama 3 q4" : sel.tts === "supertonic3" ? "TTS Supertonic 3 int8" : isQwenTts(sel.tts) ? `TTS Qwen3-TTS 1.7B ${sel.tts === "qwen3-tts" ? "Q4_K_M" : "Q8_0"}` : `TTS ${c.models.tts}${ttsQuant ? ` ${ttsQuant}` : ""}`);
+    if (c.models?.tts) parts.push(sel.tts === "drama3" ? "TTS Fish Audio Drama 3 q4" : sel.tts === "supertonic3" ? "TTS Supertonic 3 int8" : sel.tts === "audio8" ? "TTS Audio8 Q8_0" : isQwenTts(sel.tts) ? `TTS Qwen3-TTS 1.7B ${sel.tts === "qwen3-tts" ? "Q4_K_M" : "Q8_0"}` : `TTS ${c.models.tts}${ttsQuant ? ` ${ttsQuant}` : ""}`);
     parts.push("sep BSRoformer", "diar Nemotron 3", "OCR PP-OCR");   // фикс-движки пайплайна
     setCap(parts.join(" · "));
     setCapOffline(false);

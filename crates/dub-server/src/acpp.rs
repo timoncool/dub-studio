@@ -15,6 +15,7 @@ pub const PARAKEET: &str = "parakeet-v3";
 pub const NEMOTRON: &str = "nemotron";
 pub const DIAR: &str = "nemotron-diar";
 pub const SUPERTONIC: &str = "supertonic";
+pub const AUDIO8: &str = "audio8";
 
 /// The models of transcribe.cpp's catalogue the server runs, reading their GGUF in place: Parakeet TDT v3 and Nemotron
 /// 3.5. Parakeet Ultra stays on transcribe.cpp: audio.cpp does not read its built-in VAD head.
@@ -131,6 +132,9 @@ pub fn models(models_root: &Path) -> Vec<ModelEntry> {
     }
     if crate::supertonic::installed(models_root) {
         out.push(ModelEntry::supertonic(SUPERTONIC, &crate::supertonic::dir(models_root)));
+    }
+    if crate::audio8::installed(models_root) {
+        out.push(ModelEntry::audio8_tts(AUDIO8, &crate::audio8::gguf(models_root)));
     }
     for id in SERVER_ASR {
         let Some(model) = dub_asr::tcpp::model(id) else { continue };

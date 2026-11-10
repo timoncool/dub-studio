@@ -28,6 +28,7 @@ mod dll_imports;
 mod downloads;
 mod dub_timing;
 mod endpoints;
+mod audio8;
 mod checks;
 mod f0;
 mod fitplan;
@@ -1018,7 +1019,7 @@ fn ensure_job_components(
             }
         }
     }
-    // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs or Supertonic voice of a render (an
+    // audiocpp_server and the CUDA libraries of its build, for CrisperWhisper and for the Higgs, Supertonic or Audio8 voice of a render (an
     // install updated from 4.4 has the former Higgs library, not the server); a program named by
     // DUB_STUDIO_AUDIOCPP_SERVER is taken as it is.
     let tts = models::resolve_tts(models_root, &sel).1;
@@ -1026,14 +1027,19 @@ fn ensure_job_components(
         && !models::cloud_tts_on(models_root)
         && tts != models::DRAMA_TTS
         && tts != models::SUPERTONIC_TTS
+        && tts != models::AUDIO8_TTS
         && models::qwen_quant(&tts).is_none();
     let mut server_needs: Vec<&str> = Vec::new();
     if asr_whisper && !models::openrouter_asr_on(models_root) {
         server_needs.extend(models::server_components(models_root, "asr_backend"));
     }
     let supertonic_voice = voicing && !models::cloud_tts_on(models_root) && tts == models::SUPERTONIC_TTS;
-    if higgs_voice || supertonic_voice {
+    let audio8_voice = voicing && !models::cloud_tts_on(models_root) && tts == models::AUDIO8_TTS;
+    if higgs_voice || supertonic_voice || audio8_voice {
         server_needs.extend(models::server_components(models_root, "tts_backend"));
+    }
+    if audio8_voice {
+        server_needs.push(models::AUDIO8_TTS);
     }
     // Qwen3-TTS: its engine, the backend module of the voicing device and that device's CUDA runtime
     if voicing && !models::cloud_tts_on(models_root) && models::qwen_quant(&tts).is_some() {

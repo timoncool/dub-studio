@@ -874,6 +874,8 @@
     "qwenHint": "Um terceiro motor de voz leve: as vozes dos atores originais ou nove vozes prontas para os personagens · ~3 GB de memória de vídeo",
     "supertonic": "Supertonic 3",
     "supertonicHint": "Um motor de voz rápido: dez vozes prontas em 31 idiomas, sem clonagem; cada falante recebe uma voz pelo gênero · ~0,6 GB",
+    "audio8": "Audio8 TTS",
+    "audio8Hint": "Uma voz multilíngue compacta (23 idiomas com russo): clona um falante a partir da referência e do seu texto e, sem ela, fala com a própria voz · ~2 GB",
     "dramaVram": "VRAM para o Drama 3",
     "dramaVramHint": "Auto se configura sozinho: o modelo inteiro se couber na VRAM livre; senão, os especialistas (18 GB) ficam na RAM e a placa mantém um cache dos que estão em uso. Um número define a quantidade à mão; 24 GB mantém o modelo inteiro na placa. O som é o mesmo; com menos VRAM é mais lento (medido numa RTX 4090): 24 GB, cerca de 8× mais rápido que o tempo real; 12 GB, 4,7×; 8 GB, 3×; 6 GB, 2,2×."
   },
