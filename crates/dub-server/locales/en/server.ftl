@@ -369,6 +369,7 @@ analyze-cloud-done = cloud: { $lines } { $lines ->
 }
 analyze-hallucination-filter = ASR hallucination filter: { $error }
 analyze-asr-piece = Recognising speech: piece { $n } of { $total }
+analyze-asr-piece-overflow = Piece { $n }: CrisperWhisper lost its thread on it (no speech, music or noise); recognising it again in parts of 30 seconds
 analyze-asr-to-crisperwhisper =language "{ $lang }": Parakeet does not know it, recognising with CrisperWhisper
 analyze-asr-no-words = The video has { $speech } s of speech and Parakeet heard { $words } words in it: Parakeet knows only 25 European languages. Pick the source language in the window instead of Auto — for a language outside Europe the studio switches recognition to Whisper.
 analyze-hidden-hallucinations = ASR hallucination lines hidden (no voice): { $count }: { $lines }
