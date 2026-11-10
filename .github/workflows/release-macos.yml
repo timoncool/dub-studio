@@ -26,7 +26,7 @@ env:
 
 jobs:
   macos-arm64:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 180
     env:
       GH_TOKEN: ${{ github.token }}

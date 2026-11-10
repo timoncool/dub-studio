@@ -6,11 +6,16 @@ release notes on GitHub are taken from the release's section.
 
 ## Unreleased
 
+### Added
+
+- **Silence compaction before analysis**: `compact_silence` of `/projects/{pid}/analyze`, MCP `project_analyze` and `transcribe_file` (off by default) squeezes every pause quieter than −60 dBFS and longer than 20 s down to 20 s, so separation, diarization and recognition of a 5-hour Discord track with 70 minutes of speech run over less than three hours and about twice as fast. Lines, word timings and the clean voice stay on the video's own time; pauses over a minute are kept in the project, and the text transcript of `transcribe_file` marks them with a «— пауза N мин —» line. When it would cut less than a minute, or with imported subtitles, the analysis runs on the original recording and says why.
+
 ### Fixed
 
 - **The Linux .deb installs the sound library it needs**: it depends on libasound2 (libasound2t64 on newer Ubuntu), as Speech Studio's does, so the studio starts on a clean system instead of failing on libasound.so.2.
 - **Higgs no longer stops a render with «too many failed voicing attempts»**: it voices with the sampling audio.cpp gives the model (at the low temperatures Dub used, Higgs often spoke past the end of a phrase and ran into its token cap); a phrase that still runs long comes back with its sound and is judged by its length, as in Speech Studio, and a defective take is a defect of that phrase only — the least damaged take with speech is kept, or the original line. Only an engine that keeps failing stops the render.
 - **Higgs takes any clone reference**: a reference is brought to the form the model's codec takes (mono 24 kHz, a whole number of codec steps, a second at least) in the studio's cache, so a short or odd-length reference is no longer refused, and a speaker recorded far below speech level is raised to it (Higgs speaks at the level of its reference, and such a speaker's every take was refused as silence); a server that ended before a phrase began is started again and asked once more; a phrase waits for the engine as long as it takes on this computer instead of a fixed 45 s, so a slow card is not stopped as hung.
+- **CrisperWhisper recognises recordings of many hours**: it hears a long recording in pieces of up to 90 seconds cut at its pauses (Silero VAD), as Parakeet Ultra does, instead of the whole file at once, which failed with «invalid decoder prompt or token limit» once the model lost its thread on silence, music or noise. A piece ends where the diarization hears another speaker if it can, and the lines are made from the words of all pieces at once, so a phrase is not split where a piece ends. A piece on which the model still loses its thread is recognised again in parts of 30 seconds, and the progress says so. Under «Auto» the language is heard once, at the start of the recording. A project analysed before recognises its speech anew.
 
 ## 2026-10-28 — 4.5.1
 

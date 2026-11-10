@@ -244,7 +244,13 @@ fn analyzed(before: &Value, query: &str) -> Value {
     if speakers {
         after["stage_ckpts"]["diarize"] = json!("d");
     }
-    after["segments"] = json!([line("s0", 0.5, 1.5, "0", "Hello there"), line("s1", 2.0, 3.0, if speakers { "1" } else { "0" }, "Bye now")]);
+    // со сжатием тишины между репликами — пауза больше трёх минут
+    let compact = get("compact_silence") == "1";
+    let second = if compact { 203.0 } else { 2.0 };
+    after["segments"] = json!([line("s0", 0.5, 1.5, "0", "Hello there"), line("s1", second, second + 1.0, if speakers { "1" } else { "0" }, "Bye now")]);
+    if compact {
+        after["meta"]["compact_silence"] = json!({ "ver": "compact-v1", "applied": true, "pieces": [[0.0, 3.0, 0.0], [201.5, 204.0, 3.0]], "pauses": [[1.5, 203.0]] });
+    }
     after["audio"]["voice"] = match asked.get("voice_slots") {
         None => json!({ "mode": "clone", "name": null }),
         Some(slots) => {

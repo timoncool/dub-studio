@@ -1549,6 +1549,7 @@ fn tools() -> &'static [Tool] {
                             "content_type": { "type": "string", "enum": ["auto", "real", "anime"] },
                             "import_translated": { "type": "boolean" },
                             "align_subs": { "type": "boolean", "description": "subtitles given to project_create in the original language: align their timing to the recognised speech" },
+                            "compact_silence": { "type": "boolean", "description": "squeeze silences over 20 s down to 20 s before separation, diarization and recognition: quicker on long recordings with long quiet stretches; the lines keep the video's times (default false; not with imported subtitles)" },
                         }),
                         &["pid"],
                     )
@@ -1571,6 +1572,7 @@ fn tools() -> &'static [Tool] {
                         ("content_type", given(args, "content_type")),
                         ("import_translated", given(args, "import_translated")),
                         ("align_subs", given(args, "align_subs")),
+                        ("compact_silence", given(args, "compact_silence")),
                     ]);
                     post(format!("{path}{tail}"), json!({}))
                 },

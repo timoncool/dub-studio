@@ -288,6 +288,8 @@ pub struct AnalyzeArgs {
                                  // tgt = импортированный текст, Даб Студио только озвучивает. Работает лишь с import_subs.
     pub align_subs: bool, // выровнять тайминги импортированных субтитров по распознанной речи (subalign):
                           // полный прогон ASR ради слов; только для субтитров на языке речи.
+    /// Сжать долгую тишину перед разделением, диаризацией и распознаванием (см. `compact`).
+    pub compact_silence: bool,
 }
 
 /// Пути к моделям/входу для одной джобы analyze.
@@ -449,7 +451,7 @@ fn has_speech_text(text: &str) -> bool {
 }
 
 const DIAR_VER: &str = "nemotron3-diar-v3 · offline · merge_gap=0.8 · min_spk=10%[1.5..2.5] · out-v2";
-const ASR_VER: &str = "asr-v4-abbrev-speaker-split";
+const ASR_VER: &str = "asr-v5-pieces-at-speaker-turns";
 
 /// Speech of this length is enough to tell a language Parakeet does not know: speech runs at 2-3 words
 /// a second, and Parakeet given another language returns a stray word or two for minutes of it.
@@ -673,12 +675,14 @@ mod continuous_diarization_cache_tests {
 }
 
 /// Recognition of a recording in pieces cut at its pauses (Silero VAD), as Speech Studio cuts it: silence does not go to
-/// the recognizer, and a long recording is not cut mid-word. A recording without speech gives no lines.
+/// the recognizer, and a long recording is not cut mid-word. A piece ends where the diarization `turns` change the
+/// speaker if it can. A recording without speech gives no lines.
 fn recognise_by_pauses(
     paths: &AnalyzePaths,
     asr: &mut dyn dub_asr::AsrEngine,
     wav: &std::path::Path,
     lang: &str,
+    turns: &[dub_asr::Turn],
     progress: &Progress,
 ) -> Result<Vec<dub_asr::Segment>, String> {
     let lacking = crate::vad::missing(&paths.models_root);
@@ -689,28 +693,97 @@ fn recognise_by_pauses(
     }
     let probs = crate::vad::probabilities(&paths.models_root, &samples)?;
     let spans = crate::vad::speech(&probs, samples.len(), &crate::vad::VadConfig::default());
-    let windows = crate::vad::windows(&spans, &probs, crate::vad::MAX_WINDOW_SECS);
     let piece = paths.work_dir.join("asr_piece.wav");
-    let mut all = Vec::new();
-    for (k, &(a, b)) in windows.iter().enumerate() {
-        crate::jobs::check_cancelled()?;
-        emit(progress, "asr", &t!("analyze-asr-piece", n = (k + 1) as i64, total = windows.len() as i64));
-        let (from, to) = ((a * sr as f64) as usize, ((b * sr as f64) as usize).min(samples.len()));
-        crate::wavio::write_mono_f32(&piece, &samples[from..to], sr)?;
-        for mut s in asr.transcribe(&piece, lang).map_err(|e| e.localize())? {
-            s.start += a;
-            s.end += a;
-            for w in &mut s.words {
-                w.start += a;
-                w.end += a;
-            }
-            all.push(s);
+    let speech = Speech { samples: &samples, sr, spans: &spans, probs: &probs, turns };
+    let lines = lines_by_pieces(asr, &speech, &piece, lang, &mut |event| match event {
+        PieceEvent::Started { n, total } => {
+            crate::jobs::check_cancelled()?;
+            emit(progress, "asr", &t!("analyze-asr-piece", n = n as i64, total = total as i64));
+            Ok(())
         }
-    }
+        PieceEvent::Overflowed { n } => {
+            crate::jobs::check_cancelled()?;
+            emit(progress, "asr", &t!("analyze-asr-piece-overflow", n = n as i64));
+            Ok(())
+        }
+        PieceEvent::Part => crate::jobs::check_cancelled(),
+    });
     if let Err(e) = std::fs::remove_file(&piece) {
         tracing::warn!("{}: {e}", piece.display());
     }
-    Ok(all)
+    lines
+}
+
+/// A 16 kHz mono recording with what the speech finder and the diarization found in it.
+struct Speech<'a> {
+    samples: &'a [f32],
+    sr: u32,
+    spans: &'a [(f64, f64)],
+    probs: &'a [f32],
+    turns: &'a [dub_asr::Turn],
+}
+
+/// What [`lines_by_pieces`] tells the job as it goes; an error from the job (a cancel) stops recognition.
+enum PieceEvent {
+    Started { n: usize, total: usize },
+    Overflowed { n: usize },
+    /// A part of an overflowed piece is next.
+    Part,
+}
+
+/// A piece CrisperWhisper decodes in one window, with no words carried into it: under its 30 s window, with room for
+/// the rounding of the cut to samples.
+const ONE_WINDOW_SECS: f64 = 29.5;
+
+/// The lines of the recording, recognised piece by piece and made from the words of all pieces at once, so a piece's
+/// end does not end a line the whole recording would not end there. A piece on which CrisperWhisper's carried words
+/// outgrew its decoder is recognised again in parts of one window; any other failure stops recognition.
+fn lines_by_pieces(
+    asr: &mut dyn dub_asr::AsrEngine,
+    speech: &Speech,
+    piece: &std::path::Path,
+    lang: &str,
+    on: &mut dyn FnMut(PieceEvent) -> Result<(), String>,
+) -> Result<Vec<dub_asr::Segment>, String> {
+    let windows = crate::vad::windows(speech.spans, speech.probs, speech.turns, crate::vad::MAX_WINDOW_SECS);
+    let mut words = Vec::new();
+    for (k, &(a, b)) in windows.iter().enumerate() {
+        on(PieceEvent::Started { n: k + 1, total: windows.len() })?;
+        match piece_words(asr, speech, (a, b), piece, lang) {
+            Ok(ws) => words.extend(ws),
+            Err(e) if b - a > ONE_WINDOW_SECS && dub_asr::acpp::context_overflowed(&e) => {
+                tracing::warn!("asr piece {}: {e}", k + 1);
+                on(PieceEvent::Overflowed { n: k + 1 })?;
+                let inside: Vec<(f64, f64)> =
+                    speech.spans.iter().filter(|s| s.1 > a && s.0 < b).map(|s| (s.0.max(a), s.1.min(b))).collect();
+                for part in crate::vad::windows(&inside, speech.probs, speech.turns, ONE_WINDOW_SECS) {
+                    on(PieceEvent::Part)?;
+                    words.extend(piece_words(asr, speech, part, piece, lang).map_err(|e| e.localize())?);
+                }
+            }
+            Err(e) => return Err(e.localize()),
+        }
+    }
+    Ok(dub_asr::segment_words(&words, dub_asr::SEG_MAX_GAP, dub_asr::SEG_MAX_DUR))
+}
+
+/// The words of the recording between `a` and `b` seconds, in the recording's time.
+fn piece_words(
+    asr: &mut dyn dub_asr::AsrEngine,
+    speech: &Speech,
+    (a, b): (f64, f64),
+    piece: &std::path::Path,
+    lang: &str,
+) -> Result<Vec<dub_asr::Word>, dub_asr::AsrError> {
+    let sr = speech.sr as f64;
+    let (from, to) = ((a * sr) as usize, ((b * sr) as usize).min(speech.samples.len()));
+    crate::wavio::write_mono_f32(piece, &speech.samples[from..to], speech.sr).map_err(dub_asr::AsrError::Io)?;
+    let segments = asr.transcribe(piece, lang)?;
+    Ok(segments
+        .into_iter()
+        .flat_map(|s| s.words)
+        .map(|w| dub_asr::Word { start: w.start + a, end: w.end + a, ..w })
+        .collect())
 }
 
 /// The speakers' turns from Nemotron 3 Diarization in audiocpp_server, on the build of the diarization device: by
@@ -907,6 +980,140 @@ fn merge_short_turns(segs: &mut Vec<Segment>) {
     *segs = out;
 }
 
+/// Шаги после успешного разделения: отметки стемов, чистый голос 16 кГц и при сжатии — его развёртка
+/// на исходную шкалу. Любая ошибка — ошибка анализа.
+fn after_separation(
+    stems: &std::path::Path,
+    fresh: bool,
+    clean16: &std::path::Path,
+    compact: Option<(&crate::compact::Map, &crate::compact::Files)>,
+    vocals16: &std::path::Path,
+) -> Result<std::path::PathBuf, String> {
+    if fresh {
+        media::mark_separation(stems)?;
+        if let Some((map, files)) = compact {
+            files.mark_stems(map)?;
+        }
+    }
+    media::to_16k_mono(&stems.join("vocals.wav"), clean16)?;
+    // Кастинг, voice_slots и выравнивание читают чистый голос на исходной шкале.
+    if let Some((map, files)) = compact {
+        crate::compact::expand_wav(clean16, &files.clean16_expanded, map, crate::compact::frames(vocals16)?)?;
+    }
+    Ok(clean16.to_path_buf())
+}
+
+/// Выбор голоса для диаризации и распознавания после разделения. Сбой самого разделителя (и без сжатия —
+/// любой сбой, как до compact_silence) — сообщение и продолжение по несепарированному `raw`. При сжатии
+/// сбой шагов `after` после успешного разделения — ошибка анализа: сжатые файлы без тихих обходов.
+fn separation_outcome(
+    separated: Result<(), String>,
+    compact: bool,
+    after: impl FnOnce() -> Result<std::path::PathBuf, String>,
+    raw: &std::path::Path,
+    progress: &Progress,
+) -> Result<std::path::PathBuf, String> {
+    let failed = match separated {
+        Ok(()) => match after() {
+            Ok(clean) => return Ok(clean),
+            Err(e) if compact => return Err(e),
+            Err(e) => e,
+        },
+        Err(e) => e,
+    };
+    emit(progress, "separate", &t!("analyze-separation-failed", error = failed));
+    Ok(raw.to_path_buf())
+}
+
+fn asr_cache_key(input: &str, source: &str, lang: &str, diar_fp: &str) -> String {
+    cache::hash_stage(&[ASR_VER, input, source, lang, diar_fp])
+}
+
+/// Карта сжатия тишины и запись для `meta.extra.compact_silence`; None в карте — анализ идёт по исходной
+/// записи (параметр выключен, импорт субтитров или вырезать почти нечего).
+fn compact_stage(
+    args: &AnalyzeArgs,
+    paths: &AnalyzePaths,
+    vocals16: &std::path::Path,
+    extract_key: &str,
+    files: &crate::compact::Files,
+    cache: &mut StageCache,
+    progress: &Progress,
+) -> Result<(Option<crate::compact::Map>, Option<Value>), String> {
+    use crate::compact::Prepared;
+    if !args.compact_silence {
+        return Ok((None, None));
+    }
+    if paths.import_subs.is_some() {
+        emit(progress, "compact", &t!("analyze-compact-skipped-subs"));
+        return Ok((None, Some(crate::compact::skipped_meta("imported_subtitles"))));
+    }
+    let key = cache::hash_stage(&[crate::compact::VER, extract_key]);
+    let prepared = if cache.stage_cached(&paths.work_dir, "compact", &key) {
+        crate::jobs::emit_resumed(progress, "compact", &t!("analyze-compact-cached"));
+        Prepared::Applied(crate::compact::load_map(files)?)
+    } else {
+        emit(progress, "compact", &t!("analyze-compact-searching"));
+        let prepared = crate::compact::prepare(vocals16, files)?;
+        if let Prepared::Applied(_) = &prepared {
+            cache.write_stage(&paths.work_dir, "compact", &key, &[&files.vocals16, &files.map]);
+            if let Err(e) = cache.save(&paths.work_dir) {
+                emit(progress, "compact", &t!("analyze-checkpoint-not-saved", stage = "compact", error = e));
+            }
+        }
+        prepared
+    };
+    Ok(match prepared {
+        Prepared::Applied(map) => {
+            emit(progress, "compact", &t!(
+                "analyze-compact-done",
+                left = format!("{:.1}", map.compact_len() / 60.0),
+                total = format!("{:.1}", map.orig_len / 60.0),
+                pauses = map.pauses.len()
+            ));
+            let meta = map.meta();
+            (Some(map), Some(meta))
+        }
+        Prepared::Skipped { cut } => {
+            emit(progress, "compact", &t!(
+                "analyze-compact-skipped-short",
+                cut = format!("{cut:.0}"),
+                min = format!("{:.0}", crate::compact::MIN_SAVING)
+            ));
+            (None, Some(crate::compact::skipped_meta("too_little_silence")))
+        }
+    })
+}
+
+/// `compact/audio_hq.wav`: 44,1 кГц стерео, вырезанная по карте. Общая `audio_hq.wav` только читается;
+/// без неё полная запись извлекается во временный файл в compact/ и после выреза удаляется.
+fn compact_audio_hq(paths: &AnalyzePaths, map: &crate::compact::Map, files: &crate::compact::Files, progress: &Progress) -> Result<(), String> {
+    if files.audio_hq.is_file() {
+        return Ok(());
+    }
+    let shared = paths.work_dir.join("audio_hq.wav");
+    let source = if shared.is_file() {
+        shared
+    } else {
+        emit(progress, "separate", &t!("atomic-extract-separation-audio"));
+        media::extract_audio(&paths.input, &files.audio_hq_full, 44100, 2)?;
+        files.audio_hq_full.clone()
+    };
+    cut_audio_hq(&source, files, map)
+}
+
+/// Вырез `compact/audio_hq.wav`; временный `audio_hq_full.wav` удаляется и при ошибке выреза,
+/// возвращается первая ошибка.
+fn cut_audio_hq(source: &std::path::Path, files: &crate::compact::Files, map: &crate::compact::Map) -> Result<(), String> {
+    let cut = crate::compact::cut_wav(source, &files.audio_hq, map);
+    if source == files.audio_hq_full {
+        let removed = std::fs::remove_file(source).map_err(|e| format!("{}: {e}", source.display()));
+        cut?;
+        return removed;
+    }
+    cut
+}
+
 /// Запустить analyze: extract -> diarize -> transcribe -> Project. Возвращает готовый Project.
 /// Диаризация/транскрипция тяжёлые (ONNX CPU) — вызывать в блокирующем контексте (job worker).
 ///
@@ -989,8 +1196,16 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     //    (как питон whole-clip; иначе diarize-first порезал бы субтитры по спикерам иначе, чем оригинал).
     // 2c) СЕПАРАЦИЯ ДО диаризации/ASR (best practices: чистый вокал вместо сырого микса — диаризация
     // не путается на музыке, ASR точнее; приказ 2026-07-17). stems-кэш ОБЩИЙ с рендером (wd/stems) —
-    // рендер переиспользует, двойной сепарации нет. Fail-safe: сбой/нет движка -> сырой vocals16.
+    // рендер переиспользует, двойной сепарации нет. Fail-safe: нет движка или сбой разделителя -> сырой
+    // vocals16 (при сжатии — сжатый). Без сжатия так же обходятся и сбои извлечения, отметок и WAV чистого
+    // голоса; при сжатии сбой шагов после разделения — ошибка анализа (см. separation_outcome).
     let want_diar = wants_diarization(args);
+    // 2b) сжатие тишины (compact_silence): разделение, диаризация и распознавание идут по короткой
+    //     записи из compact/, времена реплик переводятся обратно картой до сохранения транскрипта.
+    let compact_files = crate::compact::Files::under(&paths.work_dir);
+    let (compact_map, compact_meta) = compact_stage(args, paths, &vocals16, &extract_key, &compact_files, &mut cache, progress)?;
+    // Шкала распознавания: сжатая запись или исходная.
+    let scale_vocals16 = if compact_map.is_some() { compact_files.vocals16.clone() } else { vocals16.clone() };
     crate::jobs::check_cancelled()?;
     bench.stage("separate");
     if media::drop_stale_separation(&paths.work_dir)? {
@@ -1000,49 +1215,66 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         && paths.bsroformer_cli.is_file()
         && paths.bsroformer_model.is_file()
     {
-        let clean16 = paths.work_dir.join("vocals16_clean.wav");
-        let stems = paths.work_dir.join("stems");
+        let (clean16, stems) = match &compact_map {
+            Some(map) => {
+                compact_files.drop_stale_stems(map)?;
+                (compact_files.clean16.clone(), compact_files.stems.clone())
+            }
+            None => (paths.work_dir.join("vocals16_clean.wav"), paths.work_dir.join("stems")),
+        };
         let cached_voc = stems.join("vocals.wav");
         if !cached_voc.is_file() {
             if let Some(why) = crate::models::sep_unavailable(&paths.models_root) {
                 return Err(why);
             }
+            if let Some(map) = &compact_map {
+                compact_audio_hq(paths, map, &compact_files, progress)?;
+            }
         }
-        let sep_result: Result<std::path::PathBuf, String> = (|| {
-            if !cached_voc.is_file() {
-                let audio_hq = paths.work_dir.join("audio_hq.wav");
+        let fresh = !cached_voc.is_file();
+        let separated: Result<(), String> = if fresh {
+            (|| {
+                let audio_hq = match &compact_map {
+                    Some(_) => compact_files.audio_hq.clone(),
+                    None => paths.work_dir.join("audio_hq.wav"),
+                };
                 if !audio_hq.is_file() {
                     emit(progress, "separate", &t!("atomic-extract-separation-audio"));
                     media::extract_audio(&paths.input, &audio_hq, 44100, 2)?;
                 }
                 emit(progress, "separate", &t!("analyze-separating", model = "BSRoformer"));
                 dub_sep::separate(&audio_hq, &stems, &paths.bsroformer_cli, &paths.bsroformer_model)
-                    .map_err(|e| e.localize())?;
-                media::mark_separation(&stems)?;
-            } else {
-                emit(progress, "separate", &t!("analyze-separation-cached"));
-            }
-            media::to_16k_mono(&cached_voc, &clean16)?;
-            Ok(clean16.clone())
-        })();
-        match sep_result {
-            Ok(p) => p,
-            Err(e) => {
-                emit(progress, "separate", &t!("analyze-separation-failed", error = e.to_string()));
-                vocals16.clone()
-            }
-        }
+                    .map(|_| ())
+                    .map_err(|e| e.localize())
+            })()
+        } else {
+            emit(progress, "separate", &t!("analyze-separation-cached"));
+            Ok(())
+        };
+        separation_outcome(
+            separated,
+            compact_map.is_some(),
+            || after_separation(&stems, fresh, &clean16, compact_map.as_ref().map(|m| (m, &compact_files)), &vocals16),
+            &scale_vocals16,
+            progress,
+        )?
     } else {
         if want_diar {
             emit(progress, "separate", &t!("analyze-separator-missing", model = "BSRoformer"));
         }
-        vocals16.clone()
+        scale_vocals16.clone()
+    };
+    // Вход перевода и фильтра по транскрипту из кэша — на исходной шкале.
+    let orig_asr_wav = match &compact_map {
+        Some(_) if asr_wav != scale_vocals16 => compact_files.clean16_expanded.clone(),
+        Some(_) => vocals16.clone(),
+        None => asr_wav.clone(),
     };
     crate::jobs::check_cancelled()?;
     bench.stage("diarize");
     emit(progress, "diarize", &t!("analyze-diarizing", model = "Nemotron 3 Diarization"));
     // Вход диаризации и ASR — asr_wav (чистый вокал или сырое аудио): ключи стадий от его отпечатка.
-    let asr_in_hash = cache::hash_file_prefix(&asr_wav);
+    let asr_in_hash = crate::compact::key_input(&cache::hash_file_prefix(&asr_wav), compact_map.is_some());
     let voice_model = dub_faces::wespeaker_path(&paths.models_root);
     let diar_key = diar_cache_key(&asr_in_hash, &paths.sortformer_onnx, &voice_model, args.speaker_count)?;
     let diar = if args.speaker_count == 1 {
@@ -1113,7 +1345,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         }
         None => paths.asr.describe(),
     };
-    let asr_key = cache::hash_stage(&[ASR_VER, &asr_in_hash, &asr_source, &args.src_lang, &diar_fp]);
+    let asr_key = asr_cache_key(&asr_in_hash, &asr_source, &args.src_lang, &diar_fp);
     let cached_transcript =
         stage_load::<TranscriptOut>(&cache, &paths.work_dir, "asr", &asr_key, TRANSCRIPT_FILE, progress);
     let resumed_asr = cached_transcript.is_some();
@@ -1211,6 +1443,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         // Parakeet knows 25 European languages: a source language outside them, chosen or heard by the language id
         // under «auto», goes to CrisperWhisper before recognition starts, with a line in the journal.
         let mut asr_choice = paths.asr.clone();
+        let mut src_lang = args.src_lang.clone();
         if let crate::models::AsrChoice::Ggml { models_root, build, .. } | crate::models::AsrChoice::Server { models_root, build, .. } = &paths.asr {
             let lang = if args.src_lang == "auto" {
                 // the language id runs on the transcribe.cpp build of the recognition device
@@ -1225,6 +1458,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
                 crate::fetch_missing(&paths.repo_root, &crate::models::crisperwhisper_components(&paths.models_root), progress)?;
                 asr_choice = crate::models::crisperwhisper_choice(&paths.repo_root, &paths.models_root);
                 by_crisperwhisper = true;
+                src_lang = lang;
             }
         }
         let parakeet = matches!(asr_choice, crate::models::AsrChoice::Ggml { .. } | crate::models::AsrChoice::Server { .. });
@@ -1243,11 +1477,24 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             "asr",
             &t!("asr-windowed", speakers = nsp),
         );
-        // the server's models window a long recording themselves; transcribe.cpp's get it in pieces cut at pauses
-        let ts = if matches!(asr_choice, crate::models::AsrChoice::Ggml { .. }) {
-            recognise_by_pauses(paths, &mut *asr, &asr_wav, &args.src_lang, progress)?
-        } else {
-            asr.transcribe(&asr_wav, &args.src_lang).map_err(|e| e.localize())?
+        // Parakeet and Nemotron in the server window a long recording themselves; Parakeet Ultra and CrisperWhisper get
+        // it in pieces cut at pauses
+        let ts = match &asr_choice {
+            crate::models::AsrChoice::Ggml { .. } => {
+                recognise_by_pauses(paths, &mut *asr, &asr_wav, &src_lang, turns, progress)?
+            }
+            crate::models::AsrChoice::CrisperWhisper { models_root, build, .. } => {
+                // «auto» is heard once at the start of the recording, not anew at the start of every piece
+                let lang = if src_lang == "auto" {
+                    let langid = dub_asr::tcpp::helper_path(models_root, &dub_asr::tcpp::LANGID);
+                    dub_asr::acpp::heard_language(&dub_asr::tcpp::engine_dir(models_root, *build), &langid, &asr_wav)
+                        .map_err(|e| e.localize())?
+                } else {
+                    src_lang.clone()
+                };
+                recognise_by_pauses(paths, &mut *asr, &asr_wav, &lang, turns, progress)?
+            }
+            crate::models::AsrChoice::Server { .. } => asr.transcribe(&asr_wav, &src_lang).map_err(|e| e.localize())?,
         };
         // Спикер — по словам: реплика, на которой сменился спикер диаризации, режется на слове смены.
         let segs: Vec<Segment> = dub_asr::split_at_speaker_turns(ts, turns)
@@ -1276,8 +1523,8 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
             })
             .collect();
         if parakeet && args.src_lang == "auto" {
-            let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
-            let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &vocals16)
+            let clean = (asr_wav != scale_vocals16).then_some(asr_wav.as_path());
+            let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &scale_vocals16)
                 .map_err(|e| t!("analyze-hallucination-filter", error = e.to_string()))?;
             let words: usize = segs
                 .iter()
@@ -1292,6 +1539,10 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         (segs, nsp)
     };
 
+    let orig_diar = match (&compact_map, &diar) {
+        (Some(map), Some(d)) => Some(map.diar_to_original(d)),
+        _ => None,
+    };
     // Галлюцинации ASR (титры субтитровщиков, «Продолжение следует», звуки в скобках): текстовое правило
     // находит кандидатов, звук на интервале (отделённый вокал, реплики диаризации или сырой микс) решает
     // «скрыть» или «только пометить». Импорт субтитров — текст пользователя, его не трогаем.
@@ -1301,9 +1552,22 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         } else {
             dub_asr::HallucinationRules::CaseAware
         };
-        let clean = (asr_wav != vocals16).then_some(asr_wav.as_path());
-        let turns: &[dub_asr::Turn] = diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]);
-        let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, &vocals16)
+        // Свежий транскрипт и звук — на сжатой шкале; транскрипт из кэша уже на исходной.
+        let from_cache = compact_map.is_some() && resumed_asr;
+        let (clean, turns, voice) = if from_cache {
+            (
+                (orig_asr_wav != vocals16).then_some(orig_asr_wav.as_path()),
+                orig_diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]),
+                &vocals16,
+            )
+        } else {
+            (
+                (asr_wav != scale_vocals16).then_some(asr_wav.as_path()),
+                diar.as_ref().map(|d| d.turns.as_slice()).unwrap_or(&[]),
+                &scale_vocals16,
+            )
+        };
+        let evidence = crate::asr_filter::VoiceEvidence::build(clean, turns, voice)
             .map_err(|e| t!("analyze-hallucination-filter", error = e.to_string()))?;
         let sel = crate::models::load_selection(&paths.models_root);
         let loops = dub_asr::LoopRules {
@@ -1339,6 +1603,9 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // каждый огрызок TTS-ится отдельно и звучит рвано. Клеим near-continuous короткие реплики ОДНОГО
     // спикера в одну фразу (не для import_subs — там реплики уже цельные из сабов).
     if !resumed_asr {
+        if let Some(map) = &compact_map {
+            map.segments_to_original(&mut segments);
+        }
         if paths.import_subs.is_none() {
             let before = segments.len();
             merge_short_turns(&mut segments);
@@ -1467,6 +1734,9 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
     // храним как есть; render маппит непустой не-auto код через iso639, иначе "und". Инвариант extra=allow.
     proj.meta.extra.insert("src_lang".into(), Value::String(args.src_lang.clone()));
     proj.meta.extra.insert("speaker_count".into(), json!(args.speaker_count));
+    if let Some(v) = compact_meta {
+        proj.meta.extra.insert("compact_silence".into(), v);
+    }
     proj.subs.mode = subs_mode;
     proj.subs.burn = args.burn; // композируемость: вжигать субтитры/титры или нет
     proj.glossary = glossary;
@@ -1518,7 +1788,7 @@ pub fn run(args: &AnalyzeArgs, paths: &AnalyzePaths, progress: &Progress) -> Res
         t.apply(&mut proj);
         crate::jobs::emit_resumed(progress, "translate", &t!("analyze-translation-cached"));
     } else {
-        crate::translate::stage(args, paths, &mut proj, &asr_wav, meta.height, meta.duration, progress)?;
+        crate::translate::stage(args, paths, &mut proj, &orig_asr_wav, meta.height, meta.duration, progress)?;
         let out = TranslatedOut::of(&proj);
         stage_store(&mut cache, &paths.work_dir, "translate", &translate_key, TRANSLATED_FILE, &out, progress);
     }
@@ -1886,6 +2156,7 @@ mod segment_rules_tests {
             content_type: "auto".into(),
             import_translated: false,
             align_subs: false,
+            compact_silence: false,
         }
     }
 
@@ -1971,5 +2242,249 @@ mod language_check_tests {
         assert!(!unrecognised_language(92.0, 210));
         assert!(!unrecognised_language(10.0, 0));
         assert!(!unrecognised_language(30.0, 9));
+    }
+}
+
+#[cfg(test)]
+mod pieces_tests {
+    use super::*;
+    use dub_asr::{AsrError, Segment, SpeakerSegment, Turn, Word};
+
+    const OVERFLOW: &str = "audiocpp_server answered 500 (server_error): CrisperWhisper invalid decoder prompt or token limit";
+
+    /// A recognizer that answers each piece by its length in seconds, and keeps the lengths it was given.
+    struct Scripted<F: FnMut(f64) -> Result<Vec<Word>, AsrError>> {
+        answer: F,
+        heard: Vec<f64>,
+    }
+
+    impl<F: FnMut(f64) -> Result<Vec<Word>, AsrError>> dub_asr::AsrEngine for Scripted<F> {
+        fn transcribe(&mut self, wav: &std::path::Path, _: &str) -> Result<Vec<Segment>, AsrError> {
+            let (pcm, sr) = crate::wavio::read_mono_f32(wav).unwrap();
+            let secs = pcm.len() as f64 / sr as f64;
+            self.heard.push(secs);
+            Ok(dub_asr::segment_words(&(self.answer)(secs)?, dub_asr::SEG_MAX_GAP, dub_asr::SEG_MAX_DUR))
+        }
+        fn transcribe_turns(&mut self, _: &std::path::Path, _: &[Turn], _: &str) -> Result<Vec<SpeakerSegment>, AsrError> {
+            unreachable!()
+        }
+    }
+
+    fn word(text: &str, start: f64, end: f64) -> Word {
+        Word { word: text.to_string(), start, end }
+    }
+
+    fn recognise<F: FnMut(f64) -> Result<Vec<Word>, AsrError>>(
+        engine: &mut Scripted<F>,
+        spans: &[(f64, f64)],
+        events: &mut Vec<String>,
+    ) -> Result<Vec<Segment>, String> {
+        let samples = vec![0.0f32; 130 * 16_000];
+        let dir = tempfile::tempdir().unwrap();
+        let speech = Speech { samples: &samples, sr: 16_000, spans, probs: &[], turns: &[] };
+        lines_by_pieces(engine, &speech, &dir.path().join("piece.wav"), "pt", &mut |e| {
+            events.push(match e {
+                PieceEvent::Started { n, total } => format!("piece {n}/{total}"),
+                PieceEvent::Overflowed { n } => format!("overflow {n}"),
+                PieceEvent::Part => "part".to_string(),
+            });
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn a_phrase_cut_by_the_piece_boundary_in_a_short_pause_stays_one_line() {
+        // pieces 0–50 s and 50.3–120 s; «Hello» ends piece one, «world.» opens piece two 0.4 s later
+        let mut calls = 0;
+        let mut engine = Scripted {
+            answer: |_| {
+                calls += 1;
+                Ok(if calls == 1 { vec![word("Hello", 49.0, 49.9)] } else { vec![word("world.", 0.0, 0.4)] })
+            },
+            heard: Vec::new(),
+        };
+        let mut events = Vec::new();
+        let lines = recognise(&mut engine, &[(0.0, 50.0), (50.3, 120.0)], &mut events).unwrap();
+        assert_eq!(events, ["piece 1/2", "piece 2/2"]);
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(lines[0].text, "Hello world.");
+        assert!((lines[0].start - 49.0).abs() < 1e-9 && (lines[0].end - 50.7).abs() < 1e-9, "{lines:?}");
+    }
+
+    #[test]
+    fn a_piece_whose_carried_words_overflowed_is_recognised_again_in_parts_of_one_window() {
+        let mut engine = Scripted {
+            answer: |secs| {
+                if secs > ONE_WINDOW_SECS {
+                    Err(AsrError::Parakeet(OVERFLOW.into()))
+                } else {
+                    Ok(vec![word("ok", 1.0, 1.5)])
+                }
+            },
+            heard: Vec::new(),
+        };
+        let mut events = Vec::new();
+        let lines = recognise(&mut engine, &[(0.0, 80.0)], &mut events).unwrap();
+        assert_eq!(events, ["piece 1/1", "overflow 1", "part", "part", "part"]);
+        assert!((engine.heard[0] - 80.0).abs() < 1e-3, "{:?}", engine.heard);
+        assert!(engine.heard.len() > 1 && engine.heard[1..].iter().all(|s| *s <= ONE_WINDOW_SECS), "{:?}", engine.heard);
+        assert!((engine.heard[1..].iter().sum::<f64>() - 80.0).abs() < 1e-2, "the parts cover the piece: {:?}", engine.heard);
+        let starts: Vec<f64> = lines.iter().flat_map(|l| &l.words).map(|w| w.start).collect();
+        assert_eq!(starts.len(), engine.heard.len() - 1);
+        assert!((starts[1] - (ONE_WINDOW_SECS + 1.0)).abs() < 1e-3, "{starts:?}");
+    }
+
+    #[test]
+    fn other_failures_and_an_overflow_within_one_window_stop_recognition() {
+        let mut engine = Scripted {
+            answer: |_| Err(AsrError::Parakeet("audiocpp_server answered 500 (server_error): CrisperWhisper graph execution failed".into())),
+            heard: Vec::new(),
+        };
+        let e = recognise(&mut engine, &[(0.0, 80.0)], &mut Vec::new()).unwrap_err();
+        assert!(e.contains("graph execution failed"), "{e}");
+        assert_eq!(engine.heard.len(), 1);
+        let mut engine = Scripted { answer: |_| Err(AsrError::Parakeet(OVERFLOW.into())), heard: Vec::new() };
+        let e = recognise(&mut engine, &[(0.0, 20.0)], &mut Vec::new()).unwrap_err();
+        assert!(e.contains("invalid decoder prompt"), "{e}");
+        assert_eq!(engine.heard.len(), 1);
+    }
+
+    #[test]
+    fn a_cancel_between_the_parts_of_an_overflowed_piece_stops_recognition() {
+        let mut engine = Scripted {
+            answer: |secs| if secs > ONE_WINDOW_SECS { Err(AsrError::Parakeet(OVERFLOW.into())) } else { Ok(Vec::new()) },
+            heard: Vec::new(),
+        };
+        let samples = vec![0.0f32; 90 * 16_000];
+        let dir = tempfile::tempdir().unwrap();
+        let speech = Speech { samples: &samples, sr: 16_000, spans: &[(0.0, 80.0)], probs: &[], turns: &[] };
+        let mut parts = 0;
+        let e = lines_by_pieces(&mut engine, &speech, &dir.path().join("piece.wav"), "pt", &mut |event| match event {
+            PieceEvent::Part => {
+                parts += 1;
+                if parts == 2 { Err("cancelled".to_string()) } else { Ok(()) }
+            }
+            _ => Ok(()),
+        })
+        .unwrap_err();
+        assert_eq!(e, "cancelled");
+        assert_eq!(engine.heard.len(), 2, "the whole piece and its first part only: {:?}", engine.heard);
+    }
+}
+
+#[cfg(test)]
+mod compact_cache_key_tests {
+    use super::*;
+
+    #[test]
+    fn compact_off_keeps_old_cache_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let detector = dir.path().join("detector.onnx");
+        let voice = dir.path().join("voice.onnx");
+        std::fs::write(&voice, b"voice-model").unwrap();
+        let input = "prefix-hash";
+        for count in [0usize, 1, 4] {
+            let old = diar_cache_key_with_mode(input, &detector, &voice, count, false).unwrap();
+            let off = diar_cache_key_with_mode(&crate::compact::key_input(input, false), &detector, &voice, count, false).unwrap();
+            let on = diar_cache_key_with_mode(&crate::compact::key_input(input, true), &detector, &voice, count, false).unwrap();
+            assert_eq!(off, old);
+            assert_ne!(on, old);
+        }
+        let old = cache::hash_stage(&[ASR_VER, input, "parakeet", "ru", "diar"]);
+        assert_eq!(asr_cache_key(&crate::compact::key_input(input, false), "parakeet", "ru", "diar"), old);
+        assert_ne!(asr_cache_key(&crate::compact::key_input(input, true), "parakeet", "ru", "diar"), old);
+    }
+}
+
+#[cfg(test)]
+mod after_separation_tests {
+    use super::*;
+
+    #[test]
+    fn write_errors_after_separation_are_analysis_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        let wd = dir.path();
+        let files = crate::compact::Files::under(wd);
+        let map = crate::compact::Map::default();
+        // стемов нет: отметка разделения не пишется
+        let missing = wd.join("stems");
+        let err = after_separation(&missing, true, &wd.join("clean.wav"), None, &wd.join("vocals16.wav")).unwrap_err();
+        assert!(err.contains("source.ver"), "{err}");
+        // отметка сжатых стемов не пишется: папки compact/stems нет
+        std::fs::create_dir_all(&missing).unwrap();
+        let err = after_separation(&missing, true, &wd.join("clean.wav"), Some((&map, &files)), &wd.join("vocals16.wav")).unwrap_err();
+        assert!(err.contains("compact.mark"), "{err}");
+        // vocals.wav нет: чистый голос не получается
+        assert!(after_separation(&missing, false, &wd.join("clean.wav"), None, &wd.join("vocals16.wav")).is_err());
+    }
+
+    /// Сообщения прогресса — чтобы видеть, что продолжение по сырому голосу объявлено.
+    fn recorder() -> (std::sync::Arc<std::sync::Mutex<Vec<Value>>>, impl Fn(Value) + Send + Sync) {
+        let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = log.clone();
+        (log, move |v: Value| sink.lock().unwrap().push(v))
+    }
+
+    #[test]
+    fn separation_outcome_is_strict_only_with_compaction() {
+        let dir = tempfile::tempdir().unwrap();
+        let wd = dir.path();
+        let files = crate::compact::Files::under(wd);
+        let map = crate::compact::Map::default();
+        let stems = wd.join("stems"); // нет папки: отметка разделения не пишется
+        let raw = wd.join("vocals16.wav");
+        let clean = wd.join("clean.wav");
+        let failing_after = |compact: bool| {
+            let (stems, clean, raw, files, map) = (&stems, &clean, &raw, &files, &map);
+            move || after_separation(stems, true, clean, compact.then_some((map, files)), raw)
+        };
+        let sep_failed = || Err::<(), String>("separator crashed".into());
+
+        // сжатие включено, разделение удалось, отметка не пишется — ошибка анализа с причиной
+        let (log, cb) = recorder();
+        let err = separation_outcome(Ok(()), true, failing_after(true), &raw, &cb).unwrap_err();
+        assert!(err.contains("source.ver"), "{err}");
+        assert!(log.lock().unwrap().is_empty());
+
+        // сжатие включено, сбой разделителя — продолжение по сырому (сжатому) голосу
+        let (log, cb) = recorder();
+        let got = separation_outcome(sep_failed(), true, failing_after(true), &raw, &cb).unwrap();
+        assert_eq!(got, raw);
+        assert_eq!(log.lock().unwrap().len(), 1);
+
+        // сжатие выключено, разделение удалось, запись падает — прежнее продолжение по сырому голосу
+        let (log, cb) = recorder();
+        let got = separation_outcome(Ok(()), false, failing_after(false), &raw, &cb).unwrap();
+        assert_eq!(got, raw);
+        assert!(log.lock().unwrap()[0].to_string().contains("source.ver"));
+
+        // сжатие выключено, сбой разделителя — продолжение по сырому голосу
+        let (log, cb) = recorder();
+        let got = separation_outcome(sep_failed(), false, failing_after(false), &raw, &cb).unwrap();
+        assert_eq!(got, raw);
+        assert!(log.lock().unwrap()[0].to_string().contains("separator crashed"));
+
+        // всё удалось — путь чистого голоса
+        let (_, cb) = recorder();
+        let got = separation_outcome(Ok(()), true, || Ok(clean.clone()), &raw, &cb).unwrap();
+        assert_eq!(got, clean);
+    }
+
+    #[test]
+    fn temporary_full_audio_is_removed_when_cut_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let wd = dir.path();
+        let files = crate::compact::Files::under(wd);
+        std::fs::create_dir_all(files.audio_hq_full.parent().unwrap()).unwrap();
+        std::fs::write(&files.audio_hq_full, b"not a wav").unwrap();
+        let map = crate::compact::Map::default();
+        let err = cut_audio_hq(&files.audio_hq_full, &files, &map).unwrap_err();
+        assert!(!err.is_empty());
+        assert!(!files.audio_hq_full.exists());
+        // общая audio_hq.wav не временная — не удаляется
+        let shared = wd.join("audio_hq.wav");
+        std::fs::write(&shared, b"not a wav").unwrap();
+        assert!(cut_audio_hq(&shared, &files, &map).is_err());
+        assert!(shared.exists());
     }
 }
