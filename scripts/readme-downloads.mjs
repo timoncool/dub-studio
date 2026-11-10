@@ -86,7 +86,7 @@ const CASTING = {
 
 const NAMES = {
   higgs: "Higgs Audio v3 Q8_0",
-  "higgs-engine": "audiocpp_engine.dll (Higgs engine)",
+  "higgs-engine": "audio.cpp server (Higgs, CrisperWhisper, Parakeet, Supertonic, Audio8, Nemotron)",
   gemma: "Gemma-4 12B QAT q4_0 + vision",
   "gemma-q5_0": "Gemma-4 12B Q5_K_M + vision",
   "gemma-q6_k": "Gemma-4 12B Q6_K + vision",
@@ -144,12 +144,33 @@ function windowsModule(src) {
 // separation engine's `files: &SEP_<BUILD>` becomes the FileSpec of that build's Windows archive (dub-sep's asset.rs).
 function windowsParts(src, x) {
   const windows = windowsModule(src);
-  const at = windows.indexOf(`pub const ${x}: Parts = Parts {`);
-  if (at < 0) throw new Error(`platform::${x} Parts not found in the Windows platform module`);
+  const decl = windows.match(new RegExp(`(?:pub )?const ${x}: Parts = Parts \\{`));
+  if (!decl) throw new Error(`platform::${x} Parts not found in the Windows platform module`);
+  const at = decl.index;
   const lineEnd = windows.indexOf("\n", at);
   const line = windows.slice(at, lineEnd);
   const body = line.trimEnd().endsWith("};") ? line : windows.slice(at, windows.indexOf("\n    };", at));
-  return body.replace(/files: &SEP_(\w+)/, (_, build) => `files: &[${sepFile(build)}]`);
+  return body
+    .replace(/files: &SEP_(\w+)/, (_, build) => `files: &[${sepFile(build)}]`)
+    .replace(/server_file\(acpp_server::asset::(\w+), "([^"]+)"\)/, (_, asset, archive) => serverFile(asset, archive))
+    .replace(/tcpp_file\(dub_asr::tcpp::Build::(\w+), "([^"]+)"\)/, (_, build, archive) => tcppFile(build, archive));
+}
+
+// The FileSpec of a transcribe.cpp engine's Windows archive of dub-tcpp's lib.rs (Build::X.download()), unpacked flat.
+function tcppFile(build, archive) {
+  const lib = readFileSync(join(root, "crates/dub-tcpp/src/lib.rs"), "utf8").replace(/\r\n/g, "\n");
+  const windows = lib.slice(lib.indexOf("#[cfg(windows)]\n    pub const fn download"));
+  const m = windows.match(new RegExp(`Build::${build} => Download \\{\\s*url: "([^"]+)",\\s*size: ([\\d_]+),\\s*sha256: "([0-9a-f]{64})"`));
+  if (!m) throw new Error(`the Windows download of Build::${build} not found in dub-tcpp/src/lib.rs`);
+  return `FileSpec { url: "${m[1]}", dest_rel: "${archive}", size: ${m[2]}, sha256: "${m[3]}", extract: Extract::Flat }`;
+}
+
+// The FileSpec of an audio.cpp server archive of acpp-server's asset.rs, as setup.rs's server_file makes it.
+function serverFile(name, archive) {
+  const asset = readFileSync(join(root, "crates/acpp-server/src/asset.rs"), "utf8").replace(/\r\n/g, "\n");
+  const m = asset.match(new RegExp(`pub const ${name}: Asset = Asset \\{\\s*url: "([^"]+)",\\s*file: "[^"]+",\\s*size: ([\\d_]+),\\s*sha256: "([0-9a-f]{64})"`));
+  if (!m) throw new Error(`${name} not found in acpp-server/src/asset.rs`);
+  return `FileSpec { url: "${m[1]}", dest_rel: "${archive}", size: ${m[2]}, sha256: "${m[3]}", extract: Extract::Flat }`;
 }
 
 // The FileSpec of the separation engine's Windows archive of a build (SEP_CUDA13 → Build::Cuda13), as setup.rs's
@@ -198,8 +219,11 @@ function readManifest() {
     if (!id || !requirement || !delivery) throw new Error("cannot parse a manifest component: " + p.slice(0, 120));
     // files: CONST — a const array of setup.rs; files: platform::X.files — the Windows Parts X
     const listed = p.match(/files: ([A-Z][A-Z0-9_]+),/)?.[1];
-    // files: llama_parts(llama_build()).files — the card's build; the table shows the default one, platform::LLAMA
-    const parts = p.match(/files: platform::(\w+)\.files,/)?.[1] ?? (/files: llama_parts\(llama_build\(\)\)\.files,/.test(p) ? "LLAMA" : undefined);
+    // files: llama_parts(llama_build()).files and platform::server_parts(..).files — the card's build; the table shows
+    // the default one, platform::LLAMA and SERVER_CUDA13
+    const parts = p.match(/files: platform::(\w+)\.files,/)?.[1]
+      ?? (/files: llama_parts\(llama_build\(\)\)\.files,/.test(p) ? "LLAMA" : undefined)
+      ?? (/files: platform::server_parts\([^)]*\)\)?\.files,/.test(p) ? "SERVER_CUDA13" : undefined);
     const own = p.replace(/files: &\[([A-Z0-9_, ]+)\]/, (_, list) => "files: &[" + list.split(",").map((x) => specs[x.trim()] ?? x).join(", ") + "]");
     const scope = listed ? constArray(src, listed) : parts ? windowsParts(src, parts) : own;
     const files = [...scope.matchAll(/FileSpec \{ url: (?:"([^"]+)"|(\w+)), dest_rel: "([^"]+)", size: ([\d_]+),(?: sha256: "[0-9a-f]{64}",)? extract: Extract::(\w+) \}/g)].map((f) => {
