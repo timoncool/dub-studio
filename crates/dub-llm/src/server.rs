@@ -73,7 +73,7 @@ pub struct ServerOpts {
     pub model: PathBuf,
     /// mmproj GGUF (vision-проектор). None -> текстовый режим без картинок.
     pub mmproj: Option<PathBuf>,
-    /// Слои на GPU. -1 = все (как n_gpu_layers=-1 в питоне).
+    /// Слои на GPU. -1 = сколько влезет в память карты при этом контексте (llama-server --fit), 0 = процессор.
     pub n_gpu_layers: i32,
     /// Контекст. Питон ctx_translate: n_ctx=12288.
     pub ctx_size: u32,
@@ -193,8 +193,6 @@ impl LlamaServer {
             .arg("127.0.0.1")
             .arg("--port")
             .arg(port.to_string())
-            .arg("-ngl")
-            .arg(ngl.to_string())
             .arg("-c")
             .arg(ctx.to_string())
             // flash-attn как flash_attn=True в питоне (макс. GPU-ускорение). В новых сборках это enum on/off/auto.
@@ -211,6 +209,11 @@ impl LlamaServer {
             .arg("4")
             .arg("--log-colors")
             .arg("off");
+        // -1 leaves the placement to llama-server's --fit, which adjusts only arguments that are not given: an explicit
+        // -ngl puts that many layers on the card even where they do not fit, and the load aborts.
+        if ngl >= 0 {
+            cmd.arg("-ngl").arg(ngl.to_string());
+        }
         // Лимит батча prefill против OOM «prefill graph» на слабой RAM. Приоритет: настройка UI
         // (opts.ubatch) -> env DUB_STUDIO_LLAMA_UBATCH -> дефолт llama (не передаём флаг).
         let ubatch = opts.ubatch.or_else(|| env_u32_pos("DUB_STUDIO_LLAMA_UBATCH"));

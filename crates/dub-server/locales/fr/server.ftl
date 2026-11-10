@@ -810,6 +810,7 @@ llm-not-ready = llama-server n’a pas démarré en { $secs } s (port { $port })
 llm-no-gpu-device = la Gemma locale a besoin d'une carte graphique, et la version de llama.cpp n'en voit aucune ({ $detail }). Choisissez OpenRouter ou votre propre serveur pour la traduction et la vision, ou vérifiez le pilote de la carte.
 llm-http = la requête au modèle a échoué : { $error }
 llm-api = API du modèle : { $error }
+llm-unreachable = pas de connexion à { $host } : vérifiez la connexion internet ou indiquez un proxy dans Réglages → Proxy ({ $error })
 llm-rejected = l’API du modèle a refusé la requête ({ $status }) : { $body }
 llm-empty-answer = le modèle { $model } a renvoyé une réponse vide (sans raison)
 llm-empty-answer-reason = le modèle { $model } a renvoyé une réponse vide (finish_reason={ $reason })

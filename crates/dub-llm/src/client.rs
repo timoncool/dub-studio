@@ -190,6 +190,18 @@ fn error_chain(e: &dyn std::error::Error) -> String {
     out
 }
 
+
+/// How long a 429 answer asks to wait (`Retry-After` in seconds), at most a minute.
+fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    let secs = headers.get(reqwest::header::RETRY_AFTER)?.to_str().ok()?.trim().parse::<u64>().ok()?;
+    Some(Duration::from_secs(secs.clamp(1, 60)))
+}
+
+/// The host of a server address, for telling which one could not be reached.
+fn host_of(base_url: &str) -> String {
+    base_url.split("://").nth(1).unwrap_or(base_url).split(['/', '?']).next().unwrap_or(base_url).to_string()
+}
+
 /// Адрес сервера без `/` и `/v1` в конце: пользователи пишут и так, и так.
 pub fn server_base(url: &str) -> String {
     let trimmed = url.trim().trim_end_matches('/');
@@ -409,6 +421,7 @@ impl ChatClient {
     fn send(&self, body: &Value) -> Result<Value, LlmError> {
         let url = format!("{}/v1/chat/completions", self.base_url);
         let mut last_err = String::new();
+        let mut unreachable = false;
         for attempt in 0..=self.retries {
             let mut req = self.http.post(&url).json(body);
             if let Some(key) = &self.auth {
@@ -417,24 +430,35 @@ impl ChatClient {
             if self.endpoint == Endpoint::OpenRouter {
                 req = req.header("HTTP-Referer", "https://github.com/timoncool/dub-studio").header("X-Title", "Dub Studio");
             }
+            let mut wait = Duration::from_millis(500 * (attempt as u64 + 1));
             match req.send() {
                 Ok(resp) => {
+                    unreachable = false;
                     let status = resp.status();
                     if status.is_success() {
                         return resp.json::<Value>().map_err(|e| LlmError::Http(format!("parse json: {}", error_chain(&e))));
                     }
                     // 4xx (кроме 429) — не ретраим, это наша ошибка запроса.
+                    if status.as_u16() == 429 {
+                        wait = retry_after(resp.headers()).unwrap_or(Duration::from_secs(2u64 << attempt.min(4)));
+                    }
                     let text = resp.text().unwrap_or_default();
                     if status.as_u16() != 429 && status.as_u16() < 500 {
                         return Err(LlmError::Rejected { code: status.as_u16(), status: status.to_string(), body: text });
                     }
                     last_err = format!("{status}: {text}");
                 }
-                Err(e) => last_err = error_chain(&e),
+                Err(e) => {
+                    unreachable = e.is_connect() || e.is_timeout();
+                    last_err = error_chain(&e);
+                }
             }
             if attempt < self.retries {
-                std::thread::sleep(Duration::from_millis(500 * (attempt as u64 + 1)));
+                std::thread::sleep(wait);
             }
+        }
+        if unreachable {
+            return Err(LlmError::Unreachable { host: host_of(&self.base_url), error: last_err });
         }
         Err(LlmError::Api(format!(
             "chat failed after {} retries: {last_err}",
@@ -655,5 +679,27 @@ mod tests {
         assert_eq!(server_base("http://127.0.0.1:11434"), "http://127.0.0.1:11434");
         assert_eq!(server_base(" http://127.0.0.1:1234/v1/ "), "http://127.0.0.1:1234");
         assert_eq!(server_base("http://gpu-box:8000/"), "http://gpu-box:8000");
+    }
+
+
+    #[test]
+    fn a_rate_limit_waits_as_long_as_it_is_asked_up_to_a_minute() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        assert_eq!(retry_after(&headers), None);
+        headers.insert(reqwest::header::RETRY_AFTER, "7".parse().unwrap());
+        assert_eq!(retry_after(&headers), Some(Duration::from_secs(7)));
+        headers.insert(reqwest::header::RETRY_AFTER, "3600".parse().unwrap());
+        assert_eq!(retry_after(&headers), Some(Duration::from_secs(60)));
+        headers.insert(reqwest::header::RETRY_AFTER, "Wed, 21 Oct 2026 07:28:00 GMT".parse().unwrap());
+        assert_eq!(retry_after(&headers), None, "a date is not taken, the attempt's own pause is");
+    }
+
+    #[test]
+    fn a_server_that_cannot_be_reached_is_named_by_its_host() {
+        assert_eq!(host_of("https://openrouter.ai/api"), "openrouter.ai");
+        assert_eq!(host_of("http://127.0.0.1:8080"), "127.0.0.1:8080");
+        let client = ChatClient::new("http://127.0.0.1:9").unwrap().with_retries(0);
+        let err = client.send(&json!({})).unwrap_err();
+        assert!(matches!(&err, LlmError::Unreachable { host, .. } if host == "127.0.0.1:9"), "{err:?}");
     }
 }

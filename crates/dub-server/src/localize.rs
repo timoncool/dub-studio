@@ -51,6 +51,7 @@ impl Localize for LlmError {
             LlmError::NoGpuDevice { detail } => t!("llm-no-gpu-device", detail = detail.clone()),
             LlmError::Http(error) => t!("llm-http", error = error.clone()),
             LlmError::Api(error) => t!("llm-api", error = error.clone()),
+            LlmError::Unreachable { host, error } => t!("llm-unreachable", host = host.clone(), error = error.clone()),
             LlmError::Rejected { status, body, .. } => t!("llm-rejected", status = status.clone(), body = body.clone()),
             LlmError::EmptyAnswer { model, finish_reason } if finish_reason.is_empty() => t!("llm-empty-answer", model = model.clone()),
             LlmError::EmptyAnswer { model, finish_reason } => {

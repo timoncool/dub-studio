@@ -2669,6 +2669,17 @@ fn project_input(dir: &Path) -> Result<PathBuf, Box<Response>> {
     }
 }
 
+/// Whether the chosen voicing can start: a cloud engine needs its key, and OpenRouter its model. Told before the job
+/// is queued, as `llm_provider::configured` tells it for translation.
+fn voicing_configured(models_root: &Path) -> Result<(), String> {
+    match models::tts_provider(models_root) {
+        "google" if credentials::google_api_key().is_none() => Err(t!("cloud-no-key", provider = "Google")),
+        "openrouter" if models::openrouter_key().is_none() => Err(t!("cloud-no-key", provider = "OpenRouter")),
+        "openrouter" if models::tts_model(models_root).trim().is_empty() => Err(t!("cloud-tts-no-model")),
+        _ => Ok(()),
+    }
+}
+
 async fn render_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response>> {
     let dir = st.proj_dir(pid).map_err(Box::new)?;
     let proj_path = dir.join("project.json");
@@ -2677,6 +2688,7 @@ async fn render_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response
         ));
     }
     let input = project_input(&dir)?;
+    voicing_configured(&st.models_root).map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
     let paths = render_paths(st, &dir, input);
     let dir_for_job = dir.clone();
     let out_for_result = paths.output.clone();
@@ -3099,6 +3111,7 @@ async fn dub_audio_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Respo
         ));
     }
     let input = project_input(&dir)?;
+    voicing_configured(&st.models_root).map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
     let paths = render_paths(st, &dir, input);
     let dir_for_job = dir.clone();
     let repo_root = st.repo_root.clone();

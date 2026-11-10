@@ -43,6 +43,9 @@ pub enum LlmError {
     Http(String),
     #[error("api: {0}")]
     Api(String),
+    /// Every attempt failed to connect or timed out: the network or a proxy, not the model.
+    #[error("no connection to {host}: {error}")]
+    Unreachable { host: String, error: String },
     /// Сервер отверг запрос (4xx, кроме 429): повторять тот же запрос бесполезно.
     #[error("api: {status}: {body}")]
     Rejected { code: u16, status: String, body: String },
@@ -70,6 +73,7 @@ impl LlmError {
             LlmError::NoGpuDevice { .. } => "llm_no_gpu_device",
             LlmError::Http(_) => "llm_http",
             LlmError::Api(_) => "llm_api",
+            LlmError::Unreachable { .. } => "llm_unreachable",
             LlmError::Rejected { .. } => "llm_rejected",
             LlmError::EmptyAnswer { .. } => "llm_empty_answer",
             LlmError::CutShort { .. } => "llm_cut_short",
