@@ -3762,7 +3762,15 @@ function Editor() {
                       <button key={spk} disabled={spkVoiceBusy !== null}
                         onClick={async () => {
                           setSpkVoiceBusy(spk);
-                          try { const r = await makeSpeakerVoice(pid!, spk, t("voice.speakerName", { spk })); if (r) { setVoiceList(r.voices); branch("recast", { voice_mode: "voice", voice_name: r.name }); } else playSfx("error"); } finally { setSpkVoiceBusy(null); }
+                          try {
+                            const r = await makeSpeakerVoice(pid!, spk, t("voice.speakerName", { spk }));
+                            if (r) {
+                              setVoiceList(r.voices);
+                              // one slot per sorted speaker, as the engine reads the list; a lone name voices every speaker
+                              const prev = p.audio.voice.mode === "voice" ? (p.audio.voice.name || "").split(",").map((s) => s.trim()) : [];
+                              branch("recast", { voice_mode: "voice", voice_name: spks.map((s, j) => (s === spk ? r.name : p.audio.voice.mode === "voice" ? prev[j] || "" : CLONE_SLOT)).join(",") });
+                            } else playSfx("error");
+                          } finally { setSpkVoiceBusy(null); }
                         }}
                         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-[var(--color-border)] text-[12px] hover:border-[var(--color-accent)] disabled:opacity-40">
                         {spkVoiceBusy === spk ? <Loader2 size={12} className="animate-spin" /> : <AudioLines size={12} className="text-[var(--color-accent)]" />}SPK {spk}
@@ -3799,17 +3807,17 @@ function Editor() {
               // diarized speaker can get a DISTINCT/funny voice. 1 speaker -> a single picker.
               const spks = [...new Set(p.segments.map((s) => s.speaker ?? "0"))].sort();   // lexical — matches engine sorted()
               const names = (p.audio.voice.name || "").split(",").map((s) => s.trim());
-              const pick = (cur: string, on: (v: string) => void) => (
+              const pick = (cur: string, on: (v: string) => void, withClone = false) => (
                 <div className="flex items-center gap-1.5 min-w-0 flex-1">
                   <Combobox value={cur} onChange={on}
-                    options={voiceList.map((v) => ({ value: v, label: prettyVoice(v) }))}
+                    options={[...(withClone ? [{ value: CLONE_SLOT, label: t("casting.voiceClone") }] : []), ...voiceList.map((v) => ({ value: v, label: prettyVoice(v) }))]}
                     placeholder={voiceList.length ? t("voice.search") : t("voice.packMissing")}
                     noResults={t("voice.noMatch")} allowClear className="flex-1 min-w-0" />
-                  <button type="button" disabled={!cur} onClick={() => toggleVoicePreview(cur)} title={t("voice.preview")}
+                  <button type="button" disabled={!cur || cur === CLONE_SLOT} onClick={() => toggleVoicePreview(cur)} title={t("voice.preview")}
                     className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                     {voicePreview === cur && cur ? <Pause size={14} className="text-[var(--color-accent)]" /> : <Play size={14} />}
                   </button>
-                  {cur && !cur.includes(":") && (
+                  {cur && cur !== CLONE_SLOT && !cur.includes(":") && (
                     <button type="button" disabled={!!denoiseBusy} onClick={() => toggleDenoise(cur)}
                       title={voiceCleaned.includes(cur) ? t("voice.restore") : t("voice.denoise")}
                       className="shrink-0 w-8 h-8 inline-flex items-center justify-center rounded-lg border border-[var(--color-border)] hover:border-[var(--color-accent)] disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
@@ -3828,7 +3836,7 @@ function Editor() {
                       {pick(names[i] || "", (v) => branch("recast", {
                         voice_mode: "voice",
                         voice_name: spks.map((_, j) => (j === i ? v : names[j] || "")).join(","),
-                      }))}
+                      }), true)}
                     </div>
                   ))}
                 </div>
