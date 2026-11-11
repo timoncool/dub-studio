@@ -313,10 +313,10 @@ pub fn gpu_stage_unavailable(mroot: &Path, key: &str, stage: &str) -> Option<Str
     let gpu = crate::hw::gpu_report();
     let card = gpu.summary().unwrap_or_else(|| "-".to_string());
     let why = match gpu.reason {
-        Some("no_nvidia") => t!("stage-gpu-why-no-nvidia"),
         Some("no_device") => t!("stage-gpu-why-no-device"),
         Some("driver_old") => t!("stage-gpu-why-driver-old", card = card, min = gpu.min_driver),
         Some("gpu_old") => t!("stage-gpu-why-gpu-old", card = card, min = gpu.min_compute.clone()),
+        _ if !gpu.nvidia => t!("stage-gpu-why-no-nvidia"),
         _ => t!("stage-gpu-why-cuda-init", card = card),
     };
     Some(t!("stage-needs-cuda", stage = stage.to_string(), why = why))

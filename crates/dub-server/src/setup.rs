@@ -1577,9 +1577,9 @@ pub fn manifest() -> Vec<Component> {
     if !cfg!(windows) {
         all.retain(|c| c.id != "vcruntime");
     }
-    // Drama 3 is a CUDA engine: a Mac has none to run it
+    // macOS: no NVIDIA card and no CUDA engine (Drama 3)
     if cfg!(target_os = "macos") {
-        all.retain(|c| c.id != "drama3");
+        all.retain(|c| !matches!(c.id, "nvidia-driver" | "drama3"));
     }
     // the server's other builds this computer can be set to, fetched when a stage is set to their device: the card's
     // CUDA build, Vulkan and the processor (none on a Mac, whose one build is the server component)
@@ -4611,7 +4611,9 @@ mod tests {
     fn removal_refuses_what_the_app_does_not_install() {
         let root = temp_root("refuse");
         assert_eq!(remove_components(&root, &["ocr".to_string()]).unwrap_err().code, "not_removable");
-        assert_eq!(remove_components(&root, &["nvidia-driver".to_string()]).unwrap_err().code, "not_removable");
+        if !cfg!(target_os = "macos") {
+            assert_eq!(remove_components(&root, &["nvidia-driver".to_string()]).unwrap_err().code, "not_removable");
+        }
         assert_eq!(remove_components(&root, &["nope".to_string()]).unwrap_err().code, "unknown_component");
         let _busy = try_claim(&["roformer-q5".to_string()]).unwrap();
         assert_eq!(remove_components(&root, &["roformer-q5".to_string()]).unwrap_err().code, "busy");

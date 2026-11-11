@@ -7,7 +7,7 @@ import { useGpuReasonText } from "../lib/setupText";
 export default function GpuNotice({ gpu, driverUrl }: { gpu: GpuReport; driverUrl?: string | null }) {
   const { t } = useTranslation();
   const reasonText = useGpuReasonText();
-  if (gpu.cuda13Ok) return null;
+  if (gpu.cuda13Ok || !gpu.reason) return null;
   const canUpdate = gpu.reason === "driver_old" || gpu.reason === "cuda_init" || gpu.reason === "no_nvidia";
   return (
     <div role="status" className="rounded-lg border border-[var(--color-warn)]/40 bg-[color-mix(in_oklab,var(--color-warn)_10%,transparent)] px-3 py-2.5 text-[12.5px] leading-snug">

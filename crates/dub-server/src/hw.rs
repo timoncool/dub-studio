@@ -315,7 +315,8 @@ fn probe_gpu() -> GpuReport {
     r.chosen = chosen_card();
     match cuda_driver_probe() {
         CudaProbe::NoDriver => {
-            r.reason = Some("no_nvidia");
+            // a Mac has no NVIDIA card to miss: its engines run on Metal
+            r.reason = (!cfg!(target_os = "macos")).then_some("no_nvidia");
             return r;
         }
         CudaProbe::NoDevice => {
@@ -517,9 +518,12 @@ mod tests {
         assert_eq!(cuda_build((8, 6), 11_080), None, "driver of the CUDA 11 branch");
     }
 
-    #[test]
     fn the_report_is_consistent_on_this_machine() {
         let r = gpu_report();
+        if cfg!(target_os = "macos") {
+            assert!(!r.cuda13_ok && r.reason.is_none(), "{r:?}");
+            return;
+        }
         assert_eq!(r.cuda13_ok, r.reason.is_none(), "{r:?}");
         if !r.nvidia {
             assert_eq!(r.reason, Some("no_nvidia"));
