@@ -315,6 +315,9 @@ pub fn tts_text(tgt: &str, src: &str, lang: &str, glossary: &[GlossaryEntry], sp
         t = collapse_loops(&t);
     }
     let mut t = apply_pronunciation(&t, glossary, lang);
+    if crate::stress::is_russian(lang) {
+        t = dub_core::normalize_ru::normalize(&t).text;
+    }
     if speak.caps {
         t = ease_caps(&t);
     }
@@ -423,8 +426,18 @@ mod tests {
 
     #[test]
     fn stray_marks_are_not_read() {
-        assert_eq!(ru("Привет_мир | ну ~ да ^ #1", ALL), "Привет мир ну да 1");
+        assert_eq!(ru("Привет_мир | ну ~ да ^ #1", ALL), "Привет мир ну да один");
         assert_eq!(ru("Привет_мир", NONE), "Привет_мир");
+    }
+
+    #[test]
+    fn russian_numbers_dates_and_money_are_said_in_words() {
+        assert_eq!(ru("Это было в 1945 году", ALL), "Это было в тысяча девятьсот сорок пятом году");
+        assert_eq!(ru("Встреча 12 марта в 18:30.", ALL), "Встреча двенадцатого марта в восемнадцать тридцать.");
+        assert_eq!(ru("Цена 150 руб. за штуку", ALL), "Цена сто пятьдесят рублей за штуку");
+        assert_eq!(tts_text("It was 1945", "", "en", &[], ALL).text, "It was 1945");
+        let higgs = tts_text("<|emotion:awe|> Через 5 минут", "", "ru", &[], Speak { engine: Engine::Higgs, ..ALL }).text;
+        assert!(higgs.ends_with("Через пять минут"), "{higgs}");
     }
 
     fn clean(t: &str) -> TtsText {

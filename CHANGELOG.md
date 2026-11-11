@@ -17,6 +17,7 @@ release notes on GitHub are taken from the release's section.
 
 ### Fixed
 
+- **Russian numbers are voiced as words**, with the same rules as Speech Studio: before a Russian line goes to the voice, numbers, dates, years, centuries, times, ordinals, fractions, money, units, phone numbers, mail and site addresses become words in the case and gender their sentence asks for («в 1945 году» → «в тысяча девятьсот сорок пятом году», «150 руб.» → «сто пятьдесят рублей»); the engines' tags stay as they are.
 - **A voice download that broke off goes on from where it stopped**, as in Speech Studio: a catalogue voice or the voice pack takes the rest of the file up to three times, and the part stays for the next press.
 - **A recorded voice no longer voices every speaker**: with several speakers the recording goes to the library and the journal says to give it to a speaker in «Speakers and voices»; with one speaker it becomes their voice as before.
 - **A take's card names what Higgs and Audio8 were given** (their own sampling, seed and cap) instead of the steps of the retry ladder.

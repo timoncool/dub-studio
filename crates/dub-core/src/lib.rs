@@ -4,6 +4,7 @@ pub mod atomic;
 pub mod compat;
 pub mod fit;
 pub mod glossary;
+pub mod normalize_ru;
 mod opts;
 pub mod proc;
 pub mod runtime;
