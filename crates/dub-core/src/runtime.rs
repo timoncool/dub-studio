@@ -79,12 +79,33 @@ pub fn ort_env() -> Result<ort::environment::Environment, String> {
         return Ok(built.clone());
     }
     ensure_ort_dylib();
-    match std::env::var_os("ORT_DYLIB_PATH").map(std::path::PathBuf::from) {
-        Some(path) if path.is_file() => {}
+    let path = match std::env::var_os("ORT_DYLIB_PATH").map(std::path::PathBuf::from) {
+        Some(path) if path.is_file() => path,
         Some(path) => return Err(format!("ONNX Runtime {} is not downloaded yet", path.display())),
         None => return Err(format!("ONNX Runtime ({ORT_LIBRARY}) is not downloaded yet")),
-    }
-    let built = ort::init().with_telemetry(false).build().map_err(|e| format!("ONNX Runtime: {e}"))?;
+    };
+    // init_from loads the library and says why it did not load (a missing Visual C++ runtime, error 1114), where
+    // init() panics inside ort on the same failure
+    let builder = ort::init_from(&path).map_err(|e| format!("ONNX Runtime {}: {e}", path.display()))?;
+    let built = builder.with_telemetry(false).build().map_err(|e| format!("ONNX Runtime: {e}"))?;
     *env = Some(built.clone());
     Ok(built)
+}
+
+#[cfg(all(test, feature = "ort"))]
+mod tests {
+    /// A file that is no loadable library (a broken download, a runtime missing its Visual C++ libraries) is an error
+    /// naming the file, not a panic of the job that asked for a session.
+    #[test]
+    fn a_library_that_does_not_load_is_an_error_not_a_panic() {
+        let dir = std::env::temp_dir().join(format!("dub-core-ort-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let fake = dir.join(super::ORT_LIBRARY);
+        std::fs::write(&fake, b"not a library").unwrap();
+        std::env::set_var("ORT_DYLIB_PATH", &fake);
+        let outcome = std::panic::catch_unwind(super::ort_env);
+        std::fs::remove_dir_all(&dir).unwrap();
+        let err = outcome.expect("no panic").expect_err("a file that is no library does not load");
+        assert!(err.contains(super::ORT_LIBRARY), "{err}");
+    }
 }
