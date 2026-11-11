@@ -113,6 +113,14 @@ pub fn setup_failed(reason: &str) {
     }
 }
 
+/// A job taken by the worker and the same job let go: the hub holds its asks back while one runs (frame previews do not count).
+pub fn job_running(kind: JobKind, on: bool) {
+    let Some(hub) = HUB.get().and_then(Option::as_ref) else { return };
+    if kind != JobKind::Frame {
+        hub.task_running(on);
+    }
+}
+
 /// A finished job, counted as `<kind>_done`, `<kind>_failed` or `<kind>_cancelled` (frame previews are not counted);
 /// a failure keeps its reason, which the hub client scrubs, and finished work names the models it ran on. Jobs run one
 /// at a time, so an analysis's `worked_ms` (running to finished) against the video's length is the card's speed.

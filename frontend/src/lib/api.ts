@@ -2,6 +2,7 @@ import i18n from "./i18n";
 import type en from "../locales/en.json";
 import { requireCloud } from "./cloudConsent";
 import { keepVoiceCards, type VoiceCardView } from "./voiceCards";
+import { hubChanged } from "./studioHub";
 // Dub Studio API client — talks to the single-worker FastAPI backend over the dub-engine.
 // dev: Vite (5173) -> dub-server (8793, DUB_STUDIO_PORT). desktop/portable: the server serves the SPA
 // itself, so calls are same-origin (""). VITE_API overrides both.
@@ -597,6 +598,7 @@ export const api = {
         try {
           const e: JobEvent = JSON.parse(m.data);
           onEvent(e);                                  // a consumer throw must not leak the stream open either
+          if (e.type === "done" || e.type === "error" || e.type === "cancelled") hubChanged();
           if (e.type === "done") { es.close(); resolve(e.result); }
           else if (e.type === "error") { es.close(); reject(new Error(e.error)); }
           else if (e.type === "cancelled") { es.close(); reject(new JobCancelledError()); }

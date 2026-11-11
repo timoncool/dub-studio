@@ -552,6 +552,7 @@ impl JobQueue {
                     picked
                 };
                 ctl.mark_running();
+                crate::hub::job_running(kind, true);
 
                 let ctl_p = ctl.clone();
                 let progress: ProgressFn = Arc::new(move |ev: Value| ctl_p.progress(ev));
@@ -565,6 +566,7 @@ impl JobQueue {
                 .unwrap_or_else(|e| Err(format!("job panicked: {e}")));
                 let cancelled = ctl.is_cancelled() && res.is_err();
 
+                crate::hub::job_running(kind, false);
                 let mut g = worker_inner.lock().await;
                 g.running = None;
                 let mut drop_frame = false;
