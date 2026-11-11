@@ -874,6 +874,7 @@ dependencies = [
  "hound",
  "ort",
  "parakeet-rs",
+ "realfft",
  "rubato",
  "serde",
  "serde_json",
