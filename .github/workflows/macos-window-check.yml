@@ -91,6 +91,38 @@ jobs:
           screencapture -x "$RUNNER_TEMP/shot.png" && echo "screen captured: $(stat -f%z "$RUNNER_TEMP/shot.png") bytes" || true
           [ "$fail" = 0 ] || { echo "[ERROR] a screen read back empty"; exit 1; }
           echo "[OK] all screens read through the MCP"
+      - name: The hardware the studio sees
+        run: |
+          echo "== /engine/presets"; curl -s -m 60 "http://127.0.0.1:$PORT/engine/presets" | head -c 1500; echo
+          echo "== gpu"; curl -s -m 60 "http://127.0.0.1:$PORT/setup/status" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log(JSON.stringify({ready:j.ready,driverOk:j.driverOk,gpu:j.gpu,llama:j.llamaBuild,missing:j.components.filter(c=>c.requirement==='required'&&!c.installed).map(c=>c.id)}))})"
+      - name: Work through the MCP - components downloaded, a spoken sentence recognised
+        run: |
+          u="http://127.0.0.1:$PORT/mcp"
+          call() { curl -s -m "${3:-120}" -H "content-type: application/json" -d "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}" "$u"; }
+          text() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const r=JSON.parse(s);process.stdout.write((r.error?'[mcp error] '+JSON.stringify(r.error):'')+(r.result?.isError?'[tool error] ':'')+(r.result?.content?.[0]?.text??''))}catch(e){process.stdout.write(s)}})"; }
+          ids='["higgs-engine","transcribe-engine-cpu","parakeet","onnxruntime","ffmpeg"]'
+          call models_download "{\"ids\":$ids}" | text | head -c 600; echo
+          for i in $(seq 1 60); do
+            st=$(curl -s -m 30 "http://127.0.0.1:$PORT/setup/status")
+            left=$(echo "$st" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);const want=$ids;const c=j.components.filter(c=>want.includes(c.id));console.log(c.filter(c=>!c.installed).map(c=>c.id).join(',')||'none')})")
+            echo "[..] not yet installed: $left"
+            [ "$left" = none ] && break
+            sleep 20
+          done
+          [ "$left" = none ] || { echo "[ERROR] the download did not finish"; exit 1; }
+          say -v Samantha -o "$RUNNER_TEMP/speech.aiff" "The quick brown fox jumps over the lazy dog near the river bank."
+          afconvert -f WAVE -d LEI16@16000 -c 1 "$RUNNER_TEMP/speech.aiff" "$RUNNER_TEMP/speech.wav"
+          args="{\"path\":\"$RUNNER_TEMP/speech.wav\",\"src_lang\":\"en\",\"diarize\":false,\"format\":\"text\"}"
+          for i in $(seq 1 20); do
+            out=$(call transcribe_file "$args" 300 | text)
+            job=$(echo "$out" | grep -oE '"?job_id"?[:=] ?"?[0-9a-f]{8,}' | grep -oE '[0-9a-f]{8,}' | head -1)
+            [ -z "$job" ] && break
+            echo "[..] job $job"
+            call studio_wait "{\"job_id\":\"$job\",\"seconds\":55}" 90 | text | head -c 300; echo
+          done
+          echo "== transcript"; echo "$out" | head -c 1500; echo
+          echo "$out" | grep -qi "fox" && echo "$out" | grep -qi "river" || { echo "[ERROR] the sentence was not recognised"; exit 1; }
+          echo "[OK] the spoken sentence came back as text"
       - name: The app's log
         if: always()
         run: tail -40 "$RUNNER_TEMP/run.log" || true
