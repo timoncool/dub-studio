@@ -25,8 +25,10 @@ struct Change {
 /// own rows here.
 const CHANGES: &[Change] = &[
     Change { what: "higgs-engine", reason: || t!("update-why-audiocpp-server"), replaces: &["models/higgs-engine/audiocpp_engine.dll", "models/higgs-engine/libaudiocpp_engine.so"] },
-    Change { what: "transcribe-engine", reason: || t!("update-why-transcribe-avx2"), replaces: &[] },
-    Change { what: "transcribe-engine-cpu", reason: || t!("update-why-transcribe-avx2"), replaces: &[] },
+    Change { what: "transcribe-engine", reason: || t!("update-why-transcribe-own-ggml"), replaces: &[] },
+    Change { what: "transcribe-engine-cpu", reason: || t!("update-why-transcribe-own-ggml"), replaces: &[] },
+    Change { what: "onnxruntime", reason: || t!("update-why-ort-131"), replaces: &[] },
+    Change { what: "onnxruntime-gpu", reason: || t!("update-why-ort-131"), replaces: &[] },
     Change { what: "qwen3-tts-engine", reason: || t!("update-why-qwen-backends"), replaces: &[] },
     Change { what: "crisperwhisper-turbo", reason: || t!("update-why-crisperwhisper"), replaces: &[] },
     Change { what: "langid", reason: || t!("update-why-langid"), replaces: &[] },
