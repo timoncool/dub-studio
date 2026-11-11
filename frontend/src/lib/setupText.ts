@@ -32,6 +32,7 @@ export function useGpuReasonText() {
       cuda_init: t("downloads.gpuCudaInit"),
       driver_old: t("downloads.gpuDriverOld", { driver: gpu.driverVersion ?? "?", cuda: gpu.cudaDriver ?? "?", min: gpu.minDriver }),
       gpu_old: t("downloads.gpuTooOld", { name: gpu.name ?? "GPU", cc: gpu.compute ?? "?", min: gpu.minCompute }),
+      gpu_missing: t("downloads.gpuMissing", { index: gpu.chosen ?? "?", cards: gpu.cards.map((c) => `${c.index}: ${c.name}`).join(", ") || "—" }),
     };
     return (gpu.reason && byReason[gpu.reason]) || "";
   };

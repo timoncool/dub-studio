@@ -99,6 +99,7 @@ fn start_or_reuse_service(repo_root: &std::path::Path) -> Result<u16, String> {
 /// Окружение сервера до старта: путь к onnxruntime (PATH под движок/инструменты добавит
 /// augment_path_for_tools внутри serve_blocking).
 fn setup_server_env(repo_root: &PathBuf) {
+    dub_server::apply_gpu_choice(repo_root);
     dub_server::set_ort_dylib_env(repo_root, &layout::executable_directory());
 }
 

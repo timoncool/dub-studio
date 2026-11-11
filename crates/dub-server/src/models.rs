@@ -158,6 +158,7 @@ pub fn is_selection_key(key: &str) -> bool {
             // (Sortformer onnx CUDA-EP/CPU), asr=локальный ASR (Parakeet onnx / Whisper CTranslate2).
             | "local_backend" | "sep_backend" | "diar_backend" | "asr_backend"
             | "tts_backend"     // voicing engines (Higgs and Supertonic in audiocpp_server, Qwen3-TTS): auto|gpu|vulkan|cpu
+            | "gpu_index"       // карта NVIDIA по порядку PCI (как nvidia-smi); "auto" — как решит драйвер; со следующего запуска
             // Лимиты RAM (видимые контролы в настройках, НЕ авто-магия): против OOM на слабой памяти.
             | "llama_ubatch"    // размер prefill-батча Gemma (меньше = меньше пиковый буфер графа prefill)
             | "higgs_ref_secs"  // длина реф-клипа клона голоса (меньше = меньше prefill Higgs; <12с спасает 32ГБ)
@@ -209,6 +210,7 @@ pub fn is_selection_value(key: &str, value: &str) -> bool {
         "cloud_ok_recognition" | "cloud_ok_translation" | "cloud_ok_vision" | "cloud_ok_voicing" => matches!(value, "0" | "1"),
         "drama_vram_gb" => value.parse::<u32>().is_ok_and(|gb| gb == 0 || (DRAMA_MIN_LIMIT_GB..=256).contains(&gb)),
         "tts_idle_unload_min" => matches!(value, "0" | "5" | "15" | "30" | "60"),
+        "gpu_index" => value == "auto" || value.parse::<u32>().is_ok_and(|i| i < 64),
         "google_tts_mode" => matches!(value, "standard" | "batch" | "auto"),
         "cloud_daily_limit_usd" => value.parse::<f64>().is_ok_and(|v| (0.0..=10_000.0).contains(&v)),
         "google_tts_model" => {

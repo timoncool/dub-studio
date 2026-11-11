@@ -284,6 +284,18 @@ pub fn augment_path_for_tools(repo_root: &Path) {
     }
 }
 
+/// The graphics card chosen in the settings goes into the process environment before anything starts CUDA: the studio's
+/// engines and every engine process it starts see that card alone, counted in PCI bus order as NVML and nvidia-smi
+/// count. Applies from the next start; called before anything reads `hw::gpu_report`, which is probed once a process.
+pub fn apply_gpu_choice(repo_root: &Path) {
+    let sel = crate::models::load_selection(&models_root(repo_root));
+    if let Some(i) = sel.get("gpu_index").and_then(serde_json::Value::as_str).and_then(|v| v.parse::<u32>().ok()) {
+        std::env::set_var("CUDA_DEVICE_ORDER", "PCI_BUS_ID");
+        std::env::set_var("CUDA_VISIBLE_DEVICES", i.to_string());
+        tracing::info!("graphics card: {i} (chosen in the settings)");
+    }
+}
+
 /// Прописать ORT_DYLIB_PATH (onnxruntime 1.31) в окружение процесса до старта сервера: ort грузит dylib лениво,
 /// а по голому имени Windows нашла бы раньше PATH onnxruntime.dll другой версии из System32 (Windows AI).
 /// GPU-сборка (cuda13) приоритетнее — суперсет CPU+CUDA; `beside_exe` — копия рядом с exe (портатив).

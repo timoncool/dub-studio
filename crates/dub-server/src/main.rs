@@ -36,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Прописать в PATH каталоги скачанных бинарей (ffmpeg/llama/higgs-engine) до старта — чтобы после
     // автозакачки они находились без рестарта процесса.
+    dub_server::apply_gpu_choice(&repo_root);
     augment_path_for_tools(&repo_root);
     init_proxy_route(&repo_root);
     let exe_dir = std::env::current_exe().ok().and_then(|p| p.parent().map(Path::to_path_buf)).unwrap_or_default();

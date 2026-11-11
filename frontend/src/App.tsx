@@ -396,6 +396,17 @@ function ModelsSection({ part = "models" }: { part?: "models" | "cloud" }) {
       <div className="mb-3 space-y-2">
         <ModelsFolder status={status} />
         <GpuNotice gpu={status.gpu} driverUrl={driverUrl} />
+        {(status.gpu.cards.length > 1 || status.gpu.reason === "gpu_missing") && (
+          <label className="block px-2.5 py-2 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-[12px]">
+            <span className="font-medium">{t("downloads.gpuCard")}</span>
+            <select value={selv("gpu_index") || "auto"} onChange={(e) => setSel("gpu_index", e.target.value)} className={`mt-1 ${orSelectCls}`}>
+              <option value="auto">{t("downloads.gpuCardAuto")}</option>
+              {status.gpu.cards.map((c) => <option key={c.index} value={String(c.index)}>{`${c.index}: ${c.name} · ${Math.round(c.memoryMb / 1024)} ${t("units.gb")}`}</option>)}
+              {status.gpu.chosen != null && !status.gpu.cards.some((c) => c.index === status.gpu.chosen) && <option value={String(status.gpu.chosen)} disabled>{`${status.gpu.chosen}: —`}</option>}
+            </select>
+            <span className="block mt-1 text-[11px] text-[var(--color-muted)]">{t("downloads.gpuCardHint")}</span>
+          </label>
+        )}
         {status.active && status.active.status !== "completed" && (
           <DownloadProgress job={status.active} onPause={pause} onResume={(ids) => { void startDownload(ids); }} />
         )}
