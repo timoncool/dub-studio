@@ -14,7 +14,7 @@ jobs:
     env:
       VERSION: "4.6.0"
       # the "macOS build" run whose dmg is checked; empty takes the dmg of the release
-      BUILD_RUN: "43002259666"
+      BUILD_RUN: "43004032527"
       PORT: "8794"
       GH_TOKEN: ${{ github.token }}
     steps:
