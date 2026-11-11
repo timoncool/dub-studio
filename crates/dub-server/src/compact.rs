@@ -433,7 +433,7 @@ pub fn with_pauses(lines: &[&str], times: &[(f64, f64)], pauses: &[(f64, f64)]) 
         while next < pauses.len() && pauses[next].1 <= start + PAD {
             if i > 0 && pauses[next].0 + PAD >= times[i - 1].1 {
                 let minutes = ((pauses[next].1 - pauses[next].0) / 60.0).round() as i64;
-                out.push(format!("— пауза {minutes} мин —"));
+                out.push(t!("transcript-pause", minutes = minutes));
             }
             next += 1;
         }
@@ -665,12 +665,13 @@ mod tests {
         let r = WavReader::open(&dst).unwrap();
         assert_eq!((r.spec().channels, r.spec().sample_rate, r.duration()), (2, 44_100, 88_200));
         let s: Vec<i32> = WavReader::open(&dst).unwrap().samples::<i32>().map(Result::unwrap).collect();
-        assert_eq!(s[44_100 * 2], (44_100 * 3 % 30000) as i32);
-        assert_eq!(s[44_100 * 2 + 1], -((44_100 * 3 % 30000) as i32));
+        assert_eq!(s[44_100 * 2], 44_100 * 3 % 30000);
+        assert_eq!(s[44_100 * 2 + 1], -(44_100 * 3 % 30000));
     }
 
     #[test]
     fn pause_lines_go_between_the_lines_around_a_long_pause() {
+        let _language = crate::i18n::test_language("ru");
         let out = with_pauses(&["a", "b", "c"], &[(0.0, 1.0), (200.0, 201.0), (202.0, 203.0)], &[(2.5, 198.5)]);
         assert_eq!(out, vec!["a", "— пауза 3 мин —", "b", "c"]);
     }

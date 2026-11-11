@@ -334,6 +334,7 @@ analyze-separator-missing = { $model } est introuvable ; diarisation/ASR sur l�
 analyze-compact-searching = recherche des longs silences à compresser
 analyze-compact-cached = carte des silences depuis le cache (l’enregistrement compressé est déjà prêt)
 analyze-compact-done = silences compressés : il reste { $left } min sur { $total } min ; pauses de plus d’une minute : { $pauses }
+transcript-pause = — pause de { $minutes } min —
 analyze-compact-skipped-short = compression des silences ignorée : elle ne retirerait que { $cut } s, moins de { $min } s — l’analyse porte sur l’enregistrement original
 analyze-compact-skipped-subs = compression des silences ignorée : les sous-titres importés sont calés sur l’enregistrement original
 analyze-diarizing = diarisation ({ $model })

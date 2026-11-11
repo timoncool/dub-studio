@@ -213,7 +213,6 @@ fn files_of(items: &[serde_json::Value]) -> std::collections::HashMap<&str, (u64
 
 /// Голоса каталога: строки metadata.jsonl, обогащённые списком файлов датасета — размер и SHA-256 аудио (mp3 или wav)
 /// и размер txt рядом. Строка без своего аудиофайла в датасете в каталог не попадает.
-
 fn voices_of(items: &[serde_json::Value], meta: &[serde_json::Value]) -> Vec<serde_json::Value> {
     let files = files_of(items);
     let mut voices: Vec<serde_json::Value> = meta
@@ -346,7 +345,6 @@ pub fn catalog() -> Result<serde_json::Value, String> {
 /// Скачать `url` в `dest` через .part, как Speech Studio: оборвавшееся скачивание продолжается с места обрыва (до
 /// FETCH_TRIES попыток, .part остаётся и для следующего нажатия); размер и (если задан) SHA-256 сверяются до того, как
 /// файл появится под своим именем. `progress(получено)` — по ходу.
-
 fn fetch_checked(
     client: &reqwest::blocking::Client,
     url: &str,

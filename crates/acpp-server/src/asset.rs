@@ -1,5 +1,5 @@
-//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio, 31cb1a4a on Windows and Linux,
-//! 6d6cb6a5 on the Mac; model specs inside, one ggml-cpu module per instruction level chosen by cpuid, so any x86-64 runs it) and what it needs to start: one build per CUDA major, chosen by the card, a Vulkan build for
+//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio, 31cb1a4a on Windows, Linux
+//! and the Mac; model specs inside, one ggml-cpu module per instruction level chosen by cpuid, so any x86-64 runs it) and what it needs to start: one build per CUDA major, chosen by the card, a Vulkan build for
 //! other cards and a processor build, and the CUDA libraries a CUDA build imports. A studio downloads the assets into its own folders and checks the libraries before
 //! it starts the server (`missing_libraries`); without them Windows refuses the program (0xC0000135).
 
@@ -178,12 +178,12 @@ pub const SERVER_LINUX_CPU: Asset = Asset {
     sha256: "c8a6746c616711b3543a776c04e2de21a9d84cd1a2a522470e467a55f4032401",
 };
 
-/// The macOS arm64 archive of the Metal build (release server-6d6cb6a5): the program with its libraries.
+/// The macOS arm64 archive of the Metal build (release server-31cb1a4a): the program with its libraries.
 pub const SERVER_MACOS: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-6d6cb6a5/audiocpp-server-macos-arm64-metal.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-macos-arm64-metal.tar.gz",
     file: "audiocpp-server-macos-arm64-metal.tar.gz",
-    size: 17_535_293,
-    sha256: "fa5afc009fbafb09c48bfc48b8e15a77256d52623d72bd855d0f0664ddb1f345",
+    size: 18_781_457,
+    sha256: "fc691898be2ab678e32203fa1966ffd23f0c0c3b861e2b4dd16456a4dc510ee2",
 };
 
 /// The CUDA 12.9 libraries of the CUDA 12 build (PyPI wheels; their `.dll` files unpack flat): cudart 12.9.79,
@@ -250,7 +250,7 @@ mod tests {
         if on_apple_silicon {
             assert!([Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].iter().all(|b| b.server().is_none()));
         }
-        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-6d6cb6a5/"));
+        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-31cb1a4a/"));
         assert_eq!(serde_json::to_value(crate::Backend::Metal).unwrap(), "metal", "the server's config names it so");
     }
 

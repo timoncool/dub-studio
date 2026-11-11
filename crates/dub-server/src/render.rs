@@ -536,24 +536,31 @@ const TOKEN_CAP: &str = "TOKEN_CAP";
 
 /// Seconds of work an engine took on this machine per second of speech expected, lately: a slow card or the processor
 /// takes many times what a fast card does, and its phrase is not cut off as hung for that.
-static PACE: std::sync::Mutex<Vec<(String, f64)>> = std::sync::Mutex::new(Vec::new());
+/// Per engine: the pace, and whether a phrase finished on it (the pace then is measured, not guessed from timeouts).
+static PACE: std::sync::Mutex<Vec<(String, f64, bool)>> = std::sync::Mutex::new(Vec::new());
 
 /// How long a phrase of `expected` seconds may take `engine` before it is taken for hung: eight times the speech, three
 /// times what this engine took here lately when that is longer, 45 s at least, half an hour at most.
 fn guard_timeout(engine: &str, expected: f64) -> Duration {
-    let lately = PACE.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|(e, _)| e == engine).map_or(0.0, |(_, p)| *p);
+    let lately = PACE.lock().unwrap_or_else(|p| p.into_inner()).iter().find(|(e, _, _)| e == engine).map_or(0.0, |(_, p, _)| *p);
     Duration::from_secs_f64((expected.max(0.5) * (8.0f64).max(3.0 * lately)).clamp(45.0, 1800.0))
 }
 
-/// `engine` took `took` for a phrase of `expected` seconds; `finished` — it gave its answer, else it ran out of time,
-/// and took at least that much: the next phrase then waits half as long again.
+/// `engine` took `took` for a phrase of `expected` seconds; `finished` — it gave its answer, else it ran out of time.
+/// Until a phrase has finished on this engine, a timeout says only that the engine is slower than thought, and the
+/// next phrase waits half as long again; once its pace is measured, a timeout is a hang and changes nothing, so
+/// stochastic hangs do not stretch every later phrase's wait.
 fn note_pace(engine: &str, expected: f64, took: Duration, finished: bool) {
     let pace = took.as_secs_f64() / expected.max(0.5) * if finished { 1.0 } else { 1.5 };
     let mut all = PACE.lock().unwrap_or_else(|p| p.into_inner());
-    match all.iter_mut().find(|(e, _)| e == engine) {
-        Some((_, p)) if finished => *p = (*p + pace) / 2.0,
-        Some((_, p)) => *p = p.max(pace),
-        None => all.push((engine.to_string(), pace)),
+    match all.iter_mut().find(|(e, _, _)| e == engine) {
+        Some((_, p, measured)) if finished => {
+            *p = if *measured { (*p + pace) / 2.0 } else { pace };
+            *measured = true;
+        }
+        Some((_, p, false)) => *p = p.max(pace),
+        Some(_) => {}
+        None => all.push((engine.to_string(), pace, finished)),
     }
 }
 
@@ -1134,7 +1141,6 @@ fn audio8_options(opts: &str, text: &str, lang: &str) -> Result<serde_json::Map<
 /// What `engine` was given for an attempt of `text` in `lang` whose ladder step is `opts`, as the take records it:
 /// Higgs and Audio8 sample as their models do, so their take names those options; the other engines read the ladder's
 /// step as it is (each maps it onto its own scale, a seedless step drawing a new seed).
-
 fn sent_params(engine: &TtsEngine, opts: &str, text: &str, lang: &str) -> Result<String, String> {
     Ok(match engine {
         TtsEngine::Higgs(_) => serde_json::Value::Object(higgs_options(opts, text, lang)?).to_string(),
@@ -1160,7 +1166,6 @@ fn qwen_stress(models_root: &Path, lang: &str) -> bool {
 
 /// The voicing model chosen in the settings: the one the process keeps ([`crate::tts_host`]) when it was made the same
 /// way, else loaded in its place.
-
 fn load_tts(paths: &RenderPaths, lang: &str, progress: &Progress) -> Result<Arc<TtsEngine>, String> {
     crate::tts_host::take(tts_key(paths, lang), || load_tts_engine(paths, lang, progress))
 }
@@ -2463,7 +2468,7 @@ fn build_dub_pass(
             let mut engine_failed = false;
             // Наименее повреждённая из дефектных попыток, где есть речь (usable_rank, затем размах), — на случай
             // полного провала лестницы.
-            let mut best_bad: Option<(Vec<f32>, i32, f64)> = None;
+            let mut best_bad: Option<(Vec<f32>, i32, f64, &'static str)> = None;
             let mut best_rank = u8::MAX;
             // Drama клонирует голос только по рефу с расшифровкой; реф без речи (ASR не дал текста) — оригинал
             // реплики сразу, без лестницы попыток, которые все кончились бы той же ошибкой.
@@ -2526,7 +2531,7 @@ fn build_dub_pass(
                             None => e,
                         };
                         if attempt >= MAX_TTS_ATTEMPTS {
-                            if let Some((sm, r, rng)) = best_bad.take() {
+                            if let Some((sm, r, rng, _)) = best_bad.take() {
                                 emit(progress, "tts", &t!(
                                     "render-failures-kept-generated", line = fi, attempts = MAX_TTS_ATTEMPTS, error = e.to_string(), range = format!("{rng:.0}")
                                 ));
@@ -2554,17 +2559,17 @@ fn build_dub_pass(
                             samples.len() as f64 / sr.max(1) as f64
                         );
                         if let Some(rank) = usable_rank(kind) {
-                            if best_bad.as_ref().is_none_or(|(_, _, b)| rank < best_rank || (rank == best_rank && rng > *b)) {
-                                best_bad = Some((samples, sr, rng));
+                            if best_bad.as_ref().is_none_or(|(_, _, b, _)| rank < best_rank || (rank == best_rank && rng > *b)) {
+                                best_bad = Some((samples, sr, rng, kind));
                                 best_rank = rank;
                             }
                         }
                         if attempt >= MAX_TTS_ATTEMPTS {
                             // Всегда используем сгенерированный TTS-звук (даже для коротких фраз / выкриков / хоров),
                             // избегая сброса на оригинальный вокал.
-                            if let Some((sm, r, rng)) = best_bad.take() {
+                            if let Some((sm, r, rng, kept)) = best_bad.take() {
                                 emit(progress, "tts", &t!(
-                                    "render-defects-kept-generated", line = fi, attempts = MAX_TTS_ATTEMPTS, defect = defect_name(kind), range = format!("{rng:.0}")
+                                    "render-defects-kept-generated", line = fi, attempts = MAX_TTS_ATTEMPTS, defect = defect_name(kept), range = format!("{rng:.0}")
                                 ));
                                 break (sm, r);
                             } else {
@@ -5020,7 +5025,7 @@ mod tests {
 
     fn speech(secs: f64, sr: i32) -> Vec<f32> {
         let n = (secs * sr as f64) as usize;
-        (0..n).map(|i| if (i / (sr as usize / 5)) % 2 == 0 { 0.3 * ((i as f32) * 0.05).sin() } else { 0.0 }).collect()
+        (0..n).map(|i| if (i / (sr as usize / 5)).is_multiple_of(2) { 0.3 * ((i as f32) * 0.05).sin() } else { 0.0 }).collect()
     }
 
     #[test]
@@ -5169,6 +5174,9 @@ mod tests {
         let hung = "test engine that ran out of time";
         note_pace(hung, 1.0, Duration::from_secs(45), false);
         assert_eq!(guard_timeout(hung, 1.0), Duration::from_secs_f64(202.5), "the next phrase waits half as long again, thrice");
+        note_pace(engine, 2.0, Duration::from_secs(120), false);
+        note_pace(engine, 2.0, Duration::from_secs(300), false);
+        assert_eq!(guard_timeout(engine, 2.0), Duration::from_secs(120), "with its pace measured, hangs do not stretch the wait");
         assert_eq!(guard_timeout("test engine on a fast card", 600.0), Duration::from_secs(1800), "half an hour at most");
     }
 

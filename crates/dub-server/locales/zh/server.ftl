@@ -265,6 +265,7 @@ analyze-separator-missing = 未找到 { $model }；在原始音频上进行说�
 analyze-compact-searching = 正在查找可压缩的长静音
 analyze-compact-cached = 使用缓存的静音映射（压缩录音已完成）
 analyze-compact-done = 静音已压缩：剩余 { $left } 分钟，原长 { $total } 分钟；超过一分钟的停顿：{ $pauses }
+transcript-pause = — 停顿 { $minutes } 分钟 —
 analyze-compact-skipped-short = 跳过静音压缩：只能剪去 { $cut } 秒，少于 { $min } 秒——按原始录音分析
 analyze-compact-skipped-subs = 跳过静音压缩：导入字幕的时间基于原始录音
 analyze-diarizing = 说话人分离（{ $model }）

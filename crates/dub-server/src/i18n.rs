@@ -54,12 +54,14 @@ pub fn set_language(code: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// The message `key` in the current language with its arguments. A key no catalogue has comes back as the key itself,
+/// which the catalogue test catches before it ships.
 pub fn tr(key: &str, args: Vec<(&'static str, FluentValue<'static>)>) -> String {
     let map: HashMap<Cow<'static, str>, FluentValue<'static>> = args.into_iter().map(|(name, value)| (Cow::Borrowed(name), value)).collect();
     let lang = language();
     let text = LOCALES.try_lookup_with_args(&lang, key, &map).unwrap_or_else(|| key.to_string());
     let en = english();
-    if lang != en {
+    if lang != en && text.chars().count() >= SAID_SHORTEST {
         if let Some(english) = LOCALES.try_lookup_with_args(&en, key, &map) {
             remember_english(&text, english);
         }
@@ -67,24 +69,36 @@ pub fn tr(key: &str, args: Vec<(&'static str, FluentValue<'static>)>) -> String 
     text
 }
 
-
 fn english() -> LanguageIdentifier {
     "en".parse().expect("a language tag")
 }
 
-/// The messages lately said in another language than English, each with its English: what `in_english` reads back.
-static SAID: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
+/// The messages lately said in another language than English, each with its English (what `in_english` reads back),
+/// and the order they were said in, the oldest first, to forget beyond `SAID_KEEPS`.
+#[derive(Default)]
+struct Said {
+    english: HashMap<String, String>,
+    order: std::collections::VecDeque<String>,
+}
+
+static SAID: std::sync::LazyLock<std::sync::Mutex<Said>> = std::sync::LazyLock::new(Default::default);
 const SAID_KEEPS: usize = 512;
+/// A message shorter than this (a word of status) is not put back in English: as a substring it would also turn the
+/// same word inside an engine's own text.
+const SAID_SHORTEST: usize = 16;
 
 fn remember_english(text: &str, english: String) {
-    if text == english || text.is_empty() {
+    if text == english {
         return;
     }
     let mut said = SAID.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    said.retain(|(t, _)| t != text);
-    said.push((text.to_string(), english));
-    if said.len() > SAID_KEEPS {
-        said.remove(0);
+    if said.english.insert(text.to_string(), english).is_none() {
+        said.order.push_back(text.to_string());
+        if said.order.len() > SAID_KEEPS {
+            if let Some(oldest) = said.order.pop_front() {
+                said.english.remove(&oldest);
+            }
+        }
     }
 }
 
@@ -92,7 +106,10 @@ fn remember_english(text: &str, english: String) {
 /// window's language: every message the catalogues said in it lately is put back in English, the longest first, so a
 /// message that carries another (the cause inside «translation failed: …») comes back whole.
 pub fn in_english(text: &str) -> String {
-    let mut said = SAID.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    let mut said: Vec<(String, String)> = {
+        let said = SAID.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        said.english.iter().filter(|(localized, _)| text.contains(localized.as_str())).map(|(l, e)| (l.clone(), e.clone())).collect()
+    };
     said.sort_by_key(|(t, _)| std::cmp::Reverse(t.len()));
     let mut out = text.to_string();
     for (localized, english) in &said {

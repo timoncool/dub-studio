@@ -61,6 +61,10 @@ pub struct VoiceCard {
     /// The reference's loudness, LUFS, measured when its sound last changed (None: not measured yet).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lufs: Option<f64>,
+    /// SHA-256 of the sound a voice was converted from (an archive's FLAC, M4A or OGG): the same sound imported again
+    /// is known by it whatever ffmpeg made of it then; empty for a voice kept as it came.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub source_sha256: String,
 }
 
 impl Default for VoiceCard {
@@ -85,6 +89,7 @@ impl Default for VoiceCard {
             birth_year: None,
             duration_s: None,
             lufs: None,
+            source_sha256: String::new(),
         }
     }
 }
@@ -266,6 +271,13 @@ pub fn import_audio(dir: &Path, base: &str, src: &Path, card: VoiceCard) -> Resu
 /// The audio formats the library lists and voicing reads as they are (lib.rs list_voice_names, render.rs pack voices).
 pub const LISTED_EXTS: [&str; 2] = ["wav", "mp3"];
 
+/// A voice of an archive ready to take its name: its name, the audio's extension and sound as the library keeps them,
+/// its other files (extension, data) and, for a sound converted on the way in, the SHA-256 of the sound it came as.
+type Ready = (String, String, Vec<u8>, Vec<(String, Vec<u8>)>, Option<String>);
+
+/// Voices of an export archive of Speech Studio or Dub Studio: a name taken in the library gets a number, a voice
+/// imported before is recognised and skipped — a WAV or MP3 by its sound, a converted one by the SHA-256 of its source
+/// kept in its card. `(added, already there)`.
 pub fn import_zip(dir: &Path, bytes: &[u8]) -> Result<(Vec<String>, Vec<String>), String> {
     use std::io::Read;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
@@ -296,41 +308,69 @@ pub fn import_zip(dir: &Path, bytes: &[u8]) -> Result<(Vec<String>, Vec<String>)
         }
     }
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
-    let (mut added, mut same) = (Vec::new(), Vec::new());
+    // every new voice's sound as the library keeps it is made before anything takes a name, so a sound that does not
+    // convert stops the import with the library as it was
+    let mut ready: Vec<Ready> = Vec::new();
+    let mut same = Vec::new();
     for (name, files) in groups {
         let Some((audio_ext, audio)) = files.iter().find(|(e, _)| AUDIO_EXTS.contains(&e.as_str())) else { continue };
+        let listed = LISTED_EXTS.contains(&audio_ext.as_str());
+        let source = (!listed).then(|| sha256_hex(audio));
         if let Some(existing) = audio_path(dir, &name) {
-            if std::fs::read(&existing).ok().as_deref() == Some(audio.as_slice()) {
+            let known = match &source {
+                None => std::fs::read(&existing).ok().as_deref() == Some(audio.as_slice()),
+                Some(sha) => read_card(dir, &name).is_ok_and(|card| &card.source_sha256 == sha),
+            };
+            if known {
                 same.push(name);
                 continue;
             }
         }
-        let target = free_name(dir, &name);
-        if LISTED_EXTS.contains(&audio_ext.as_str()) {
-            std::fs::write(dir.join(format!("{target}.{audio_ext}")), audio).map_err(|e| format!("{target}: {e}"))?;
+        let (ext, sound) = if listed {
+            (audio_ext.clone(), audio.clone())
         } else {
-            // the library and voicing read .wav and .mp3: another format becomes a .wav at the reference loudness
-            let src = staging_wav(dir, &format!("{target}-in"))?.with_extension(audio_ext);
-            std::fs::write(&src, audio).map_err(|e| format!("{}: {e}", src.display()))?;
-            let part = staging_wav(dir, &target)?;
-            let wav = dir.join(format!("{target}.wav"));
-            let made = crate::media::loudnorm(&src, &part, -20.0, -2.0, 11.0)
-                .and_then(|_| std::fs::rename(&part, &wav).map_err(|e| format!("{}: {e}", wav.display())));
-            let _ = std::fs::remove_file(&src);
-            if let Err(e) = made {
-                let _ = std::fs::remove_file(&part);
-                return Err(format!("{name}.{audio_ext}: {e}"));
-            }
-        }
-        for (ext, data) in files.iter().filter(|(e, _)| !AUDIO_EXTS.contains(&e.as_str()) && e != "json") {
+            ("wav".to_string(), reference_wav(dir, &name, audio_ext, audio).map_err(|e| format!("{name}.{audio_ext}: {e}"))?)
+        };
+        let rest = files.into_iter().filter(|(e, _)| !AUDIO_EXTS.contains(&e.as_str()) && e != "json").collect();
+        ready.push((name, ext, sound, rest, source));
+    }
+    let mut added = Vec::new();
+    for (name, ext, sound, rest, source) in ready {
+        let target = free_name(dir, &name);
+        std::fs::write(dir.join(format!("{target}.{ext}")), &sound).map_err(|e| format!("{target}: {e}"))?;
+        for (ext, data) in rest {
             std::fs::write(dir.join(format!("{target}.{ext}")), data).map_err(|e| format!("{target}: {e}"))?;
         }
-        if let Some(card) = cards.remove(&name) {
+        let card = match (cards.remove(&name), source) {
+            (Some(card), None) => Some(card),
+            (card, Some(sha)) => Some(VoiceCard { source_sha256: sha, ..card.unwrap_or_else(|| guess_card(&name)) }),
+            (None, None) => None,
+        };
+        if let Some(card) = card {
             write_card(dir, &target, &card)?;
         }
         added.push(target);
     }
     Ok((added, same))
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(data).iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A sound in a format the library does not list, as a WAV at the reference loudness (the same as `import_audio`
+/// makes), its staging files gone whatever happens.
+fn reference_wav(dir: &Path, name: &str, ext: &str, audio: &[u8]) -> Result<Vec<u8>, String> {
+    let src = staging_wav(dir, &format!("{name}-in"))?.with_extension(ext);
+    let part = staging_wav(dir, name)?;
+    let made = std::fs::write(&src, audio)
+        .map_err(|e| format!("{}: {e}", src.display()))
+        .and_then(|_| crate::media::loudnorm(&src, &part, -20.0, -2.0, 11.0))
+        .and_then(|_| std::fs::read(&part).map_err(|e| format!("{}: {e}", part.display())));
+    let _ = std::fs::remove_file(&src);
+    let _ = std::fs::remove_file(&part);
+    made
 }
 
 #[cfg(test)]
@@ -410,6 +450,23 @@ mod tests {
         std::fs::write(b.path().join("Анна.wav"), b"RIFFother").unwrap();
         let (added, _) = import_zip(b.path(), &zip).unwrap();
         assert_eq!(added, ["Анна 2"], "a different voice under a taken name gets a number");
+    }
+
+    /// A voice converted on its way in (an archive's OGG) is known on the next import by the SHA-256 of the sound it
+    /// came as, whatever the converter made of it then; another sound under its name gets a number.
+    #[test]
+    fn a_converted_voice_is_known_by_the_sound_it_came_as() {
+        let b = tempfile::tempdir().unwrap();
+        let ogg: &[u8] = b"OggS voice";
+        std::fs::write(b.path().join("Анна.wav"), b"RIFF made by an earlier ffmpeg").unwrap();
+        let card = VoiceCard { source_sha256: sha256_hex(ogg), gender: "female".into(), ..Default::default() };
+        write_card(b.path(), "Анна", &card).unwrap();
+        let (added, same) = import_zip(b.path(), &zip_of(&[("Анна.ogg", ogg)])).unwrap();
+        assert!(added.is_empty() && same == ["Анна"], "{added:?} {same:?}");
+        let text = std::fs::read_to_string(b.path().join("Анна.json")).unwrap();
+        assert!(text.contains("source_sha256"), "{text}");
+        let plain = VoiceCard::default();
+        assert!(!serde_json::to_string(&plain).unwrap().contains("source_sha256"), "a voice kept as it came carries no such field");
     }
 
     #[test]

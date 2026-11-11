@@ -353,6 +353,7 @@ analyze-separator-missing = { $model } не найден — диаризаци�
 analyze-compact-searching = поиск долгой тишины для сжатия
 analyze-compact-cached = карта тишины из кэша (сжатая запись уже готова)
 analyze-compact-done = тишина сжата: осталось { $left } мин из { $total } мин; пауз длиннее минуты: { $pauses }
+transcript-pause = — пауза { $minutes } мин —
 analyze-compact-skipped-short = сжатие тишины пропущено: вырезалось бы только { $cut } с, меньше { $min } с — анализ по исходной записи
 analyze-compact-skipped-subs = сжатие тишины пропущено: время импортированных субтитров — по исходной записи
 analyze-diarizing = диаризация ({ $model })

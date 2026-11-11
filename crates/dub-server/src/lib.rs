@@ -1908,7 +1908,6 @@ async fn voices_get(State(st): State<AppState>, Json(body): Json<Value>) -> Json
 }
 
 /// POST /voices/rename {from, to} — переименовать голос со всеми его файлами, и с исходником в `.originals`.
-
 async fn voices_rename(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let from = sanitize_voice_name(body.get("from").and_then(|v| v.as_str()).unwrap_or(""));
     let to = sanitize_voice_name(body.get("to").and_then(|v| v.as_str()).unwrap_or(""));
@@ -1919,7 +1918,6 @@ async fn voices_rename(State(st): State<AppState>, Json(body): Json<Value>) -> J
 }
 
 /// POST /voices/delete {name} — удалить голос со всеми его файлами.
-
 async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> Json<Value> {
     let name = sanitize_voice_name(body.get("name").and_then(|v| v.as_str()).unwrap_or(""));
     match voice_library::delete(&st.voices_dir, &name) {
@@ -2827,8 +2825,15 @@ fn project_input(dir: &Path) -> Result<PathBuf, Box<Response>> {
 }
 
 /// Whether the chosen voicing can start: a cloud engine needs its key, and OpenRouter its model. Told before the job
-/// is queued, as `llm_provider::configured` tells it for translation.
-fn voicing_configured(models_root: &Path) -> Result<(), String> {
+/// is queued, as `llm_provider::configured` tells it for translation, and only for a project that is voiced (a dub or a
+/// voiceover): subtitles and a transcript need no voice. Which lines a dub voices again `render` decides by each line's
+/// synthesis key, which another engine changes for every line, so a dub is always checked.
+fn voicing_configured(models_root: &Path, proj_path: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(proj_path).map_err(|e| format!("{}: {e}", proj_path.display()))?;
+    let proj = Project::from_json(&text).map_err(|e| format!("{}: {e}", proj_path.display()))?;
+    if !matches!(proj.mode.as_str(), "dub" | "voiceover") {
+        return Ok(());
+    }
     match models::tts_provider(models_root) {
         "google" if credentials::google_api_key().is_none() => Err(t!("cloud-no-key", provider = "Google")),
         "openrouter" if models::openrouter_key().is_none() => Err(t!("cloud-no-key", provider = "OpenRouter")),
@@ -2845,7 +2850,7 @@ async fn render_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Response
         ));
     }
     let input = project_input(&dir)?;
-    voicing_configured(&st.models_root).map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
+    voicing_configured(&st.models_root, &proj_path).map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
     let paths = render_paths(st, &dir, input);
     let dir_for_job = dir.clone();
     let out_for_result = paths.output.clone();
@@ -3268,7 +3273,7 @@ async fn dub_audio_enqueue(st: &AppState, pid: &str) -> Result<String, Box<Respo
         ));
     }
     let input = project_input(&dir)?;
-    voicing_configured(&st.models_root).map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
+    voicing_configured(&st.models_root, &proj_path).map_err(|why| Box::new((StatusCode::CONFLICT, why).into_response()))?;
     let paths = render_paths(st, &dir, input);
     let dir_for_job = dir.clone();
     let repo_root = st.repo_root.clone();

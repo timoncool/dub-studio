@@ -451,7 +451,8 @@ impl ChatClient {
                     last_err = format!("{status}: {text}");
                 }
                 Err(e) => {
-                    unreachable = e.is_connect() || e.is_timeout();
+                    // a connect timeout is a connect error too; a timeout while a reachable server answers is not
+                    unreachable = e.is_connect();
                     last_err = error_chain(&e);
                 }
             }

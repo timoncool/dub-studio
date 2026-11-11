@@ -334,6 +334,7 @@ analyze-separator-missing = { $model } was not found; diarization/ASR on the raw
 analyze-compact-searching = looking for long silence to compact
 analyze-compact-cached = silence map from the cache (the compacted recording is already made)
 analyze-compact-done = silence compacted: { $left } min left of { $total } min; pauses over a minute: { $pauses }
+transcript-pause = — pause { $minutes } min —
 analyze-compact-skipped-short = silence compaction skipped: it would cut only { $cut } s, less than { $min } s — the analysis runs on the original recording
 analyze-compact-skipped-subs = silence compaction skipped: the imported subtitles are timed on the original recording
 analyze-diarizing = diarization ({ $model })

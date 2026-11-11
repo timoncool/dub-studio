@@ -334,6 +334,7 @@ analyze-separator-missing = { $model } não foi encontrado; diarização/ASR no 
 analyze-compact-searching = procurando silêncios longos para comprimir
 analyze-compact-cached = mapa de silêncios do cache (a gravação comprimida já está pronta)
 analyze-compact-done = silêncio comprimido: restam { $left } min de { $total } min; pausas de mais de um minuto: { $pauses }
+transcript-pause = — pausa de { $minutes } min —
 analyze-compact-skipped-short = compressão de silêncios ignorada: cortaria só { $cut } s, menos de { $min } s — a análise usa a gravação original
 analyze-compact-skipped-subs = compressão de silêncios ignorada: as legendas importadas estão no tempo da gravação original
 analyze-diarizing = diarização ({ $model })
