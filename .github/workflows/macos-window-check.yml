@@ -1,0 +1,70 @@
+name: macos-window-check
+
+# The released .dmg on a Mac as a user gets it: mounted, the app started, its window opened, and the studio asked
+# through its MCP as an agent would - version and readiness, then every screen of the window read back.
+# Runs only when the macos-window-check branch is pushed; nothing is kept as an artifact.
+on:
+  push:
+    branches: [macos-window-check]
+
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      VERSION: "4.6.0"
+      PORT: "8794"
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: The release's dmg, mounted and copied out
+        run: |
+          gh release download "v$VERSION" -R "$GITHUB_REPOSITORY" -p "Dub-Studio-$VERSION-macos-arm64.dmg" -D "$RUNNER_TEMP"
+          hdiutil attach -nobrowse -readonly -mountpoint /Volumes/dub "$RUNNER_TEMP/Dub-Studio-$VERSION-macos-arm64.dmg"
+          ls /Volumes/dub
+          cp -R "/Volumes/dub/Dub Studio.app" "$RUNNER_TEMP/"
+          hdiutil detach /Volumes/dub
+          codesign -dv "$RUNNER_TEMP/Dub Studio.app" 2>&1 | head -5 || true
+      - name: The app started, its service answers
+        run: |
+          app="$RUNNER_TEMP/Dub Studio.app/Contents/MacOS/Dub-Studio"
+          DUB_STUDIO_PORT="$PORT" nohup "$app" > "$RUNNER_TEMP/run.log" 2>&1 &
+          for i in $(seq 1 120); do
+            curl -s -m 2 "http://127.0.0.1:$PORT/mcp/status" >/dev/null && break
+            sleep 2
+          done
+          curl -sf -m 5 "http://127.0.0.1:$PORT/mcp/status" || { echo "[ERROR] no answer on $PORT"; tail -50 "$RUNNER_TEMP/run.log"; exit 1; }
+          echo
+          for i in $(seq 1 30); do
+            curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status" | grep -q '"window_open":true' && break
+            sleep 2
+          done
+          curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status" | grep -q '"window_open":true' || { echo "[ERROR] the window did not open"; tail -50 "$RUNNER_TEMP/run.log"; exit 1; }
+          echo "[OK] window open"
+      - name: Every screen through the MCP
+        run: |
+          u="http://127.0.0.1:$PORT/mcp"
+          call() { curl -s -m 60 -H "content-type: application/json" -d "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}" "$u"; }
+          text() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).result.content[0].text)}catch(e){process.stdout.write(s)}})"; }
+          call studio_status '{}' | text > status.txt
+          grep -oE '"version": ?"[0-9.]+"' status.txt | head -1
+          grep -q "\"$VERSION\"" status.txt || { echo "[ERROR] not $VERSION"; head -c 800 status.txt; exit 1; }
+          grep -oE '"(ready|driver_ok)": [a-z]+|"id": "[a-z0-9-]+"' status.txt | head -14
+          fail=0
+          page() {
+            call ui_read_page '{}' | text > page.txt
+            lines=$(wc -l < page.txt); errs=$(grep -ciE 'ошибк|error|failed|не удалось' page.txt || true)
+            echo "$1: $lines lines, $errs error lines"
+            grep -iE 'ошибк|error|failed|не удалось' page.txt | head -3
+            [ "$lines" -gt 5 ] || fail=1
+          }
+          call ui_navigate '{"view":"home"}' >/dev/null; sleep 2; page home
+          head -25 page.txt
+          for s in models cloud quality network interface agent about; do
+            call ui_open_settings "{\"section\":\"$s\"}" >/dev/null; sleep 2; page "settings:$s"
+          done
+          screencapture -x "$RUNNER_TEMP/shot.png" && echo "screen captured: $(stat -f%z "$RUNNER_TEMP/shot.png") bytes" || true
+          [ "$fail" = 0 ] || { echo "[ERROR] a screen read back empty"; exit 1; }
+          echo "[OK] all screens read through the MCP"
+      - name: The app's log
+        if: always()
+        run: tail -40 "$RUNNER_TEMP/run.log" || true
