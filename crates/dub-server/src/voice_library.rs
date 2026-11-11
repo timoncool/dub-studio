@@ -263,8 +263,9 @@ pub fn import_audio(dir: &Path, base: &str, src: &Path, card: VoiceCard) -> Resu
     Ok(name)
 }
 
-/// Голоса из архива экспорта Speech Studio или Dub Studio: имя, занятое в библиотеке, получает номер; повторный
-/// импорт того же голоса (тот же звук побайтно) распознаётся и пропускается. `(добавленные, уже бывшие)`.
+/// The audio formats the library lists and voicing reads as they are (lib.rs list_voice_names, render.rs pack voices).
+pub const LISTED_EXTS: [&str; 2] = ["wav", "mp3"];
+
 pub fn import_zip(dir: &Path, bytes: &[u8]) -> Result<(Vec<String>, Vec<String>), String> {
     use std::io::Read;
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
@@ -287,6 +288,13 @@ pub fn import_zip(dir: &Path, bytes: &[u8]) -> Result<(Vec<String>, Vec<String>)
         f.read_to_end(&mut data).map_err(|e| e.to_string())?;
         groups.entry(name).or_default().push((ext, data));
     }
+    // every card is read before anything is written: a broken one stops the import with the library as it was
+    let mut cards: std::collections::BTreeMap<String, VoiceCard> = Default::default();
+    for (name, files) in &groups {
+        if let Some((_, data)) = files.iter().find(|(e, _)| e == "json") {
+            cards.insert(name.clone(), serde_json::from_slice(data).map_err(|e| format!("{name}.json: {e}"))?);
+        }
+    }
     std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
     let (mut added, mut same) = (Vec::new(), Vec::new());
     for (name, files) in groups {
@@ -298,14 +306,27 @@ pub fn import_zip(dir: &Path, bytes: &[u8]) -> Result<(Vec<String>, Vec<String>)
             }
         }
         let target = free_name(dir, &name);
-        std::fs::write(dir.join(format!("{target}.{audio_ext}")), audio).map_err(|e| format!("{target}: {e}"))?;
-        for (ext, data) in files.iter().filter(|(e, _)| !AUDIO_EXTS.contains(&e.as_str())) {
-            if ext == "json" {
-                let card: VoiceCard = serde_json::from_slice(data).map_err(|e| format!("{name}.json: {e}"))?;
-                write_card(dir, &target, &card)?;
-            } else {
-                std::fs::write(dir.join(format!("{target}.{ext}")), data).map_err(|e| format!("{target}: {e}"))?;
+        if LISTED_EXTS.contains(&audio_ext.as_str()) {
+            std::fs::write(dir.join(format!("{target}.{audio_ext}")), audio).map_err(|e| format!("{target}: {e}"))?;
+        } else {
+            // the library and voicing read .wav and .mp3: another format becomes a .wav at the reference loudness
+            let src = staging_wav(dir, &format!("{target}-in"))?.with_extension(audio_ext);
+            std::fs::write(&src, audio).map_err(|e| format!("{}: {e}", src.display()))?;
+            let part = staging_wav(dir, &target)?;
+            let wav = dir.join(format!("{target}.wav"));
+            let made = crate::media::loudnorm(&src, &part, -20.0, -2.0, 11.0)
+                .and_then(|_| std::fs::rename(&part, &wav).map_err(|e| format!("{}: {e}", wav.display())));
+            let _ = std::fs::remove_file(&src);
+            if let Err(e) = made {
+                let _ = std::fs::remove_file(&part);
+                return Err(format!("{name}.{audio_ext}: {e}"));
             }
+        }
+        for (ext, data) in files.iter().filter(|(e, _)| !AUDIO_EXTS.contains(&e.as_str()) && e != "json") {
+            std::fs::write(dir.join(format!("{target}.{ext}")), data).map_err(|e| format!("{target}: {e}"))?;
+        }
+        if let Some(card) = cards.remove(&name) {
+            write_card(dir, &target, &card)?;
         }
         added.push(target);
     }

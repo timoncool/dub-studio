@@ -3776,10 +3776,12 @@ function Editor() {
               if (spks.length === 0) return null;
               const inPack = p.audio.voice.mode === "voice";
               const names = inPack ? (p.audio.voice.name || "").split(",").map((s) => s.trim()) : [];
-              const slotOf = (j: number) => (inPack ? names[j] || "" : CLONE_SLOT);
+              // a slot left empty is voiced by the first named voice (render.rs), so it shows and keeps that voice
+              const firstNamed = names.find((n) => n && n !== CLONE_SLOT) ?? "";
+              const slotOf = (j: number) => (inPack ? names[j] || firstNamed || CLONE_SLOT : CLONE_SLOT);
               const setSlot = (i: number, v: string) => branch("recast", {
                 voice_mode: "voice",
-                voice_name: spks.map((_, j) => (j === i ? v : slotOf(j))).join(","),
+                voice_name: spks.map((_, j) => (j === i ? v || CLONE_SLOT : slotOf(j))).join(","),
               });
               const autoByGender = async () => {
                 const male = voiceList.filter((v) => voiceCard(v)?.gender === "male");

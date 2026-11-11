@@ -295,10 +295,7 @@ pub fn set_ort_dylib_env(repo_root: &Path, beside_exe: &Path) {
     let rt = repo_root.join("models").join("runtime");
     let found = dub_core::runtime::ort_candidates(&repo_root.join("models"))
         .into_iter()
-        .chain([
-            beside_exe.join(dub_core::runtime::ORT_LIBRARY),
-            rt.join("onnxruntime.dll"),
-        ])
+        .chain([beside_exe.join(dub_core::runtime::ORT_LIBRARY)])
     .find(|cand| cand.is_file());
     match found {
         Some(cand) => std::env::set_var("ORT_DYLIB_PATH", cand),
@@ -1925,7 +1922,12 @@ async fn voices_delete(State(st): State<AppState>, Json(body): Json<Value>) -> J
 async fn voices_import(State(st): State<AppState>, mut multipart: Multipart) -> Response {
     let mut base = String::new();
     let mut files: Vec<(String, Vec<u8>)> = Vec::new();
-    while let Ok(Some(field)) = multipart.next_field().await {
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        };
         let field_name = field.name().unwrap_or("").to_string();
         let fname = field.file_name().map(str::to_string);
         let data = match field.bytes().await {
@@ -1977,7 +1979,12 @@ async fn voices_import(State(st): State<AppState>, mut multipart: Multipart) -> 
 /// `already`.
 async fn voices_import_zip(State(st): State<AppState>, mut multipart: Multipart) -> Response {
     let mut data = None;
-    while let Ok(Some(field)) = multipart.next_field().await {
+    loop {
+        let field = match multipart.next_field().await {
+            Ok(Some(field)) => field,
+            Ok(None) => break,
+            Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
+        };
         match field.bytes().await {
             Ok(b) => data = Some(b.to_vec()),
             Err(e) => return (StatusCode::BAD_REQUEST, e.to_string()).into_response(),
