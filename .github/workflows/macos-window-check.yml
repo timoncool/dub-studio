@@ -2,17 +2,21 @@ name: macos-window-check
 
 # The released .dmg on a Mac as a user gets it: mounted, the app started, its window opened, and the studio asked
 # through its MCP as an agent would - version and readiness, then every screen of the window read back.
-# Runs only when the macos-window-check branch is pushed; nothing is kept as an artifact.
+# Runs only when the macos-window-check branch is pushed; the screenshot is kept for a day.
 on:
   push:
     branches: [macos-window-check]
 
 jobs:
   check:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["4.6.0", "4.5.0"]
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      VERSION: "4.6.0"
+      VERSION: ${{ matrix.version }}
       PORT: "8794"
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -38,7 +42,24 @@ jobs:
             curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status" | grep -q '"window_open":true' && break
             sleep 2
           done
-          curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status" | grep -q '"window_open":true' || { echo "[ERROR] the window did not open"; tail -50 "$RUNNER_TEMP/run.log"; exit 1; }
+          curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status"; echo
+      - name: What the Mac shows
+        if: always()
+        run: |
+          echo "== processes"; ps -axo pid,stat,etime,command | grep -iE "Dub-Studio|WebContent|WebKit" | grep -v grep | head
+          echo "== connections to the service"; lsof -nP -iTCP:"$PORT" | head -20
+          echo "== windows"; osascript -e 'tell application "System Events" to get {name, position, size} of every window of (every process whose name contains "Dub")' 2>&1 | head -5
+          echo "== session"; who; launchctl managername 2>&1
+          screencapture -x "$RUNNER_TEMP/shot-$VERSION.png" && ls -la "$RUNNER_TEMP/shot-$VERSION.png"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-window-${{ matrix.version }}
+          path: ${{ runner.temp }}/shot-*.png
+          retention-days: 1
+      - name: The window is open
+        run: |
+          curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status" | grep -q '"window_open":true' || { echo "[ERROR] the window did not open"; exit 1; }
           echo "[OK] window open"
       - name: Every screen through the MCP
         run: |
