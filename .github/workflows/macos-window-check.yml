@@ -115,7 +115,7 @@ jobs:
           args="{\"path\":\"$RUNNER_TEMP/speech.wav\",\"src_lang\":\"en\",\"diarize\":false,\"format\":\"text\"}"
           for i in $(seq 1 20); do
             out=$(call transcribe_file "$args" 300 | text)
-            job=$(echo "$out" | grep -oE '"?job_id"?[:=] ?"?[0-9a-f]{8,}' | grep -oE '[0-9a-f]{8,}' | head -1)
+            job=$(echo "$out" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{const j=JSON.parse(s);if(j.done===false&&j.job)process.stdout.write(j.job.id)}catch(e){}})")
             [ -z "$job" ] && break
             echo "[..] job $job"
             call studio_wait "{\"job_id\":\"$job\",\"seconds\":55}" 90 | text | head -c 300; echo
