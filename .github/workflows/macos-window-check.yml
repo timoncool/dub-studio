@@ -9,20 +9,23 @@ on:
 
 jobs:
   check:
-    strategy:
-      fail-fast: false
-      matrix:
-        version: ["4.6.0", "4.5.0"]
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      VERSION: ${{ matrix.version }}
+      VERSION: "4.6.0"
+      # the "macOS build" run whose dmg is checked; empty takes the dmg of the release
+      BUILD_RUN: "43002259666"
       PORT: "8794"
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: The release's dmg, mounted and copied out
+      - name: The dmg, mounted and copied out
         run: |
-          gh release download "v$VERSION" -R "$GITHUB_REPOSITORY" -p "Dub-Studio-$VERSION-macos-arm64.dmg" -D "$RUNNER_TEMP"
+          if [ -n "$BUILD_RUN" ]; then
+            gh run download "$BUILD_RUN" -R "$GITHUB_REPOSITORY" -n dub-studio-macos-arm64 -D "$RUNNER_TEMP"
+          else
+            gh release download "v$VERSION" -R "$GITHUB_REPOSITORY" -p "Dub-Studio-$VERSION-macos-arm64.dmg" -D "$RUNNER_TEMP"
+          fi
+          shasum -a 256 "$RUNNER_TEMP/Dub-Studio-$VERSION-macos-arm64.dmg"
           hdiutil attach -nobrowse -readonly -mountpoint /Volumes/dub "$RUNNER_TEMP/Dub-Studio-$VERSION-macos-arm64.dmg"
           ls /Volumes/dub
           cp -R "/Volumes/dub/Dub Studio.app" "$RUNNER_TEMP/"
@@ -54,11 +57,12 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: macos-window-${{ matrix.version }}
+          name: macos-window-${{ env.VERSION }}
           path: ${{ runner.temp }}/shot-*.png
           retention-days: 1
       - name: The window is open
         run: |
+          echo "== data"; ls ~/"Library/Application Support/Dub Studio" 2>&1 | head
           curl -s -m 5 "http://127.0.0.1:$PORT/mcp/status" | grep -q '"window_open":true' || { echo "[ERROR] the window did not open"; exit 1; }
           echo "[OK] window open"
       - name: Every screen through the MCP
