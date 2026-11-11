@@ -182,8 +182,8 @@ pub const SERVER_LINUX_CPU: Asset = Asset {
 pub const SERVER_MACOS: Asset = Asset {
     url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-macos-arm64-metal.tar.gz",
     file: "audiocpp-server-macos-arm64-metal.tar.gz",
-    size: 18_781_457,
-    sha256: "fc691898be2ab678e32203fa1966ffd23f0c0c3b861e2b4dd16456a4dc510ee2",
+    size: 18_781_447,
+    sha256: "d0317fc8d9a0faee0afe31f3b0851eb305ddf8f7ae40ca776ff180f9ad717d38",
 };
 
 /// The CUDA 12.9 libraries of the CUDA 12 build (PyPI wheels; their `.dll` files unpack flat): cudart 12.9.79,
