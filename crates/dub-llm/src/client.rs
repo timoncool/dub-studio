@@ -438,12 +438,14 @@ impl ChatClient {
                     if status.is_success() {
                         return resp.json::<Value>().map_err(|e| LlmError::Http(format!("parse json: {}", error_chain(&e))));
                     }
-                    // 4xx (кроме 429) — не ретраим, это наша ошибка запроса.
-                    if status.as_u16() == 429 {
+                    // 408, 409 (a provider's concurrency conflict, Gemini's ABORTED) and 429 pass, as the OpenAI SDKs retry
+                    // them; any other 4xx is our request's fault and is not retried
+                    let transient = matches!(status.as_u16(), 408 | 409 | 429);
+                    if transient {
                         wait = retry_after(resp.headers()).unwrap_or(Duration::from_secs(2u64 << attempt.min(4)));
                     }
                     let text = resp.text().unwrap_or_default();
-                    if status.as_u16() != 429 && status.as_u16() < 500 {
+                    if !transient && status.as_u16() < 500 {
                         return Err(LlmError::Rejected { code: status.as_u16(), status: status.to_string(), body: text });
                     }
                     last_err = format!("{status}: {text}");
@@ -701,5 +703,21 @@ mod tests {
         let client = ChatClient::new("http://127.0.0.1:9").unwrap().with_retries(0);
         let err = client.send(&json!({})).unwrap_err();
         assert!(matches!(&err, LlmError::Unreachable { host, .. } if host == "127.0.0.1:9"), "{err:?}");
+    }
+
+
+    /// A provider's 409 (a concurrency conflict, Gemini's ABORTED) is tried again, as a 429 is; a 400 is not.
+    #[test]
+    fn a_conflict_is_tried_again_and_a_bad_request_is_not() {
+        use crate::test_http::{serve, Reply};
+        let ok = r#"{"choices":[{"message":{"content":"x"}}]}"#;
+        let server = serve(vec![Reply::json(409, r#"{"error":{"status":"ABORTED"}}"#), Reply::json(200, ok)]);
+        let client = ChatClient::new(server.base()).unwrap().with_retries(1);
+        assert!(client.send(&json!({})).is_ok());
+        assert_eq!(server.count(), 2);
+        let server = serve(vec![Reply::json(400, r#"{"error":"bad"}"#), Reply::json(200, ok)]);
+        let client = ChatClient::new(server.base()).unwrap().with_retries(1);
+        assert!(matches!(client.send(&json!({})), Err(LlmError::Rejected { code: 400, .. })));
+        assert_eq!(server.count(), 1);
     }
 }

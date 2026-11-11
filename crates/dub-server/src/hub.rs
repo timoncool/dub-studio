@@ -147,7 +147,7 @@ pub fn job_ended(kind: JobKind, status: JobStatus, error: Option<&str>, pid: Opt
             }
         }
         JobStatus::Cancelled => {}
-        _ => hub.failed(kind.as_str(), error.unwrap_or("")),
+        _ => hub.failed(kind.as_str(), &crate::i18n::in_english(error.unwrap_or(""))),
     }
 }
 

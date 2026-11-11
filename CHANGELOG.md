@@ -23,6 +23,7 @@ release notes on GitHub are taken from the release's section.
 - **A take's card names what Higgs and Audio8 were given** (their own sampling, seed and cap) instead of the steps of the retry ladder.
 - **Reference candidates are checked in the language of their text**: the source language the project was given, else Russian for a Cyrillic transcript, so a speaker with an accent is not heard as Ukrainian and refused; references prepared for Higgs leave the studio's cache after 30 days unused.
 - **Translation starts on graphics cards of 8 GB and less**: the translation server (llama.cpp) is no longer told to put every layer on the card; it fits the layers and the context to the memory the card has free, so Gemma loads where it stopped with 0xc0000409.
+- **A cloud translation answered «409 Conflict» is tried again**: a provider's concurrency conflict (Gemini's ABORTED) is passing, as the OpenAI libraries treat it, and no longer stops the analysis on the first answer.
 - **A cloud translation that is rate-limited waits as long as it is asked** (up to a minute) before the next try, and a server that cannot be reached is named by its host, with a hint to check the proxy.
 - **Voicing does not start into a known failure**: with OpenRouter or Google chosen for voicing and no key, or OpenRouter without a voicing model, the window says what to add in Settings instead of a job that fails on every line.
 - **The playhead moves smoothly while the dub plays** (#53) and the timeline follows it.
