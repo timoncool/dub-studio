@@ -231,8 +231,8 @@ mod tests {
         for c in CHANGES {
             assert!(!(c.reason)().starts_with("update-why-"), "{}: its reason is not in the catalogue", c.what);
             // components a platform or a card leaves out of the manifest: CUDA 12.9 ones on a card that takes no CUDA
-            // 12.9, the CUDA builds on a Mac
-            let elsewhere = ["cuda12-runtime", "bsroformer-engine-cuda12", "transcribe-engine", "transcribe-engine-cuda12", "bsroformer-engine"];
+            // 12.9, the CUDA builds (ONNX Runtime's among them) on a Mac
+            let elsewhere = ["cuda12-runtime", "bsroformer-engine-cuda12", "transcribe-engine", "transcribe-engine-cuda12", "bsroformer-engine", "onnxruntime-gpu"];
             if ids.contains(&c.what) || elsewhere.contains(&c.what) {
                 continue;
             }
