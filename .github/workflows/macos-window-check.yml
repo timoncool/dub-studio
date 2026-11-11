@@ -70,9 +70,10 @@ jobs:
           u="http://127.0.0.1:$PORT/mcp"
           call() { curl -s -m 60 -H "content-type: application/json" -d "{\"jsonrpc\":\"2.0\",\"id\":9,\"method\":\"tools/call\",\"params\":{\"name\":\"$1\",\"arguments\":$2}}" "$u"; }
           text() { node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).result.content[0].text)}catch(e){process.stdout.write(s)}})"; }
-          call studio_status '{}' | text > status.txt
-          grep -oE '"version": ?"[0-9.]+"' status.txt | head -1
-          grep -q "\"$VERSION\"" status.txt || { echo "[ERROR] not $VERSION"; head -c 800 status.txt; exit 1; }
+          call studio_status '{}' > raw.txt
+          text < raw.txt > status.txt
+          grep -oE '"version":"[0-9.]+"' raw.txt | head -1
+          grep -q "\"version\":\"$VERSION\"" raw.txt || { echo "[ERROR] not $VERSION"; head -c 800 raw.txt; exit 1; }
           grep -oE '"(ready|driver_ok)": [a-z]+|"id": "[a-z0-9-]+"' status.txt | head -14
           fail=0
           page() {
