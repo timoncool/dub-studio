@@ -46,9 +46,18 @@ export const setTelemetry = (enabled: boolean, acknowledge = false) =>
 export const telemetryPreview = () => call<{ enabled: boolean; report: unknown }>("/v1/hub/telemetry/preview");
 export const resetInstall = () => call<unknown>("/v1/hub/telemetry/reset", { method: "POST" });
 export const refreshHub = () => call<unknown>("/v1/hub/refresh", { method: "POST" });
-/** `button` names a click: `b0`, `b1`... the notice's buttons in order, `link` a link in its text. */
+/** `button` names a click: `b0`, `b1`... the notice's buttons in order, `l0`, `l1`... the links of its text in order. */
 export const reportNotice = (id: string, event: "shown" | "clicked" | "dismissed", button?: string) =>
   call<{ ok: true }>(`/v1/hub/notices/${encodeURIComponent(id)}/${event}${button ? `?button=${encodeURIComponent(button)}` : ""}`, { method: "POST" });
+
+/** A click in a notice's text: a link counts by its place among the text's links, and the window reads the hub again,
+ * so a notice that leaves after a click leaves at once. */
+export function reportLinkClick(id: string, target: EventTarget, text: Element): void {
+  const link = (target as HTMLElement).closest("a");
+  if (!link || !text.contains(link)) return;
+  const place = [...text.querySelectorAll("a")].indexOf(link);
+  reportNotice(id, "clicked", `l${place}`).catch((e: Error) => console.warn("[hub] link not recorded:", e.message)).finally(hubChanged);
+}
 
 /** Состояние хаба для языка окна: один опрос на окно раз в минуту и после любого изменения выбора. */
 const listeners = new Set<(state: HubState) => void>();

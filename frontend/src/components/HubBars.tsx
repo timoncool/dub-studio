@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { HUB_GRADIENTS, HUB_TEXT, hubChanged, hubText, reportNotice, showsNow, stackTheme, type HubItem, type HubView } from "../lib/studioHub";
+import { HUB_GRADIENTS, HUB_TEXT, hubChanged, hubText, reportLinkClick, reportNotice, showsNow, stackTheme, type HubItem, type HubView } from "../lib/studioHub";
 
 const MAX_VISIBLE = 3;
 
@@ -52,7 +52,7 @@ export function HubBars({ items, view }: { items: HubItem[]; view: HubView }) {
         return (
           <div key={item.id} className="flex items-start justify-between gap-3 px-6 py-2 text-[13px] leading-6"
                style={{ background: HUB_GRADIENTS[theme], color: HUB_TEXT[theme] }}
-               onClick={(e) => { if ((e.target as HTMLElement).closest("a")) reportNotice(item.id, "clicked", "link").catch(() => undefined); }}>
+               onClick={(e) => reportLinkClick(item.id, e.target, e.currentTarget)}>
             <div className="w-full text-center">
               {inline((content?.body || content?.title || "").replace(/\s*\n\s*/g, " "), item.id)}
               {item.ad?.label && <span className="ml-2 text-[11px] opacity-75">{item.ad.erid ? t("hub.adErid", { erid: item.ad.erid }) : t("hub.ad")}</span>}

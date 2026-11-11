@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Sparkles, X, ExternalLink } from "lucide-react";
 import newsData from "../data/news.json";
-import { HUB_GRADIENTS, HUB_TEXT, hubMediaUrl, hubText, onOpenNews, openHubTarget, reportNotice, useHubState, type HubButton, type HubState } from "../lib/studioHub";
+import { HUB_GRADIENTS, HUB_TEXT, hubChanged, hubMediaUrl, hubText, onOpenNews, openHubTarget, reportLinkClick, reportNotice, useHubState, type HubButton, type HubState } from "../lib/studioHub";
 import { useStore } from "../store";
 import changelogRaw from "../../../CHANGELOG.md?raw";
 import { useEscapeLayer } from "../lib/escape";
@@ -126,7 +126,7 @@ function NewsTab({ lang, news: NEWS, onLeave }: { lang: string; news: NewsItem[]
   const press = (n: NewsItem, button: HubButton, index: number) => {
     const id = n.id.slice(4);
     reportNotice(id, button.action === "dismiss" ? "dismissed" : "clicked", button.action === "dismiss" ? undefined : `b${index}`)
-      .catch((err: Error) => console.warn("[hub] news button not recorded:", err.message));
+      .catch((err: Error) => console.warn("[hub] news button not recorded:", err.message)).finally(hubChanged);
     if (button.action === "url" && button.url) window.open(button.url, "_blank", "noreferrer");
     if (button.action === "open" && button.target) {
       onLeave();
@@ -138,8 +138,7 @@ function NewsTab({ lang, news: NEWS, onLeave }: { lang: string; news: NewsItem[]
       {NEWS.map((n) => (
         <article key={n.id} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3.5"
           onClickCapture={(e) => {
-            if (!(e.target as HTMLElement).closest("a") || !n.id.startsWith("hub:")) return;
-            reportNotice(n.id.slice(4), "clicked", "link").catch((err: Error) => console.warn("[hub] news click not recorded:", err.message));
+            if (n.id.startsWith("hub:")) reportLinkClick(n.id.slice(4), e.target, e.currentTarget);
           }}>
           <div className="flex items-baseline justify-between gap-3">
             <h3 className="text-[14px] font-semibold">{pick(n.title, lang)}</h3>

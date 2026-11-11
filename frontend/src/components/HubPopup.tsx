@@ -1,7 +1,7 @@
 import { useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
-import { HUB_GRADIENTS, HUB_TEXT, hubMediaUrl, hubText, openHubTarget, reportNotice, stackTheme, type HubButton, type HubItem } from "../lib/studioHub";
+import { HUB_GRADIENTS, HUB_TEXT, hubChanged, hubMediaUrl, hubText, openHubTarget, reportLinkClick, reportNotice, stackTheme, type HubButton, type HubItem } from "../lib/studioHub";
 import { useEscapeLayer } from "../lib/escape";
 import { NewsBody } from "./WhatsNew";
 
@@ -15,7 +15,7 @@ export default function HubPopup({ item, onClose }: { item: HubItem; onClose: ()
     reportNotice(item.id, "shown").catch((e: Error) => console.warn("[hub] popup shown not recorded:", e.message));
   }, [item.id]);
   const dismiss = useCallback(() => {
-    reportNotice(item.id, "dismissed").catch((e: Error) => console.warn("[hub] popup close not recorded:", e.message));
+    reportNotice(item.id, "dismissed").catch((e: Error) => console.warn("[hub] popup close not recorded:", e.message)).finally(hubChanged);
     onClose();
   }, [item.id, onClose]);
   useEscapeLayer(dismiss, item.dismissible);
@@ -25,7 +25,7 @@ export default function HubPopup({ item, onClose }: { item: HubItem; onClose: ()
       dismiss();
       return;
     }
-    reportNotice(item.id, "clicked", `b${index}`).catch((e: Error) => console.warn("[hub] popup click not recorded:", e.message));
+    reportNotice(item.id, "clicked", `b${index}`).catch((e: Error) => console.warn("[hub] popup click not recorded:", e.message)).finally(hubChanged);
     if (button.action === "url" && button.url) window.open(button.url, "_blank", "noreferrer");
     if (button.action === "open" && button.target) openHubTarget(button.target);
     onClose();
@@ -35,7 +35,7 @@ export default function HubPopup({ item, onClose }: { item: HubItem; onClose: ()
       <div role="dialog" aria-modal="true" aria-labelledby={`hub-${item.id}`} className="w-[min(92vw,460px)] max-h-[86vh] overflow-y-auto rounded-xl glass-panel anim-pop"
         onClick={(e) => {
           e.stopPropagation();
-          if ((e.target as HTMLElement).closest("a")) reportNotice(item.id, "clicked", "link").catch((err: Error) => console.warn("[hub] popup link not recorded:", err.message));
+          reportLinkClick(item.id, e.target, e.currentTarget);
         }}>
         <div className="flex items-center justify-between gap-3 px-5 py-3.5 rounded-t-xl" style={{ background: HUB_GRADIENTS[theme], color: HUB_TEXT[theme] }}>
           <h2 id={`hub-${item.id}`} className="text-[15px] font-semibold leading-snug">{content.title}</h2>
