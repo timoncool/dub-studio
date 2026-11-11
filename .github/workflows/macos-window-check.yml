@@ -123,6 +123,15 @@ jobs:
           echo "== transcript"; echo "$out" | head -c 1500; echo
           echo "$out" | grep -qi "fox" && echo "$out" | grep -qi "river" || { echo "[ERROR] the sentence was not recognised"; exit 1; }
           echo "[OK] the spoken sentence came back as text"
+      - name: Why an engine stopped
+        if: failure()
+        run: |
+          echo "== Metal on this Mac"; system_profiler SPDisplaysDataType 2>&1 | head -20
+          data=~/"Library/Application Support/Dub Studio"
+          find "$data" -iname "audiocpp_server*" -not -name "*.gguf" 2>/dev/null | head
+          find "$data" \( -iname "audiocpp_server*.log" -o -iname "*output*.txt" -o -iname "*.out" -o -iname "*stderr*" \) 2>/dev/null | head -5 | while IFS= read -r f; do echo "== $f"; tail -60 "$f"; done
+          echo "== crash reports"; ls -la ~/Library/Logs/DiagnosticReports/ 2>&1 | grep -i audiocpp | head
+          for f in $(ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i audiocpp | head -1); do head -c 6000 ~/Library/Logs/DiagnosticReports/"$f"; echo; done
       - name: The app's log
         if: always()
         run: tail -40 "$RUNNER_TEMP/run.log" || true
