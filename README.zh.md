@@ -265,7 +265,7 @@ Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份�
 
 ## 作者
 
-- **Nerual Dreming** —— [Telegram](https://t.me/nerual_dreming) | [neuro-cartel.com](https://neuro-cartel.com) | [ArtGeneration.me](https://artgeneration.me) 创始人
+- **Nerual Dreming** —— [Telegram](https://t.me/nerual_dreming) | [X](https://x.com/nerualdreming) | [neuro-cartel.com](https://neuro-cartel.com) | [ArtGeneration.me](https://artgeneration.me) 创始人
 - **Neuro-Soft** —— [Telegram](https://t.me/neuroport) | 便携 AI 应用
 
 ## 致谢

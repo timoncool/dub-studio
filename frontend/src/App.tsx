@@ -694,6 +694,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
               <a href="https://t.me/neuroport" target="_blank" rel="noreferrer" className={chip}>Нейро-Софт</a>
               <a href={DONATE.github} target="_blank" rel="noreferrer" className={chip}><Star size={11} />GitHub</a>
               <a href={DONATE.telegram} target="_blank" rel="noreferrer" className={chip}>Telegram</a>
+              <a href={DONATE.x} target="_blank" rel="noreferrer" className={chip}>X</a>
             </div>
           </div>
         </HelpSection>

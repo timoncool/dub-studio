@@ -265,7 +265,7 @@ Nunca: vídeos, transcrições, traduções, vozes, nomes de arquivos ou caminho
 
 ## Autores
 
-- **Nerual Dreming** —— [Telegram](https://t.me/nerual_dreming) | [neuro-cartel.com](https://neuro-cartel.com) | fundador da [ArtGeneration.me](https://artgeneration.me)
+- **Nerual Dreming** —— [Telegram](https://t.me/nerual_dreming) | [X](https://x.com/nerualdreming) | [neuro-cartel.com](https://neuro-cartel.com) | fundador da [ArtGeneration.me](https://artgeneration.me)
 - **Neuro-Soft** —— [Telegram](https://t.me/neuroport) | apps de IA portáteis
 
 ## Créditos

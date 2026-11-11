@@ -275,7 +275,7 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 ## Авторы
 
-- **Nerual Dreming** — [Telegram](https://t.me/nerual_dreming) | [neuro-cartel.com](https://neuro-cartel.com) | основатель [ArtGeneration.me](https://artgeneration.me)
+- **Nerual Dreming** — [Telegram](https://t.me/nerual_dreming) | [X](https://x.com/nerualdreming) | [neuro-cartel.com](https://neuro-cartel.com) | основатель [ArtGeneration.me](https://artgeneration.me)
 - **Нейро-Софт** — [Telegram](https://t.me/neuroport) | портативные нейросети
 
 ## Благодарности
