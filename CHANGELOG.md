@@ -4,7 +4,7 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
-## Unreleased
+## 2026-11-11 — 4.6.0
 
 ### Added
 
