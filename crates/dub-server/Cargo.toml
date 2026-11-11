@@ -66,7 +66,7 @@ blake3 = "1"
 # SHA-256 скачанных моделей и движков против закреплённых хэшей (HF lfs.oid, digest GitHub, PyPI/NVIDIA).
 sha2 = "0.11"
 # Studio Hub: anonymous statistics and the news feed (telemetry only after the first-run screen showed its choice).
-studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "68a3ea5293c81aa197c4b51e286805ac65a7c6e5" }
+studio-hub-client = { git = "https://github.com/timoncool/studio-hub-client", rev = "ff20969c25a9531616a130b7e7db5d80922125d1" }
 # чистка текста перед синтезом (tts_text.rs): теги звуков, разметка, метки спикеров.
 regex = "1"
 # RUAccent (ударения русской озвучки) — ONNX на той же onnxruntime 1.31.1, что кастинг.
