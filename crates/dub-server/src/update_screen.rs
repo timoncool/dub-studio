@@ -57,6 +57,22 @@ fn change(what: &str) -> Option<&'static Change> {
     CHANGES.iter().find(|c| c.what == what)
 }
 
+/// Why an installed component is updated: the reason of the change it is in this release when it takes the place of a
+/// former release's files that are still on disk, else the reason of its newer build (`NEWER`), else that it is newer.
+fn update_reason(repo_root: &Path, id: &str) -> String {
+    let changed = change(id);
+    if changed.is_some_and(|x| x.replaces.iter().any(|rel| repo_root.join(rel).is_file())) {
+        return changed.map(|x| (x.reason)()).unwrap_or_default();
+    }
+    match NEWER.iter().find(|(what, _)| *what == id) {
+        Some((_, reason)) => reason(),
+        None => changed.map_or_else(|| t!("update-why-newer"), |x| (x.reason)()),
+    }
+}
+
+/// What a newer build of an already installed component brings, for the update screen.
+const NEWER: &[(&str, fn() -> String)] = &[("higgs-engine", || t!("update-why-audiocpp-server-newer"))];
+
 /// A component to download: updated (`from` names the release on disk when the disk tells it) or new.
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -155,7 +171,7 @@ pub fn plan(repo_root: &Path, models_root: &Path, version: &str) -> Plan {
             reason,
         };
         match former(repo_root, c) {
-            Some(from) => updated.push(row(from, change(c.id).map_or_else(|| t!("update-why-newer"), |x| (x.reason)()))),
+            Some(from) => updated.push(row(from, update_reason(repo_root, c.id))),
             None if st.requirement == Requirement::Required => added.push(row(None, change(c.id).map_or_else(|| st.purpose.clone(), |x| (x.reason)()))),
             None => {}
         }
@@ -224,6 +240,21 @@ mod tests {
                 std::fs::write(path.join("whisper-faster.exe"), b"x").unwrap();
             }
             assert!(setup::leftovers(root.path(), &models).iter().any(|(what, _)| *what == c.what), "{} is neither a component nor a leftover", c.what);
+        }
+    }
+
+    /// The server over the old Higgs library says it replaces the library; the server over an older server says what the
+    /// newer one brings.
+    #[test]
+    fn a_newer_server_is_told_apart_from_the_library_it_replaced() {
+        let root = tempfile::tempdir().unwrap();
+        assert_eq!(update_reason(root.path(), "higgs-engine"), t!("update-why-audiocpp-server-newer"));
+        let library = change("higgs-engine").unwrap().replaces[0];
+        std::fs::create_dir_all(root.path().join(library).parent().unwrap()).unwrap();
+        std::fs::write(root.path().join(library), b"x").unwrap();
+        assert_eq!(update_reason(root.path(), "higgs-engine"), t!("update-why-audiocpp-server"));
+        for (what, reason) in NEWER {
+            assert!(!reason().starts_with("update-why-"), "{what}: its reason is not in the catalogue");
         }
     }
 
