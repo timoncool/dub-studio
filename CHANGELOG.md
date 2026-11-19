@@ -4,6 +4,12 @@ What changed, newest first. Dates are release dates; the app is versioned by its
 build. Every change a user can see is written here in the commit that makes it, and the
 release notes on GitHub are taken from the release's section.
 
+## 2026-11-19 — 4.6.1
+
+### Fixed
+
+- **ONNX Runtime downloads work again.** The Microsoft GitHub download URLs began returning HTTP 404 on November 17. Dub Studio now downloads the same CPU and CUDA builds from our own release mirror and verifies the existing SHA-256 pins. No manual download is needed.
+
 ## 2026-11-11 — 4.6.0
 
 ### Added

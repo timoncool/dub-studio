@@ -1,5 +1,26 @@
 [
   {
+    "id": "dub-studio-4-6-1",
+    "date": "2026-11-19",
+    "release": "https://github.com/timoncool/dub-studio/releases/tag/v4.6.1",
+    "title": {
+      "en": "Dub Studio 4.6.1",
+      "ru": "Dub Studio 4.6.1",
+      "zh": "Dub Studio 4.6.1",
+      "es": "Dub Studio 4.6.1",
+      "fr": "Dub Studio 4.6.1",
+      "pt": "Dub Studio 4.6.1"
+    },
+    "body": {
+      "en": "Setup now downloads ONNX Runtime from the studio mirror because the old links returned 404. Existing CPU and CUDA installations are preserved.",
+      "ru": "Установщик скачивает ONNX Runtime с зеркала студии: прежние ссылки возвращали 404. Уже установленные версии для CPU и CUDA сохраняются.",
+      "zh": "原下载链接返回 404；安装程序现从工作室镜像下载 ONNX Runtime。已安装的 CPU 和 CUDA 版本将保留。",
+      "es": "El instalador descarga ONNX Runtime desde el espejo del estudio porque los enlaces anteriores devolvían un error 404. Se conservan las instalaciones existentes para CPU y CUDA.",
+      "fr": "Les anciens liens renvoyaient une erreur 404. Le programme d’installation télécharge désormais ONNX Runtime depuis le miroir du studio et conserve les versions CPU et CUDA déjà installées.",
+      "pt": "O instalador baixa o ONNX Runtime do espelho do estúdio porque os links anteriores retornavam o erro 404. As instalações existentes para CPU e CUDA são preservadas."
+    }
+  },
+  {
     "id": "dub-studio-4-6-0",
     "date": "2026-11-11",
     "release": "https://github.com/timoncool/dub-studio/releases/tag/v4.6.0",

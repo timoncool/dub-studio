@@ -238,13 +238,13 @@ mod platform {
         "https://github.com/ggml-org/llama.cpp/releases/download/b12248/llama-b12248-bin-win-cuda-13.5-x64.zip";
     // GitHub: onnxruntime 1.31.1 win-x64 (microsoft/onnxruntime) — строго 1.31.x (ort rc.15 api-31; иначе дедлок).
     const GH_ORT: &str =
-        "https://github.com/microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-win-x64-1.31.1.zip";
+        "https://github.com/timoncool/onnxruntime/releases/download/v1.31.1/onnxruntime-win-x64-1.31.1.zip";
     // GitHub: onnxruntime 1.31.1 GPU-сборка под CUDA 13 (gpu_cuda13) — CUDA-EP для Parakeet/Sortformer на
     // GPU. onnxruntime_providers_cuda.dll грузит cudart64_13/cublas64_13/cublasLt64_13 (cuda-runtime),
     // cudnn64_9 (WHEEL_CUDNN) и cufft64_12 (REDIST_CUFFT).
     // Содержит onnxruntime.dll(GPU) + onnxruntime_providers_cuda.dll + onnxruntime_providers_shared.dll.
     const GH_ORT_GPU: &str =
-        "https://github.com/microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-win-x64-gpu_cuda13-1.31.1.zip";
+        "https://github.com/timoncool/onnxruntime/releases/download/v1.31.1/onnxruntime-win-x64-gpu_cuda13-1.31.1.zip";
     // GitHub: ffmpeg static win64 GPL (BtbN/FFmpeg-Builds), master-сборка последнего дня месяца: дневные
     // autobuild BtbN удаляет через пару недель, а сборки последнего дня месяца хранит, поэтому закреплена такая.
     const GH_FFMPEG: &str =
@@ -636,7 +636,7 @@ mod platform {
     pub const ORT: Parts = Parts {
         size: 11_413_655,
         files: &[
-            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-linux-x64-1.31.1.tgz", dest_rel: "models/runtime/_ort.tgz", size: 11_413_655, sha256: "c849e36a1ef3e22d4ff217b9d1ce4a3cf5b9467b975610913ae959ad5b16bdc9", extract: Extract::Tree },
+            FileSpec { url: "https://github.com/timoncool/onnxruntime/releases/download/v1.31.1/onnxruntime-linux-x64-1.31.1.tgz", dest_rel: "models/runtime/_ort.tgz", size: 11_413_655, sha256: "c849e36a1ef3e22d4ff217b9d1ce4a3cf5b9467b975610913ae959ad5b16bdc9", extract: Extract::Tree },
         ],
         markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-1.31.1/lib/libonnxruntime.so.1.31.1", expect: 0 }],
     };
@@ -646,7 +646,7 @@ mod platform {
     pub const ORT_GPU: Parts = Parts {
         size: 244_573_709,
         files: &[
-            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-linux-x64-gpu_cuda13-1.31.1.tgz", dest_rel: "models/runtime/_ort_gpu.tgz", size: 244_573_709, sha256: "b2146862e691f7e338f5aff9c7a9a5567c2ca57cf01442a1adb3a13bf62d9095", extract: Extract::Tree },
+            FileSpec { url: "https://github.com/timoncool/onnxruntime/releases/download/v1.31.1/onnxruntime-linux-x64-gpu_cuda13-1.31.1.tgz", dest_rel: "models/runtime/_ort_gpu.tgz", size: 244_573_709, sha256: "b2146862e691f7e338f5aff9c7a9a5567c2ca57cf01442a1adb3a13bf62d9095", extract: Extract::Tree },
         ],
         markers: &[Marker { rel: "models/runtime/onnxruntime-linux-x64-gpu_cuda13-1.31.1/lib/libonnxruntime.so.1.31.1", expect: 0 }],
     };
@@ -789,7 +789,7 @@ mod platform {
     pub const ORT: Parts = Parts {
         size: 36_936_435,
         files: &[
-            FileSpec { url: "https://github.com/microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-osx-arm64-1.31.1.tgz", dest_rel: "models/runtime/_ort.tgz", size: 36_936_435, sha256: "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f", extract: Extract::Tree },
+            FileSpec { url: "https://github.com/timoncool/onnxruntime/releases/download/v1.31.1/onnxruntime-osx-arm64-1.31.1.tgz", dest_rel: "models/runtime/_ort.tgz", size: 36_936_435, sha256: "2e1344a1926ee50eb25b38153cb6992c3567515aef0e677a1a520a1798896d6f", extract: Extract::Tree },
         ],
         markers: &[Marker { rel: "models/runtime/onnxruntime-osx-arm64-1.31.1/lib/libonnxruntime.1.31.1.dylib", expect: 0 }],
     };
