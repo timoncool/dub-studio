@@ -12,9 +12,9 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     env:
-      VERSION: "4.6.0"
+      VERSION: "4.6.1"
       # the "macOS build" run whose dmg is checked; empty takes the dmg of the release
-      BUILD_RUN: "43004032527"
+      BUILD_RUN: "44569775625"
       PORT: "8794"
       GH_TOKEN: ${{ github.token }}
     steps:
