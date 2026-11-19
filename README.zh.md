@@ -240,7 +240,7 @@ Linux x86-64 的 .deb 和 AppImage 是**实验性**的。它们出自同一份�
 
 - 本地配音需要 Turing 及更新的 NVIDIA 显卡（GTX 16、RTX 20 及以上），与 Windows 相同。云端声音在任何机器上都能用。
 - NVIDIA 驱动（580 或更新）、`libgomp1` 和 `libssl3` 由系统提供；模型、引擎和 CUDA 库由应用在首次运行时下载到 `~/.local/share/dub-studio`（`$XDG_DATA_HOME`）。
-- 手动构建：`Linux build (experimental)` workflow（`.github/workflows/release-linux.yml`）或 `scripts/build-release-linux.sh <含 models/ocr 的文件夹>`。
+- 使用 WSL/Docker 在本地构建：`scripts/build-linux-docker.sh <out> <models-source>`。
 
 ## 匿名统计与新闻
 

@@ -240,7 +240,7 @@ cd desktop && npm install && npx tauri build            # 3) десктоп-об
 
 - Локальной озвучке нужна NVIDIA начиная с Turing (GTX 16, RTX 20 и новее), как на Windows. Облачные голоса работают на любой машине.
 - Драйвер NVIDIA (580 или новее), `libgomp1` и `libssl3` берутся из системы; модели, движки и CUDA-библиотеки приложение скачивает при первом запуске в `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
-- Собираются вручную: workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) или `scripts/build-release-linux.sh <папка с models/ocr>`.
+- Собираются локально в WSL/Docker: `scripts/build-linux-docker.sh <out> <models-source>`.
 
 ## Анонимная статистика и новости
 

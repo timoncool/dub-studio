@@ -240,7 +240,7 @@ O .deb e o AppImage para Linux x86-64 são **experimentais**. Eles vêm do mesmo
 
 - A voz local precisa de uma NVIDIA a partir da Turing (GTX 16, RTX 20 e mais novas), como no Windows. As vozes na nuvem funcionam em qualquer máquina.
 - O driver da NVIDIA (580 ou mais novo), `libgomp1` e `libssl3` vêm do sistema; modelos, motores e bibliotecas CUDA o app baixa na primeira execução em `~/.local/share/dub-studio` (`$XDG_DATA_HOME`).
-- Compilados à mão: o workflow `Linux build (experimental)` (`.github/workflows/release-linux.yml`) ou `scripts/build-release-linux.sh <pasta com models/ocr>`.
+- Compilados localmente em WSL/Docker: `scripts/build-linux-docker.sh <out> <models-source>`.
 
 ## Estatísticas anônimas e novidades
 
