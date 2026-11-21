@@ -61,24 +61,24 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-cuda13-x64.zip",
-                size: 131_057_853,
-                sha256: "82d5a570f3413ab6621aa4fa71662095ec0d0724630a67bf7a7ed01b7e291121",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-windows-cuda13-x64.zip",
+                size: 131_228_794,
+                sha256: "5d6d588b3e7fdbfeef5a3ef1d21e5753b39a1b340d0dedd6b4d3a90276e02b66",
             },
             Build::Cuda12 => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-cuda12-x64.zip",
-                size: 158_968_464,
-                sha256: "ccf926571e2a33e79e8f80aec640ee12b8b33ad7373c0f74a868d166e7360497",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-windows-cuda12-x64.zip",
+                size: 159_219_909,
+                sha256: "a9e03c16ede9e20c95c15a5b081d4c9bd9aff8af5dbc90686ee4a1608f5cbc64",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-vulkan-x64.zip",
-                size: 18_821_488,
-                sha256: "80dbf642c1912959e3bde8f22d2d9f4ef5ef866727627f6fc84d4344376fdf2c",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-windows-vulkan-x64.zip",
+                size: 18_899_630,
+                sha256: "4607227b5665a4ec70f0927c467439dcb12164946551e929dec9942d3ceb71d8",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-windows-cpu-x64.zip",
-                size: 4_632_963,
-                sha256: "ca1588e239fde0d7159d9f24e08187591c42d570ed72f753fc64640631145e5f",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-windows-cpu-x64.zip",
+                size: 4_765_011,
+                sha256: "58c69cf9635d95738777bc4b7425bc8f2f4b66c0ba0792573e2b5835eb19b40b",
             },
         }
     }
@@ -87,8 +87,8 @@ impl Build {
     #[cfg(windows)]
     pub const fn library_size(self) -> u64 {
         match self {
-            Build::Cuda12 => 2_052_096,
-            Build::Cuda | Build::Vulkan | Build::Cpu => 2_054_656,
+            Build::Cuda12 => 2_053_120,
+            Build::Cuda | Build::Vulkan | Build::Cpu => 2_055_680,
         }
     }
 
@@ -104,15 +104,15 @@ impl Build {
         let _ = self;
         #[cfg(target_arch = "aarch64")]
         return Download {
-            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-macos-arm64.dylib",
-            size: 9_012_648,
-            sha256: "2a5204cd63156a58ac476610acdb0333bddf929dc9b941da422e8ba703a2e17c",
+            url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/libtranscribe_engine-macos-arm64.dylib",
+            size: 9_012_760,
+            sha256: "7c3da6f37ae5be17300dfc52e34876a72df2dabd010d10b2aa48b7b562085f0a",
         };
         #[cfg(not(target_arch = "aarch64"))]
         return Download {
-            url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.1.4/libtranscribe_engine-macos-x86_64.dylib",
-            size: 9_933_088,
-            sha256: "f6e73be83962f4bf9bb20ec54704f1c871119b61b114fdffb1439b0262c29bb8",
+            url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/libtranscribe_engine-macos-x86_64.dylib",
+            size: 9_933_208,
+            sha256: "a9afc3eda877bc0b97d797f103ed199114cdea7a2698bdd9c26c2c64a4430223",
         };
     }
 
@@ -120,24 +120,24 @@ impl Build {
     pub const fn download(self) -> Download {
         match self {
             Build::Cuda => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-cuda13-x64.tar.gz",
-                size: 136_297_820,
-                sha256: "1b94dc22bdfd22b627a4028941b393e8ef5cfc3b81307c72c7f9d225864ed247",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-linux-cuda13-x64.tar.gz",
+                size: 136_303_535,
+                sha256: "c4d128f0f73cd5e196220e06f62ba5332b71e9859f3bc156a11216d3e3e2de1f",
             },
             Build::Cuda12 => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-cuda12-x64.tar.gz",
-                size: 164_156_947,
-                sha256: "2979dce3ab806aba70f11ca7d0092423b2b6c99ce2c1f237507e8a65edea02a1",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-linux-cuda12-x64.tar.gz",
+                size: 164_159_458,
+                sha256: "d1484e50a0e21e2abbb950dc16377a2c4b04365467aa9af8b0961b7ba3def85c",
             },
             Build::Vulkan => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-vulkan-x64.tar.gz",
-                size: 22_792_817,
-                sha256: "5728d6f294626cdd53b71f29677fd2e67d38bf394b75f84412c0e2891c3002dc",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-linux-vulkan-x64.tar.gz",
+                size: 22_793_568,
+                sha256: "97592306ab4abe462c40db367e80f54a7d380f22e9caeb24b718f7752a429db8",
             },
             Build::Cpu => Download {
-                url: "https://github.com/timoncool/transcribe.cpp/releases/download/engine-0.2.1/transcribe-linux-cpu-x64.tar.gz",
-                size: 8_356_756,
-                sha256: "2104d0cb380e965e6be3965917c3375d1b731113af5c2b0ec0870edfcd588a16",
+                url: "https://github.com/timoncool/transcribe.cpp/releases/download/studio-engine-274d105e/transcribe-linux-cpu-x64.tar.gz",
+                size: 8_356_817,
+                sha256: "2a493452171a04d2419c7580b5244380a97c0bb9a21d8dbb86302d042efe368b",
             },
         }
     }
@@ -146,7 +146,7 @@ impl Build {
     #[cfg(not(any(windows, target_os = "macos")))]
     pub const fn library_size(self) -> u64 {
         let _ = self;
-        2_655_880
+        2_655_984
     }
 }
 
