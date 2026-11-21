@@ -1,4 +1,4 @@
-//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio, 31cb1a4a on Windows, Linux
+//! The published `audiocpp_server` of the studios (fork timoncool/audio.cpp, branch studio, 41242418 on Windows, Linux
 //! and the Mac; model specs inside, one ggml-cpu module per instruction level chosen by cpuid, so any x86-64 runs it) and what it needs to start: one build per CUDA major, chosen by the card, a Vulkan build for
 //! other cards and a processor build, and the CUDA libraries a CUDA build imports. A studio downloads the assets into its own folders and checks the libraries before
 //! it starts the server (`missing_libraries`); without them Windows refuses the program (0xC0000135).
@@ -124,66 +124,66 @@ impl Build {
     }
 }
 
-/// The Windows archives of the builds (release server-31cb1a4a): the program, its ggml modules (one ggml-cpu-* per
+/// The Windows archives of the builds (release server-41242418): the program, its ggml modules (one ggml-cpu-* per
 /// instruction level, loaded by cpuid) and the VC++ libraries.
 pub const SERVER_WIN_CUDA13: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-win-cuda13-x64.zip",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-win-cuda13-x64.zip",
     file: "audiocpp-server-win-cuda13-x64.zip",
-    size: 137_633_045,
-    sha256: "db5bb5240a3ec80578cf3d91b0f2c3da93008f8cac66bafffed9f7feb1f0ddf3",
+    size: 139_536_503,
+    sha256: "2bc5134d06521ec388a0e55be4d1db2e7abf4c0795fb02d3ce5b724f419df33e",
 };
 pub const SERVER_WIN_CUDA12: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-win-cuda12-x64.zip",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-win-cuda12-x64.zip",
     file: "audiocpp-server-win-cuda12-x64.zip",
-    size: 185_474_302,
-    sha256: "a0659d7f589ce1b21bd245a0e94787ae5fc7041b673b9767c2413c06bcb0d5ab",
+    size: 187_445_041,
+    sha256: "8ba29571580148b2cfe053174edccd7d195355553bc5d955158d805c84574b22",
 };
 pub const SERVER_WIN_VULKAN: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-win-vulkan-x64.zip",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-win-vulkan-x64.zip",
     file: "audiocpp-server-win-vulkan-x64.zip",
-    size: 37_463_668,
-    sha256: "6f662c73c20c7b589f2dddcd372e90b5bca57fbd7a83203e7cfeb1ec0b9349b1",
+    size: 39_221_700,
+    sha256: "511376280120401284977200ab1c51c684bbb24bf2a75b9e1b2c7bebdd628e3a",
 };
 pub const SERVER_WIN_CPU: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-win-cpu-x64.zip",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-win-cpu-x64.zip",
     file: "audiocpp-server-win-cpu-x64.zip",
-    size: 20_170_525,
-    sha256: "8d9cc7e562f7a80d0fdaaf17c6e556f369ac066b9cf56377d77ece6b2a3cc44d",
+    size: 21_954_331,
+    sha256: "30d928fec0f06c77ad0247417f0e85b1fb24d3cde34c214acd4bfe7af69e29af",
 };
 
-/// The Linux x86-64 archives of the builds (release server-31cb1a4a; Ubuntu 22.04, glibc 2.35): the program (mode 0755)
+/// The Linux x86-64 archives of the builds (release server-41242418; Ubuntu 22.04, glibc 2.35): the program (mode 0755)
 /// and libgomp, RUNPATH $ORIGIN, ../../models/higgs-engine (CUDA 13 libraries) and ../../models/cuda12-runtime (CUDA 12.9).
 pub const SERVER_LINUX_CUDA13: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-linux-cuda13-x64.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-linux-cuda13-x64.tar.gz",
     file: "audiocpp-server-linux-cuda13-x64.tar.gz",
-    size: 150_298_556,
-    sha256: "566f8b0bb05dbc750d0b49384440a330660ce5291308ae497e4d0f223474edd1",
+    size: 152_018_309,
+    sha256: "d2ae20396de41b5294f3a30c44e94f99ecfa1bc6ff3aad679139c82a7e1a9fa6",
 };
 pub const SERVER_LINUX_CUDA12: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-linux-cuda12-x64.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-linux-cuda12-x64.tar.gz",
     file: "audiocpp-server-linux-cuda12-x64.tar.gz",
-    size: 197_805_869,
-    sha256: "f5d4736f7f08507b97a1f47fd2e299f068e7dafa83d709f9e319742e080d47e2",
+    size: 199_541_363,
+    sha256: "9466103769f1413c6229e17c03666540cffed0c35d3cbe63560219b37e4ad8a4",
 };
 pub const SERVER_LINUX_VULKAN: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-linux-vulkan-x64.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-linux-vulkan-x64.tar.gz",
     file: "audiocpp-server-linux-vulkan-x64.tar.gz",
-    size: 49_184_147,
-    sha256: "7216605d1de95d2affc95c4092ac931df5ccfdae1bfb9b368a3cb0b11b6a2653",
+    size: 50_869_153,
+    sha256: "763f636f1ed0f4bc9ddc7dbe041d5daafda83e0ddc7a7b12e89d1f0e31664556",
 };
 pub const SERVER_LINUX_CPU: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-linux-cpu-x64.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-linux-cpu-x64.tar.gz",
     file: "audiocpp-server-linux-cpu-x64.tar.gz",
-    size: 31_630_798,
-    sha256: "c8a6746c616711b3543a776c04e2de21a9d84cd1a2a522470e467a55f4032401",
+    size: 33_310_286,
+    sha256: "412be6ff5945072e44c05d08020beaa3a3fc73c68989ae69249bfc433af1fa7b",
 };
 
-/// The macOS arm64 archive of the Metal build (release server-31cb1a4a): the program with its libraries.
+/// The macOS arm64 archive of the Metal build (release server-41242418): the program with its libraries.
 pub const SERVER_MACOS: Asset = Asset {
-    url: "https://github.com/timoncool/audio.cpp/releases/download/server-31cb1a4a/audiocpp-server-macos-arm64-metal.tar.gz",
+    url: "https://github.com/timoncool/audio.cpp/releases/download/server-41242418/audiocpp-server-macos-arm64-metal.tar.gz",
     file: "audiocpp-server-macos-arm64-metal.tar.gz",
-    size: 18_781_447,
-    sha256: "d0317fc8d9a0faee0afe31f3b0851eb305ddf8f7ae40ca776ff180f9ad717d38",
+    size: 19_951_116,
+    sha256: "41126b997d6c631da569cfc9ee20841b902e1edaea98e1ca7e73fdb1a75b40fe",
 };
 
 /// The CUDA 12.9 libraries of the CUDA 12 build (PyPI wheels; their `.dll` files unpack flat): cudart 12.9.79,
@@ -250,7 +250,7 @@ mod tests {
         if on_apple_silicon {
             assert!([Build::Cuda13, Build::Cuda12, Build::Vulkan, Build::Cpu].iter().all(|b| b.server().is_none()));
         }
-        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-31cb1a4a/"));
+        assert!(SERVER_MACOS.url.ends_with(SERVER_MACOS.file) && SERVER_MACOS.url.contains("/server-41242418/"));
         assert_eq!(serde_json::to_value(crate::Backend::Metal).unwrap(), "metal", "the server's config names it so");
     }
 
