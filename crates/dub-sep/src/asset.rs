@@ -1,5 +1,6 @@
 //! The pinned downloads of the separation engine BSRoformer.cpp v0.1.0, one per build, the same for every program.
-//! Windows and Linux are the studios' builds (timoncool/BSRoformer.cpp studio-0.1.1): the program with ggml, a ggml-cpu
+//! Windows and Linux are the studios' builds (timoncool/BSRoformer.cpp studio-0.1.2 on Windows, which runs on the UTF-8
+//! code page and opens any path, studio-0.1.1 on Linux): the program with ggml, a ggml-cpu
 //! per instruction level and the device's backend module, so any x86-64 runs it; CUDA as `-real` SASS without PTX,
 //! Ubuntu 22.04 on Linux, RUNPATH `$ORIGIN` and the programs' CUDA runtime folders. The Mac is the author's
 //! (chenmozhijin/BSRoformer.cpp v0.1.0).
@@ -60,28 +61,28 @@ impl Build {
     pub const fn engine(self) -> Option<Asset> {
         Some(match self {
             Build::Cuda13 => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-cuda13-x64.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.2/BSRoformer-windows-cuda13-x64.zip",
                 archive: "tools/bsroformer/_engine.zip",
-                size: 119_367_905,
-                sha256: "c89128404d29c52ac0efed1a1072a76b277ccf13a33247611032746932e8d032",
+                size: 119_910_622,
+                sha256: "151d8d38a2159107c17c9b528261a0be89d5f85a73110594056e938697b64d1b",
             },
             Build::Cuda12 => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-cuda12-x64.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.2/BSRoformer-windows-cuda12-x64.zip",
                 archive: "tools/bsroformer-cuda12/_engine.zip",
-                size: 173_177_321,
-                sha256: "72211af3451d9d4266406da8039a3ecdd9eabde1373cd235ff408711af8f7400",
+                size: 173_175_311,
+                sha256: "a7df43938ce9aebe6106768214076b4194af40d0ca9dfa98ea70252903ebecc2",
             },
             Build::Vulkan => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-vulkan-x64.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.2/BSRoformer-windows-vulkan-x64.zip",
                 archive: "tools/bsroformer-vulkan/_engine.zip",
-                size: 25_661_617,
-                sha256: "fc82682b4071d065e2e3e84998817877a4d936da7fbb3e580799904c54a6a4ab",
+                size: 25_702_070,
+                sha256: "12ca40c094e1feb69b4c9de512c694681ed7bed55260c6d86bd1e6755ae58755",
             },
             Build::Cpu => Asset {
-                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.1/BSRoformer-windows-cpu-x64.zip",
+                url: "https://github.com/timoncool/BSRoformer.cpp/releases/download/studio-0.1.2/BSRoformer-windows-cpu-x64.zip",
                 archive: "tools/bsroformer-cpu/_engine.zip",
-                size: 3_006_666,
-                sha256: "0b212654ea598503992119328daec051bbce5f14b73808c5cc588f278817f908",
+                size: 3_047_972,
+                sha256: "d2fa6bbfd7174edb23114f1774aa9039c59207e8163f2af1adb1a0e573e1c2cf",
             },
         })
     }
