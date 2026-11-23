@@ -296,9 +296,10 @@ fn subtract(mut mix: wav::Audio, voc: &wav::Audio) -> wav::Audio {
     }
 }
 
-/// A path the engine's narrow (ANSI) `argv` can carry: as it is when it is ASCII, otherwise its 8.3 short name on
-/// Windows. A path that has no short name (8.3 names are off on its volume) is an error naming it, as the engine would
-/// only say it cannot open the file. A file not made yet is its folder's short name plus its own ASCII name.
+/// A path the engine's `argv` carries: as it is when it is ASCII, otherwise its 8.3 short name on Windows, which an
+/// engine on the ANSI code page needs. Without a short name (8.3 names are off on its volume) the path goes as it is:
+/// engines from studio-0.1.2 run on the UTF-8 code page and open it. A file not made yet is its folder's short name
+/// plus its own ASCII name.
 #[cfg(windows)]
 fn engine_path(p: &Path) -> Result<PathBuf, SepError> {
     use std::os::windows::ffi::{OsStrExt, OsStringExt};
@@ -326,10 +327,7 @@ fn engine_path(p: &Path) -> Result<PathBuf, SepError> {
     };
     match shortened {
         Some(s) if s.as_os_str().to_str().is_some_and(|s| s.is_ascii()) => Ok(s),
-        _ => Err(SepError::Spawn(format!(
-            "the separation engine cannot open {}: the path has letters outside ASCII and its volume gives no 8.3 short name; move the project or the models to a folder with a Latin name",
-            p.display()
-        ))),
+        _ => Ok(p.to_path_buf()),
     }
 }
 
@@ -416,21 +414,19 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn a_cyrillic_path_reaches_the_engine_as_its_short_name() {
+    fn a_cyrillic_path_reaches_the_engine_short_or_as_it_is() {
         let dir = std::env::temp_dir().join(format!("dub-sep-путь-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let model = dir.join("модель.gguf");
         std::fs::write(&model, b"x").unwrap();
         let ascii = std::env::temp_dir().join("plain.wav");
         assert_eq!(engine_path(&ascii).unwrap(), ascii);
-        match engine_path(&model) {
-            Ok(short) => {
-                assert!(short.to_str().unwrap().is_ascii(), "{}", short.display());
-                assert_eq!(std::fs::read(&short).unwrap(), b"x", "the short name opens the same file");
-                let out = engine_path(&dir.join("vocals.wav")).unwrap();
-                assert!(out.to_str().unwrap().is_ascii() && out.ends_with("vocals.wav"));
-            }
-            Err(e) => assert!(e.to_string().contains("8.3"), "{e}"),
+        let short = engine_path(&model).unwrap();
+        assert_eq!(std::fs::read(&short).unwrap(), b"x", "the path given opens the same file");
+        if short != model {
+            assert!(short.to_str().unwrap().is_ascii(), "{}", short.display());
+            let out = engine_path(&dir.join("vocals.wav")).unwrap();
+            assert!(out.to_str().unwrap().is_ascii() && out.ends_with("vocals.wav"));
         }
         let _ = std::fs::remove_dir_all(&dir);
     }
